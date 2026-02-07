@@ -1,3 +1,4 @@
+use crate::arf::{self, ArfRecorder};
 use crate::backend::{self, QueryResult};
 use crate::config::Config;
 use crate::utils::{classify_backend_error, BackendErrorKind};
@@ -7,6 +8,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::time::Instant;
 
 const IMPLEMENT_PROMPT: &str = r#"Implement this component based on the spec.
 
@@ -166,10 +168,20 @@ pub async fn run(
     backend_filter: Option<&str>,
     verify: bool,
 ) -> Result<()> {
+    let workflow_start = Instant::now();
     let specs_dir = dir.join(".arf").join("specs");
 
     if !specs_dir.exists() {
         anyhow::bail!("No specs found. Run 'lok spec' first to generate specs in .arf/specs/");
+    }
+
+    // Initialize ARF recorder
+    let mut arf = ArfRecorder::new(dir);
+    if arf.is_enabled() {
+        // Capture code commit at start
+        if let Ok(sha) = arf::get_code_head(dir).await {
+            arf.set_code_commit(sha);
+        }
     }
 
     // Read roadmap
@@ -189,6 +201,9 @@ pub async fn run(
         roadmap.what
     );
     println!();
+
+    // Record workflow start
+    let _ = arf.workflow_start("implement", Some(&roadmap.what));
 
     // Filter steps if specified
     let steps_to_run: Vec<&RoadmapStep> = if let Some(filter) = step_filter {
@@ -212,7 +227,12 @@ pub async fn run(
     let backends = backend::get_backends(config, backend_filter)?;
     let backend_count = backends.len();
 
+    // Track overall success/failure
+    let mut steps_succeeded = 0;
+    let mut steps_failed = 0;
+
     for step in &steps_to_run {
+        let step_start_time = Instant::now();
         println!(
             "{} Step {}: {} ({})",
             "implement:".cyan().bold(),
@@ -220,6 +240,9 @@ pub async fn run(
             step.spec,
             step.summary
         );
+
+        // Record step start
+        let _ = arf.step_start("implement", &step.spec, None);
 
         let step_dir = specs_dir.join(&step.dir);
         if !step_dir.exists() {
@@ -335,6 +358,12 @@ pub async fn run(
             let mut results = Vec::new();
             let mut last_errors = Vec::new();
 
+            // Record backend query
+            for b in &backends {
+                let _ = arf.backend_query("implement", &step.spec, b.name(), &prompt);
+            }
+
+            let query_start = Instant::now();
             for retry in 0..max_query_retries {
                 results = backend::run_query(&backends, &prompt, dir, config).await?;
                 let successful: Vec<&QueryResult> = results.iter().filter(|r| r.success).collect();
@@ -370,6 +399,15 @@ pub async fn run(
                     break;
                 }
 
+                // Record retry attempt
+                let _ = arf.retry_attempt(
+                    "implement",
+                    &step.spec,
+                    "all",
+                    (retry + 1) as u32,
+                    "All backends failed, retrying",
+                );
+
                 println!(
                     "      {} All backends failed (attempt {}/{}), retrying...",
                     "!".yellow(),
@@ -377,6 +415,20 @@ pub async fn run(
                     max_query_retries
                 );
                 tokio::time::sleep(std::time::Duration::from_secs(2 * (retry as u64 + 1))).await;
+            }
+
+            let query_elapsed = query_start.elapsed().as_millis() as u64;
+
+            // Record backend responses
+            for r in &results {
+                let _ = arf.backend_response(
+                    "implement",
+                    &step.spec,
+                    &r.backend,
+                    r.success,
+                    query_elapsed,
+                    if r.success { None } else { Some(&r.output) },
+                );
             }
 
             let successful: Vec<&QueryResult> = results.iter().filter(|r| r.success).collect();
@@ -419,6 +471,26 @@ pub async fn run(
                 let synth_results =
                     backend::run_query(&synth_backends, &synth_prompt, dir, config).await?;
 
+                // Record synthesis
+                let backends_succeeded: Vec<String> =
+                    successful.iter().map(|r| r.backend.clone()).collect();
+                let backends_failed: Vec<String> = results
+                    .iter()
+                    .filter(|r| !r.success)
+                    .map(|r| r.backend.clone())
+                    .collect();
+                let _ = arf.synthesis(
+                    "implement",
+                    &step.spec,
+                    &backends_succeeded,
+                    &backends_failed,
+                    &format!(
+                        "Synthesizing {} proposals for {}",
+                        successful.len(),
+                        target_file
+                    ),
+                );
+
                 synth_results
                     .iter()
                     .find(|r| r.success)
@@ -448,12 +520,27 @@ pub async fn run(
             if let Some(parent) = target_path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::write(&target_path, &clean_code)
-                .with_context(|| format!("Failed to write {}", target_file))?;
+            let write_result = fs::write(&target_path, &clean_code);
+
+            // Record file write
+            let _ = arf.edit_apply(
+                "implement",
+                &step.spec,
+                &target_file,
+                write_result.is_ok(),
+                write_result
+                    .as_ref()
+                    .err()
+                    .map(|e| e.to_string())
+                    .as_deref(),
+            );
+
+            write_result.with_context(|| format!("Failed to write {}", target_file))?;
 
             println!("      {} Wrote {}", "+".green(), target_file);
 
             // Verify and auto-fix loop
+            let mut subtask_succeeded = true;
             if verify {
                 let mut current_code = clean_code;
                 let max_fix_attempts = 3;
@@ -462,6 +549,14 @@ pub async fn run(
                 for attempt in 0..=max_fix_attempts {
                     match run_verification(dir) {
                         Ok(()) => {
+                            // Record successful verification
+                            let _ = arf.verification(
+                                "implement",
+                                &step.spec,
+                                "cargo check",
+                                true,
+                                None,
+                            );
                             if attempt > 0 {
                                 println!(
                                     "      {} Fixed after {} attempt(s)",
@@ -474,6 +569,16 @@ pub async fn run(
                         }
                         Err(e) if attempt < max_fix_attempts => {
                             let error_msg = e.to_string();
+
+                            // Record failed verification
+                            let _ = arf.verification(
+                                "implement",
+                                &step.spec,
+                                "cargo check",
+                                false,
+                                Some(&error_msg),
+                            );
+
                             println!(
                                 "      {} Verify failed (attempt {}/{}), auto-fixing...",
                                 "!".yellow(),
@@ -507,6 +612,14 @@ pub async fn run(
                             }
                         }
                         Err(e) => {
+                            // Record final verification failure
+                            let _ = arf.verification(
+                                "implement",
+                                &step.spec,
+                                "cargo check",
+                                false,
+                                Some(&e.to_string()),
+                            );
                             println!(
                                 "      {} Verification failed after {} attempts: {}",
                                 "✗".red(),
@@ -522,14 +635,82 @@ pub async fn run(
                     update_spec_status(spec_path, SubtaskStatus::Complete)?;
                 } else {
                     update_spec_status(spec_path, SubtaskStatus::Failed)?;
+                    subtask_succeeded = false;
                 }
             } else {
                 // No verification, mark complete immediately
                 update_spec_status(spec_path, SubtaskStatus::Complete)?;
             }
+
+            // Commit successful subtask to git and ARF
+            if subtask_succeeded {
+                let commit_msg = format!("implement: {}", subtask.what);
+                match commit_file(dir, &target_file, &commit_msg).await {
+                    Ok(sha) => {
+                        println!("      {} Committed {}", "●".green(), &sha[..8]);
+                        // Update ARF recorder to link subsequent records to this commit
+                        arf.set_code_commit(sha.clone());
+
+                        // Commit ARF records alongside code
+                        if arf.is_enabled() {
+                            let arf_msg = format!("arf: {} ({})", subtask.what, &sha[..8]);
+                            if let Err(e) = arf.commit(&arf_msg).await {
+                                println!("      {} Failed to commit ARF: {}", "!".yellow(), e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("      {} Failed to commit: {}", "!".yellow(), e);
+                    }
+                }
+                steps_succeeded += 1;
+            } else {
+                steps_failed += 1;
+            }
         }
 
+        // Record step completion
+        let step_elapsed = step_start_time.elapsed().as_millis() as u64;
+        let step_had_failures = steps_failed > 0;
+        let _ = arf.step_complete(
+            "implement",
+            &step.spec,
+            !step_had_failures,
+            step_elapsed,
+            if step_had_failures {
+                Some("Some subtasks failed")
+            } else {
+                None
+            },
+        );
+
         println!();
+    }
+
+    // Record workflow completion
+    let workflow_elapsed = workflow_start.elapsed().as_millis() as u64;
+    let workflow_success = steps_failed == 0;
+    let _ = arf.workflow_complete(
+        "implement",
+        workflow_success,
+        workflow_elapsed,
+        steps_succeeded,
+        steps_failed,
+    );
+
+    // Commit ARF records
+    if arf.is_enabled() {
+        let commit_msg = format!(
+            "implement: {} ({} succeeded, {} failed)",
+            roadmap.what, steps_succeeded, steps_failed
+        );
+        if let Err(e) = arf.commit(&commit_msg).await {
+            eprintln!(
+                "{} Failed to commit ARF records: {}",
+                "warning:".yellow(),
+                e
+            );
+        }
     }
 
     println!(
@@ -681,4 +862,66 @@ fn update_spec_status_with_error(
 
     fs::write(spec_path, new_content)?;
     Ok(())
+}
+
+/// Commit a generated file to git and return the commit SHA
+async fn commit_file(dir: &Path, file: &str, message: &str) -> Result<String> {
+    use tokio::process::Command as AsyncCommand;
+
+    // Check if we're in a git repo
+    let status = AsyncCommand::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .current_dir(dir)
+        .output()
+        .await?;
+
+    if !status.status.success() {
+        anyhow::bail!("Not a git repository");
+    }
+
+    // Stage the file
+    let add = AsyncCommand::new("git")
+        .args(["add", file])
+        .current_dir(dir)
+        .output()
+        .await?;
+
+    if !add.status.success() {
+        anyhow::bail!(
+            "Failed to stage {}: {}",
+            file,
+            String::from_utf8_lossy(&add.stderr)
+        );
+    }
+
+    // Commit
+    let commit = AsyncCommand::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(dir)
+        .output()
+        .await?;
+
+    if !commit.status.success() {
+        let stderr = String::from_utf8_lossy(&commit.stderr);
+        // No changes to commit is ok (file unchanged)
+        if stderr.contains("nothing to commit") {
+            // Return current HEAD
+            let head = AsyncCommand::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(dir)
+                .output()
+                .await?;
+            return Ok(String::from_utf8_lossy(&head.stdout).trim().to_string());
+        }
+        anyhow::bail!("Failed to commit: {}", stderr);
+    }
+
+    // Get the commit SHA
+    let sha = AsyncCommand::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(dir)
+        .output()
+        .await?;
+
+    Ok(String::from_utf8_lossy(&sha.stdout).trim().to_string())
 }
