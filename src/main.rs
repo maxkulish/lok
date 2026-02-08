@@ -270,11 +270,27 @@ enum Commands {
         args: Vec<String>,
     },
 
-    /// Show detected codebase context
+    /// Gather codebase context (or show detected context if no flags)
     Context {
         /// Directory to analyze
         #[arg(default_value = ".")]
         dir: PathBuf,
+
+        /// Gather context for an issue (number or URL)
+        #[arg(long)]
+        issue: Option<String>,
+
+        /// Gather context for a PR (number or URL)
+        #[arg(long)]
+        pr: Option<String>,
+
+        /// Free-form search query
+        #[arg(short, long)]
+        query: Option<String>,
+
+        /// Verbose output
+        #[arg(short, long)]
+        verbose: bool,
     },
 
     /// Review git changes with LLM analysis
@@ -672,8 +688,12 @@ async fn main() -> Result<()> {
             // Shorthand for 'workflow run'
             run_workflow(&name, &dir, output.as_deref(), args, &config).await?;
         }
-        Commands::Context { dir } => {
-            show_context(&dir);
+        Commands::Context { dir, issue, pr, query, verbose } => {
+            if issue.is_some() || pr.is_some() || query.is_some() {
+                tasks::context::run(&dir, issue.as_deref(), pr.as_deref(), query.as_deref(), verbose).await?;
+            } else {
+                show_context(&dir);
+            }
         }
         Commands::Diff {
             spec,
