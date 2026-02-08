@@ -1386,9 +1386,17 @@ impl WorkflowRunner {
                                                     "{}\n\n## Previous Attempt Failed\n\nVerification error:\n```\n{}\n```\n\nPlease provide a corrected fix.",
                                                     prompt, error_msg
                                                 );
-                                                if let Ok(new_response) = backend.query(&fix_prompt, &cwd).await {
-                                                    current_text = new_response;
-                                                    continue 'fix_loop;
+                                                match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd)).await {
+                                                    Ok(Ok(new_response)) => {
+                                                        current_text = new_response;
+                                                        continue 'fix_loop;
+                                                    }
+                                                    Ok(Err(e)) => {
+                                                        println!("    {} Re-query failed: {}", "✗".red(), e);
+                                                    }
+                                                    Err(_) => {
+                                                        println!("    {} Re-query timed out", "✗".red());
+                                                    }
                                                 }
                                             }
                                             // No retries left or re-query failed
@@ -1426,9 +1434,17 @@ impl WorkflowRunner {
                                                     "{}\n\n## Previous Attempt Failed\n\n{}\n\nPlease provide a corrected fix.",
                                                     prompt, error_msg
                                                 );
-                                                if let Ok(new_response) = backend.query(&fix_prompt, &cwd).await {
-                                                    current_text = new_response;
-                                                    continue 'fix_loop;
+                                                match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd)).await {
+                                                    Ok(Ok(new_response)) => {
+                                                        current_text = new_response;
+                                                        continue 'fix_loop;
+                                                    }
+                                                    Ok(Err(e)) => {
+                                                        println!("    {} Re-query failed: {}", "✗".red(), e);
+                                                    }
+                                                    Err(_) => {
+                                                        println!("    {} Re-query timed out", "✗".red());
+                                                    }
                                                 }
                                             }
                                             // No retries left or re-query failed
@@ -1452,6 +1468,8 @@ impl WorkflowRunner {
                             } // end 'fix_loop
 
                             // Record step complete (success)
+                            // Recalculate elapsed time to include any fix retries
+                            let elapsed_ms = start.elapsed().as_millis() as u64;
 
                             let parsed = parse_step_output(
                                 &current_text,
