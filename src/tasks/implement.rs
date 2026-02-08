@@ -1,6 +1,9 @@
 use crate::arf::{self, ArfRecorder};
 use crate::backend::{self, QueryResult};
 use crate::config::Config;
+// Consensus module available for future use in implement synthesis
+#[allow(unused_imports)]
+use crate::consensus::ConsensusStrategy;
 use crate::utils::{classify_backend_error, BackendErrorKind};
 use anyhow::{Context, Result};
 use colored::Colorize;
