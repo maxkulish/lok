@@ -3,6 +3,7 @@ mod backend;
 mod cache;
 mod conductor;
 mod config;
+mod consensus;
 mod context;
 mod debate;
 mod delegation;

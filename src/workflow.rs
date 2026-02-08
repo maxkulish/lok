@@ -251,8 +251,13 @@ impl Workflow {
 pub struct Step {
     pub name: String,
     /// Backend to use (e.g. "claude", "codex"). Not needed for shell steps.
+    /// For multi-backend consensus, use comma-separated list: "claude,codex,ollama"
     #[serde(default)]
     pub backend: String,
+    /// Multiple backends to query in parallel for consensus
+    /// Alternative to comma-separated backend field
+    #[serde(default)]
+    pub backends: Vec<String>,
     /// Prompt to send to LLM. Not needed for shell steps.
     #[serde(default)]
     pub prompt: String,
@@ -310,6 +315,39 @@ pub struct Step {
     /// Timeout for this step in milliseconds (default: 120000 = 2 minutes)
     #[serde(default)]
     pub timeout: Option<u64>,
+
+    // Consensus strategy for multi-backend steps
+    /// How to combine responses when multiple backends respond
+    /// - "first": Use first successful response
+    /// - "synthesis": LLM synthesizes responses (default)
+    /// - "vote": Majority vote (for classification tasks)
+    /// - "weighted_vote": Weighted majority by backend tier
+    #[serde(default)]
+    pub consensus: Option<crate::consensus::ConsensusStrategy>,
+}
+
+impl Step {
+    /// Get list of backends to use for this step
+    /// Supports both `backends` array and comma-separated `backend` string
+    pub fn get_backends(&self) -> Vec<String> {
+        if !self.backends.is_empty() {
+            return self.backends.clone();
+        }
+        if self.backend.is_empty() {
+            return vec![];
+        }
+        // Parse comma-separated backends
+        self.backend
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+
+    /// Get the consensus strategy, defaulting to Synthesis for multi-backend
+    pub fn get_consensus_strategy(&self) -> crate::consensus::ConsensusStrategy {
+        self.consensus.clone().unwrap_or_default()
+    }
 }
 
 fn default_retry_delay() -> u64 {
@@ -678,6 +716,8 @@ impl WorkflowRunner {
                     let cwd = self.cwd.clone();
                     let step_name = step.name.clone();
                     let backend_name = step.backend.clone();
+                    let backends_list = step.get_backends();
+                    let consensus_strategy = step.get_consensus_strategy();
                     let apply_edits_flag = step.apply_edits;
                     let max_retries = step.retries;
                     let retry_delay = step.retry_delay;
@@ -938,7 +978,190 @@ impl WorkflowRunner {
                             };
                         }
 
-                        // LLM step - query backend
+                        // LLM step - query backend(s)
+                        // Handle multi-backend with consensus
+                        if backends_list.len() > 1 {
+                            use crate::consensus::{BackendResponse, ConsensusStrategy, majority_vote, weighted_vote, BackendWeights};
+
+                            println!("  {} querying {} backends with {:?} consensus", "[multi]".cyan(), backends_list.len(), consensus_strategy);
+
+                            // Query all backends in parallel
+                            let mut handles = Vec::new();
+                            for bn in &backends_list {
+                                let bn = bn.clone();
+                                let cfg = config.clone();
+                                let prompt = prompt.clone();
+                                let cwd = cwd.clone();
+                                let timeout_dur = timeout_duration;
+
+                                handles.push(tokio::spawn(async move {
+                                    let backend_config = match cfg.backends.get(&bn) {
+                                        Some(c) => c,
+                                        None => return (bn.clone(), Err(format!("Backend not found: {}", bn))),
+                                    };
+                                    let backend = match backend::create_backend(&bn, backend_config) {
+                                        Ok(b) => b,
+                                        Err(e) => return (bn.clone(), Err(format!("Failed to create backend: {}", e))),
+                                    };
+                                    if !backend.is_available() {
+                                        return (bn.clone(), Err(format!("Backend {} not available", bn)));
+                                    }
+                                    match tokio::time::timeout(timeout_dur, backend.query(&prompt, &cwd)).await {
+                                        Ok(Ok(text)) => (bn.clone(), Ok(text)),
+                                        Ok(Err(e)) => (bn.clone(), Err(e.to_string())),
+                                        Err(_) => (bn.clone(), Err(format!("Timeout after {}s", timeout_dur.as_secs()))),
+                                    }
+                                }));
+                            }
+
+                            // Collect results
+                            let mut responses: Vec<BackendResponse> = Vec::new();
+                            let mut errors: Vec<String> = Vec::new();
+                            for handle in handles {
+                                match handle.await {
+                                    Ok((backend, Ok(content))) => {
+                                        println!("    {} {}", "✓".green(), backend);
+                                        responses.push(BackendResponse { backend, content });
+                                    }
+                                    Ok((backend, Err(e))) => {
+                                        println!("    {} {} - {}", "✗".red(), backend, e);
+                                        errors.push(format!("{}: {}", backend, e));
+                                    }
+                                    Err(e) => {
+                                        errors.push(format!("Task error: {}", e));
+                                    }
+                                }
+                            }
+
+                            if responses.is_empty() {
+                                let elapsed_ms = start.elapsed().as_millis() as u64;
+                                if let Ok(mut arf) = arf.lock() {
+                                    let _ = arf.step_complete(&workflow_name, &step_name, false, elapsed_ms, Some(&errors.join("; ")));
+                                }
+                                return StepResult {
+                                    name: step_name,
+                                    output: format!("All backends failed: {}", errors.join("; ")),
+                                    parsed_output: None,
+                                    success: false,
+                                    elapsed_ms,
+                                    backend: None,
+                                };
+                            }
+
+                            // Apply consensus strategy
+                            let (final_output, used_backend) = match consensus_strategy {
+                                ConsensusStrategy::First => {
+                                    let r = &responses[0];
+                                    (r.content.clone(), Some(r.backend.clone()))
+                                }
+                                ConsensusStrategy::Vote => {
+                                    match majority_vote(&responses) {
+                                        Some(result) => {
+                                            if result.was_tie {
+                                                println!("    {} Vote tied ({} total), using first occurrence", "⚠".yellow(), result.total);
+                                            } else {
+                                                println!("    {} Majority vote: {}/{} backends agreed", "✓".green(), result.breakdown.get(&result.winner).unwrap_or(&0), result.total);
+                                            }
+                                            (result.winner, None)
+                                        }
+                                        None => (responses[0].content.clone(), Some(responses[0].backend.clone())),
+                                    }
+                                }
+                                ConsensusStrategy::WeightedVote => {
+                                    let weights = BackendWeights::default();
+                                    match weighted_vote(&responses, &weights) {
+                                        Some(result) => {
+                                            if result.was_tie {
+                                                println!("    {} Weighted vote tied, using first occurrence", "⚠".yellow());
+                                            } else {
+                                                println!("    {} Weighted vote: {:.1} weighted score", "✓".green(), result.breakdown.get(&result.winner).unwrap_or(&0.0));
+                                            }
+                                            (result.winner, None)
+                                        }
+                                        None => (responses[0].content.clone(), Some(responses[0].backend.clone())),
+                                    }
+                                }
+                                ConsensusStrategy::Synthesis => {
+                                    // Format responses for synthesis
+                                    let proposals = responses
+                                        .iter()
+                                        .map(|r| format!("## {}'s Response\n{}\n", r.backend, r.content))
+                                        .collect::<Vec<_>>()
+                                        .join("\n");
+
+                                    let synth_prompt = format!(
+                                        "Multiple AI backends responded to this prompt:\n\n\
+                                        ## Original Prompt\n{}\n\n\
+                                        ## Responses\n{}\n\n\
+                                        ## Instructions\n\
+                                        Synthesize these responses into a single, unified answer that:\n\
+                                        1. Takes the best insights from each\n\
+                                        2. Resolves any contradictions\n\
+                                        3. Is clear and concise\n\n\
+                                        Output only the synthesized response, no preamble.",
+                                        prompt, proposals
+                                    );
+
+                                    // Use claude for synthesis (or first available backend)
+                                    let synth_backend_name = if config.backends.contains_key("claude") {
+                                        "claude"
+                                    } else {
+                                        backends_list.first().map(|s| s.as_str()).unwrap_or("claude")
+                                    };
+
+                                    println!("    {} Synthesizing with {}...", "⚙".cyan(), synth_backend_name);
+
+                                    if let Some(synth_config) = config.backends.get(synth_backend_name) {
+                                        if let Ok(synth_backend) = backend::create_backend(synth_backend_name, synth_config) {
+                                            match tokio::time::timeout(timeout_duration, synth_backend.query(&synth_prompt, &cwd)).await {
+                                                Ok(Ok(synthesized)) => {
+                                                    println!("    {} Synthesized", "✓".green());
+                                                    (synthesized, Some(synth_backend_name.to_string()))
+                                                }
+                                                Ok(Err(e)) => {
+                                                    println!("    {} Synthesis failed: {}, using first response", "⚠".yellow(), e);
+                                                    (responses[0].content.clone(), Some(responses[0].backend.clone()))
+                                                }
+                                                Err(_) => {
+                                                    println!("    {} Synthesis timed out, using first response", "⚠".yellow());
+                                                    (responses[0].content.clone(), Some(responses[0].backend.clone()))
+                                                }
+                                            }
+                                        } else {
+                                            println!("    {} Couldn't create synthesis backend, using first response", "⚠".yellow());
+                                            (responses[0].content.clone(), Some(responses[0].backend.clone()))
+                                        }
+                                    } else {
+                                        println!("    {} No synthesis backend available, using first response", "⚠".yellow());
+                                        (responses[0].content.clone(), Some(responses[0].backend.clone()))
+                                    }
+                                }
+                            };
+
+                            let elapsed_ms = start.elapsed().as_millis() as u64;
+                            if let Ok(mut arf) = arf.lock() {
+                                let _ = arf.step_complete(&workflow_name, &step_name, true, elapsed_ms, None);
+                            }
+                            println!(
+                                "  {} ({:.1}s, {}/{} backends)",
+                                "✓".green(),
+                                elapsed_ms as f64 / 1000.0,
+                                responses.len(),
+                                backends_list.len()
+                            );
+
+                            let parsed = parse_step_output(&final_output, output_format.as_deref());
+                            return StepResult {
+                                name: step_name,
+                                output: final_output,
+                                parsed_output: parsed,
+                                success: true,
+                                elapsed_ms,
+                                backend: used_backend,
+                            };
+                        }
+
+                        // Single backend path (original code)
                         let backend_config = match config.backends.get(&backend_name) {
                             Some(cfg) => cfg,
                             None => {
@@ -2724,6 +2947,7 @@ line2"}"#;
             Step {
                 name: "fetch".to_string(),
                 backend: String::new(),
+                backends: vec![],
                 prompt: String::new(),
                 depends_on: vec![],
                 when: None,
@@ -2737,10 +2961,12 @@ line2"}"#;
                 continue_on_error: None,
                 min_deps_success: None,
                 timeout: None,
+                consensus: None,
             },
             Step {
                 name: "fetch".to_string(), // duplicate!
                 backend: String::new(),
+                backends: vec![],
                 prompt: String::new(),
                 depends_on: vec![],
                 when: None,
@@ -2754,6 +2980,7 @@ line2"}"#;
                 continue_on_error: None,
                 min_deps_success: None,
                 timeout: None,
+                consensus: None,
             },
         ];
 
@@ -2781,6 +3008,7 @@ line2"}"#;
         let steps = vec![Step {
             name: "lonely".to_string(),
             backend: String::new(),
+            backends: vec![],
             prompt: String::new(),
             depends_on: vec![], // Empty!
             when: None,
@@ -2794,6 +3022,7 @@ line2"}"#;
             continue_on_error: None,
             min_deps_success: Some(2), // Requires 2 deps but has none
             timeout: None,
+            consensus: None,
         }];
 
         let config = crate::config::Config::default();
@@ -2824,6 +3053,7 @@ line2"}"#;
             Step {
                 name: "early_step".to_string(),
                 backend: String::new(),
+                backends: vec![],
                 prompt: String::new(),
                 depends_on: vec!["late_step".to_string()], // depends on step defined later
                 when: None,
@@ -2837,10 +3067,12 @@ line2"}"#;
                 continue_on_error: None,
                 min_deps_success: None,
                 timeout: None,
+                consensus: None,
             },
             Step {
                 name: "late_step".to_string(),
                 backend: String::new(),
+                backends: vec![],
                 prompt: String::new(),
                 depends_on: vec![], // no dependencies
                 when: None,
@@ -2854,6 +3086,7 @@ line2"}"#;
                 continue_on_error: None,
                 min_deps_success: None,
                 timeout: None,
+                consensus: None,
             },
         ];
 
