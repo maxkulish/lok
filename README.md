@@ -1,23 +1,24 @@
 # Lok
 
-Orchestration layer for multiple LLM backends. Run it in your project directory
-and it coordinates multiple LLMs to analyze your code, find bugs, and propose fixes.
+Declarative multi-LLM orchestration. Define workflows in TOML, run them against
+multiple backends, get synthesized results.
 
-## How It Works
+## What It Is
 
-An agentic LLM (Claude Code, Gemini CLI, etc.) acts as the conductor, running
-lok commands and implementing the results.
+- **Multi-backend queries**: Ask the same question to Claude, Codex, Gemini, and
+  Ollama in parallel, then synthesize or vote on the results
+- **Declarative workflows**: TOML files that define multi-step LLM pipelines with
+  dependencies, retries, and error handling
+- **Backend abstraction**: Swap `backend = "claude"` for `backend = "ollama"`
+  without changing your workflow logic
 
-```
-1. Conductor:      Runs lok run fix 123
-2. Lok analyzes:   Fetches issue, queries Claude + Codex, synthesizes proposals
-3. Lok comments:   Posts consensus proposal to the GitHub issue
-4. Conductor:      Reads the proposal, implements the fix, pushes a PR
-5. Human:          Reviews and approves
-```
+## What It's Not
 
-The conductor is the brain (an agentic LLM). Lok is the orchestra (multiple
-specialized backends). The human provides oversight.
+- **Not an agent**: Lok doesn't make decisions or write code. It runs queries and
+  returns results. Use it *with* an agent (Claude Code, Cursor, etc.) that acts
+  on the output.
+- **Not a wrapper for one LLM**: If you only use Claude, you don't need lok. The
+  value is in multi-backend orchestration and consensus.
 
 ## Quick Start
 
