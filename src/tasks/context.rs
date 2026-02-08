@@ -57,12 +57,23 @@ pub async fn run(
     if let Some(issue_ref) = issue {
         let issue_num = parse_ref(issue_ref)?;
         if verbose {
-            eprintln!("{} Fetching issue #{}...", "context:".cyan().bold(), issue_num);
+            eprintln!(
+                "{} Fetching issue #{}...",
+                "context:".cyan().bold(),
+                issue_num
+            );
         }
         let issue_data = fetch_issue(dir, issue_num)?;
-        search_text = format!("{} {}", issue_data.title, issue_data.body.unwrap_or_default());
+        search_text = format!(
+            "{} {}",
+            issue_data.title,
+            issue_data.body.unwrap_or_default()
+        );
 
-        context.push_str(&format!("# Context for Issue #{}: {}\n\n", issue_data.number, issue_data.title));
+        context.push_str(&format!(
+            "# Context for Issue #{}: {}\n\n",
+            issue_data.number, issue_data.title
+        ));
     } else if let Some(pr_ref) = pr {
         let pr_num = parse_ref(pr_ref)?;
         if verbose {
@@ -71,7 +82,10 @@ pub async fn run(
         let pr_data = fetch_pr(dir, pr_num)?;
         search_text = format!("{} {}", pr_data.title, pr_data.body.unwrap_or_default());
 
-        context.push_str(&format!("# Context for PR #{}: {}\n\n", pr_data.number, pr_data.title));
+        context.push_str(&format!(
+            "# Context for PR #{}: {}\n\n",
+            pr_data.number, pr_data.title
+        ));
 
         // For PRs, also get the changed files
         let changed_files = fetch_pr_files(dir, pr_num)?;
@@ -102,9 +116,12 @@ pub async fn run(
     if !file_refs.is_empty() {
         context.push_str("## Referenced Files\n\n");
         for file_ref in &file_refs {
-            if let Ok(content) = read_file_around_line(dir, &file_ref.path, file_ref.line, 15).await {
-                context.push_str(&format!("### {} (line {})\n```\n{}\n```\n\n",
-                    file_ref.path, file_ref.line, content));
+            if let Ok(content) = read_file_around_line(dir, &file_ref.path, file_ref.line, 15).await
+            {
+                context.push_str(&format!(
+                    "### {} (line {})\n```\n{}\n```\n\n",
+                    file_ref.path, file_ref.line, content
+                ));
             }
         }
     }
@@ -113,14 +130,21 @@ pub async fn run(
     let keywords = extract_keywords(&search_text);
     if !keywords.is_empty() {
         if verbose {
-            eprintln!("{} Searching for: {}", "context:".cyan().bold(), keywords.join(", "));
+            eprintln!(
+                "{} Searching for: {}",
+                "context:".cyan().bold(),
+                keywords.join(", ")
+            );
         }
 
         context.push_str("## Keyword Search Results\n\n");
         for keyword in keywords.iter().take(5) {
             if let Ok(results) = grep_codebase(dir, keyword) {
                 if !results.is_empty() {
-                    context.push_str(&format!("### Matches for '{}'\n```\n{}\n```\n\n", keyword, results));
+                    context.push_str(&format!(
+                        "### Matches for '{}'\n```\n{}\n```\n\n",
+                        keyword, results
+                    ));
                 }
             }
         }
@@ -167,7 +191,13 @@ fn parse_ref(reference: &str) -> Result<u64> {
 
 fn fetch_issue(dir: &Path, number: u64) -> Result<GitHubIssue> {
     let output = Command::new("gh")
-        .args(["issue", "view", &number.to_string(), "--json", "number,title,body"])
+        .args([
+            "issue",
+            "view",
+            &number.to_string(),
+            "--json",
+            "number,title,body",
+        ])
         .current_dir(dir)
         .output()
         .context("Failed to run gh command")?;
@@ -182,7 +212,13 @@ fn fetch_issue(dir: &Path, number: u64) -> Result<GitHubIssue> {
 
 fn fetch_pr(dir: &Path, number: u64) -> Result<GitHubPR> {
     let output = Command::new("gh")
-        .args(["pr", "view", &number.to_string(), "--json", "number,title,body,changedFiles"])
+        .args([
+            "pr",
+            "view",
+            &number.to_string(),
+            "--json",
+            "number,title,body,changedFiles",
+        ])
         .current_dir(dir)
         .output()
         .context("Failed to run gh command")?;
@@ -197,7 +233,15 @@ fn fetch_pr(dir: &Path, number: u64) -> Result<GitHubPR> {
 
 fn fetch_pr_files(dir: &Path, number: u64) -> Result<Vec<PRFile>> {
     let output = Command::new("gh")
-        .args(["pr", "view", &number.to_string(), "--json", "files", "--jq", ".files"])
+        .args([
+            "pr",
+            "view",
+            &number.to_string(),
+            "--json",
+            "files",
+            "--jq",
+            ".files",
+        ])
         .current_dir(dir)
         .output()
         .context("Failed to run gh command")?;
@@ -246,14 +290,20 @@ fn extract_keywords(text: &str) -> Vec<String> {
 fn grep_codebase(dir: &Path, pattern: &str) -> Result<String> {
     let output = Command::new("rg")
         .args([
-            "--max-count", "5",
+            "--max-count",
+            "5",
             "-n",
             "--no-heading",
-            "-g", "!*.lock",
-            "-g", "!node_modules",
-            "-g", "!target",
-            "-g", "!vendor",
-            "-g", "!.git",
+            "-g",
+            "!*.lock",
+            "-g",
+            "!node_modules",
+            "-g",
+            "!target",
+            "-g",
+            "!vendor",
+            "-g",
+            "!.git",
             pattern,
         ])
         .current_dir(dir)
@@ -266,7 +316,12 @@ fn grep_codebase(dir: &Path, pattern: &str) -> Result<String> {
     Ok(limited)
 }
 
-async fn read_file_around_line(dir: &Path, path: &str, line: usize, context_lines: usize) -> Result<String> {
+async fn read_file_around_line(
+    dir: &Path,
+    path: &str,
+    line: usize,
+    context_lines: usize,
+) -> Result<String> {
     let file_path = dir.join(path);
     let content = tokio::fs::read_to_string(&file_path).await?;
     let lines: Vec<&str> = content.lines().collect();
@@ -291,7 +346,10 @@ async fn read_file_with_limit(dir: &Path, path: &str, max_lines: usize) -> Resul
 
     let mut output = lines.join("\n");
     if content.lines().count() > max_lines {
-        output.push_str(&format!("\n... ({} more lines)", content.lines().count() - max_lines));
+        output.push_str(&format!(
+            "\n... ({} more lines)",
+            content.lines().count() - max_lines
+        ));
     }
 
     Ok(output)

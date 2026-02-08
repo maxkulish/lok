@@ -688,9 +688,22 @@ async fn main() -> Result<()> {
             // Shorthand for 'workflow run'
             run_workflow(&name, &dir, output.as_deref(), args, &config).await?;
         }
-        Commands::Context { dir, issue, pr, query, verbose } => {
+        Commands::Context {
+            dir,
+            issue,
+            pr,
+            query,
+            verbose,
+        } => {
             if issue.is_some() || pr.is_some() || query.is_some() {
-                tasks::context::run(&dir, issue.as_deref(), pr.as_deref(), query.as_deref(), verbose).await?;
+                tasks::context::run(
+                    &dir,
+                    issue.as_deref(),
+                    pr.as_deref(),
+                    query.as_deref(),
+                    verbose,
+                )
+                .await?;
             } else {
                 show_context(&dir);
             }
