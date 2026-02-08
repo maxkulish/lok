@@ -1,4 +1,3 @@
-mod arf;
 mod backend;
 mod cache;
 mod conductor;
@@ -149,11 +148,7 @@ enum Commands {
     },
 
     /// Initialize a new lok.toml config file
-    Init {
-        /// Also initialize git-agent with orphan branch + worktree
-        #[arg(long)]
-        agent: bool,
-    },
+    Init {},
 
     /// Generate a report from agent history
     Report {
@@ -452,15 +447,12 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        Commands::Init { agent } => {
+        Commands::Init {} => {
             // Only create lok.toml if it doesn't exist
             if !Path::new("lok.toml").exists() {
                 config::init_config()?;
             } else {
                 println!("{} lok.toml already exists", "✓".green());
-            }
-            if agent {
-                arf::init_worktree(Path::new(".")).await?;
             }
         }
         Commands::Report {
