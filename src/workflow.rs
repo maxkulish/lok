@@ -1838,7 +1838,7 @@ fn interpolate_loop_vars(template: &str, item: &serde_json::Value, index: usize)
 }
 
 /// Parse for_each value into a JSON array
-/// Can be a reference to previous step (steps.X.output) or an inline JSON array
+/// Can be a reference to previous step (steps.X.output or steps.X.field) or an inline JSON array
 fn parse_for_each_array(
     for_each: &str,
     results: &HashMap<String, StepResult>,
@@ -1850,9 +1850,45 @@ fn parse_for_each_array(
         return Ok(array);
     }
 
-    // Parse as step reference: steps.X.output
-    let step_ref_re = regex::Regex::new(r"^steps\.([a-zA-Z0-9_-]+)\.output$").unwrap();
+    // Parse as step reference: steps.X.output or steps.X.field (shorthand for steps.X.output.field)
+    let step_ref_re = regex::Regex::new(r"^steps\.([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)$").unwrap();
     if let Some(caps) = step_ref_re.captures(for_each) {
+        let step_name = &caps[1];
+        let field = &caps[2];
+
+        // If field is not "output", it's a shorthand for accessing a field in parsed output
+        if field != "output" {
+            let step_result = results
+                .get(step_name)
+                .ok_or_else(|| anyhow::anyhow!("for_each: step '{}' not found", step_name))?;
+
+            // Need parsed output to access a field
+            let parsed = step_result.parsed_output.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "for_each: step '{}' has no parsed output (use output_format = \"json\")",
+                    step_name
+                )
+            })?;
+
+            let field_value = parsed.get(field).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "for_each: step '{}' output has no field '{}'",
+                    step_name,
+                    field
+                )
+            })?;
+
+            return match field_value {
+                serde_json::Value::Array(arr) => Ok(arr.clone()),
+                _ => Err(anyhow::anyhow!(
+                    "for_each: step '{}.{}' is not an array",
+                    step_name,
+                    field
+                )),
+            };
+        }
+
+        // field == "output", use the whole output
         let step_name = &caps[1];
         let step_result = results
             .get(step_name)
@@ -3191,6 +3227,40 @@ line2"}"#;
 
         let err = parse_for_each_array("steps.plan.output", &results).unwrap_err();
         assert!(err.to_string().contains("not a JSON array"));
+    }
+
+    #[test]
+    fn test_parse_for_each_field_access() {
+        let mut results = HashMap::new();
+        let parsed = serde_json::json!({
+            "files": ["src/main.rs", "src/lib.rs"],
+            "other": "not an array"
+        });
+        results.insert(
+            "debate".to_string(),
+            StepResult {
+                name: "debate".to_string(),
+                output: "raw output".to_string(),
+                parsed_output: Some(parsed),
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+            },
+        );
+
+        // Access array field
+        let items = parse_for_each_array("steps.debate.files", &results).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0], "src/main.rs");
+        assert_eq!(items[1], "src/lib.rs");
+
+        // Non-array field should error
+        let err = parse_for_each_array("steps.debate.other", &results).unwrap_err();
+        assert!(err.to_string().contains("not an array"));
+
+        // Missing field should error
+        let err = parse_for_each_array("steps.debate.missing", &results).unwrap_err();
+        assert!(err.to_string().contains("no field"));
     }
 
     #[test]
