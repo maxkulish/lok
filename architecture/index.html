@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lokomotiv - Security & Architecture Analysis</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; margin-bottom: 1rem; color: var(--accent); }
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; }
+  .verdict-banner { padding: 1.5rem 2rem; border-radius: 8px; margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; }
+  .verdict-safe { background: rgba(63,185,80,0.15); border: 1px solid var(--green); }
+  .verdict-review { background: rgba(210,153,34,0.15); border: 1px solid var(--orange); }
+  .verdict-unsafe { background: rgba(248,81,73,0.15); border: 1px solid var(--red); }
+  .verdict-badge { font-size: 1.3rem; font-weight: 700; padding: 0.3rem 1rem; border-radius: 6px; }
+  .badge-safe { background: var(--green); color: #000; }
+  .badge-review { background: var(--orange); color: #000; }
+  .badge-unsafe { background: var(--red); color: #000; }
+  .verdict-text { font-size: 1.1rem; }
+  .risk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .risk-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; }
+  .risk-card h3 { font-size: 0.95rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+  .risk-card p { color: var(--text-muted); font-size: 0.85rem; }
+  .badge { font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 12px; text-transform: uppercase; }
+  .badge-pass { background: rgba(63,185,80,0.2); color: var(--green); }
+  .badge-warn { background: rgba(210,153,34,0.2); color: var(--orange); }
+  .badge-fail { background: rgba(248,81,73,0.2); color: var(--red); }
+  .nav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .nav-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; text-decoration: none; color: var(--text); transition: border-color 0.2s; }
+  .nav-card:hover { border-color: var(--accent); }
+  .nav-card h3 { color: var(--accent); margin-bottom: 0.5rem; }
+  .nav-card p { color: var(--text-muted); font-size: 0.9rem; }
+  .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; margin-bottom: 2rem; }
+  .meta-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 0.8rem 1rem; }
+  .meta-label { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .meta-value { font-size: 1.1rem; font-weight: 600; }
+  .section { margin-bottom: 2rem; }
+  .description { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; font-size: 1rem; line-height: 1.8; }
+  footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+  nav.top-nav { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  nav.top-nav a { color: var(--accent); text-decoration: none; padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+  nav.top-nav a:hover { background: var(--bg-secondary); }
+  nav.top-nav a.active { background: var(--accent); color: #000; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="top-nav">
+    <a href="index.html" class="active">Overview</a>
+    <a href="security.html">Security</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="dependencies.html">Dependencies</a>
+    <a href="risks.html">Risks</a>
+    <a href="github-activity.html">GitHub</a>
+  </nav>
+
+  <h1>Lokomotiv</h1>
+  <p class="subtitle">Security & Architecture Analysis - v20260208.0.2</p>
+
+  <div class="meta-grid">
+    <div class="meta-item">
+      <div class="meta-label">Language</div>
+      <div class="meta-value">Rust</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Version</div>
+      <div class="meta-value">20260208.0.2</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Source Files</div>
+      <div class="meta-value">30 .rs files</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Lines of Code</div>
+      <div class="meta-value">14,293</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Commit</div>
+      <div class="meta-value" style="font-size:0.85rem;">f8852fc</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">License</div>
+      <div class="meta-value">MIT</div>
+    </div>
+  </div>
+
+  <div class="verdict-banner verdict-safe">
+    <span class="verdict-badge badge-safe">SAFE</span>
+    <span class="verdict-text">No telemetry, no data exfiltration, no unsafe code. Network calls are limited to configured LLM API endpoints. Secrets handled properly via SecretString.</span>
+  </div>
+
+  <div class="section">
+    <h2>What This Project Does</h2>
+    <div class="description">
+      <strong>Lokomotiv (lok)</strong> is a local CLI tool that orchestrates queries across multiple LLM backends (Claude, Codex, Gemini, Ollama, AWS Bedrock). It provides parallel querying, multi-round debates between models, workflow pipelines, and built-in tasks for code analysis, bug hunting, security audits, and CI failure diagnosis. All processing is local - it only makes network calls to the LLM APIs you configure. No data is sent to any third-party analytics or telemetry services.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Risk Summary</h2>
+    <div class="risk-grid">
+      <div class="risk-card">
+        <h3>Network Calls <span class="badge badge-pass">Controlled</span></h3>
+        <p>Only calls configured LLM APIs (Anthropic, Ollama). No unexpected outbound connections.</p>
+      </div>
+      <div class="risk-card">
+        <h3>Telemetry <span class="badge badge-pass">None</span></h3>
+        <p>Zero analytics, tracking, or phone-home capabilities detected.</p>
+      </div>
+      <div class="risk-card">
+        <h3>Data Exfiltration <span class="badge badge-pass">None</span></h3>
+        <p>All data transmission is to user-configured LLM endpoints only.</p>
+      </div>
+      <div class="risk-card">
+        <h3>Unsafe Code <span class="badge badge-pass">None</span></h3>
+        <p>Pure safe Rust - no unsafe blocks, functions, or impl detected.</p>
+      </div>
+      <div class="risk-card">
+        <h3>Hardcoded Secrets <span class="badge badge-pass">None</span></h3>
+        <p>API keys loaded from env vars, protected with SecretString type.</p>
+      </div>
+      <div class="risk-card">
+        <h3>Process Execution <span class="badge badge-warn">Review</span></h3>
+        <p>Extensive subprocess spawning for backends and git/gh CLI. Inputs appear validated.</p>
+      </div>
+      <div class="risk-card">
+        <h3>File System Writes <span class="badge badge-warn">Review</span></h3>
+        <p>Writes cache, config, specs, and can apply code edits. All within expected directories.</p>
+      </div>
+      <div class="risk-card">
+        <h3>Clipboard/Keyring <span class="badge badge-pass">None</span></h3>
+        <p>No clipboard access, keyring access, or credential store operations.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Detailed Reports</h2>
+    <div class="nav-grid">
+      <a class="nav-card" href="security.html">
+        <h3>Security & Privacy Audit</h3>
+        <p>Detailed findings for each security check with file paths and evidence.</p>
+      </a>
+      <a class="nav-card" href="architecture.html">
+        <h3>Architecture & Data Flow</h3>
+        <p>Module structure, data flow diagrams, storage locations, and process spawning.</p>
+      </a>
+      <a class="nav-card" href="dependencies.html">
+        <h3>Dependency Analysis</h3>
+        <p>Risk classification for all 17 direct and 312 transitive dependencies.</p>
+      </a>
+      <a class="nav-card" href="risks.html">
+        <h3>Risks & Known Issues</h3>
+        <p>Classified risks, harm assessment, and recommendations.</p>
+      </a>
+      <a class="nav-card" href="github-activity.html">
+        <h3>GitHub Activity</h3>
+        <p>Issues, pull requests, contributors, and project health.</p>
+      </a>
+    </div>
+  </div>
+
+  <footer>
+    Analysis performed on 2026-03-29 | Commit f8852fc | lokomotiv v20260208.0.2
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitHub Activity - Lokomotiv</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg-secondary: #161b22; --bg-tertiary: #21262d; --border: #30363d;
+    --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #d29922; --red: #f85149; --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; margin-bottom: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; }
+  nav.top-nav { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  nav.top-nav a { color: var(--accent); text-decoration: none; padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+  nav.top-nav a:hover { background: var(--bg-secondary); }
+  nav.top-nav a.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .section { margin-bottom: 2.5rem; }
+  .info-banner { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 2rem; text-align: center; }
+  .info-banner h3 { font-size: 1.2rem; margin-bottom: 0.5rem; color: var(--text-muted); }
+  .info-banner p { color: var(--text-muted); font-size: 0.9rem; }
+  .stats-row { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .stat-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; flex: 1; min-width: 150px; text-align: center; }
+  .stat-label { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; }
+  .stat-value { font-size: 1.5rem; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.85rem; }
+  th { text-align: left; padding: 0.6rem 0.8rem; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-muted); font-weight: 600; }
+  td { padding: 0.6rem 0.8rem; border: 1px solid var(--border); }
+  tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+  .badge { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 12px; text-transform: uppercase; }
+  .badge-merged { background: rgba(188,140,255,0.2); color: var(--purple); }
+  .badge-open { background: rgba(63,185,80,0.2); color: var(--green); }
+  .badge-closed { background: rgba(248,81,73,0.2); color: var(--red); }
+  code { background: var(--bg-tertiary); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--accent); }
+  .health-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-top: 1rem; }
+  footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="top-nav">
+    <a href="index.html">Overview</a>
+    <a href="security.html">Security</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="dependencies.html">Dependencies</a>
+    <a href="risks.html">Risks</a>
+    <a href="github-activity.html" class="active">GitHub</a>
+  </nav>
+
+  <h1>GitHub Activity</h1>
+  <p class="subtitle">Repository activity analysis for maxkulish/lok</p>
+
+  <div class="section">
+    <div class="info-banner">
+      <h3>Issues Disabled</h3>
+      <p>This repository has GitHub Issues disabled. Bug reports and feature requests are not tracked via GitHub Issues.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Recent Commits</h2>
+    <table>
+      <tr><th>Hash</th><th>Message</th><th>Type</th></tr>
+      <tr><td><code>f8852fc</code></td><td>Merge branch 'release/v20260208.0.2'</td><td><span class="badge badge-merged">Release</span></td></tr>
+      <tr><td><code>e7de374</code></td><td>chore: bump version to 20260208.0.2</td><td><span class="badge badge-merged">Chore</span></td></tr>
+      <tr><td><code>5581726</code></td><td>Merge pull request #190 - feature/fix-retries</td><td><span class="badge badge-merged">Feature</span></td></tr>
+      <tr><td><code>cf5a3c2</code></td><td>fix: Address review feedback for fix_retries</td><td><span class="badge badge-merged">Fix</span></td></tr>
+      <tr><td><code>10af48b</code></td><td>Merge pull request #191 - feature/debate-output</td><td><span class="badge badge-merged">Feature</span></td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Pull Requests</h2>
+    <p style="color: var(--text-muted); margin-bottom: 1rem;">No open pull requests found via GitHub API. Recent merged PRs visible in git history:</p>
+    <table>
+      <tr><th>#</th><th>Title</th><th>Status</th><th>Type</th></tr>
+      <tr><td>191</td><td>feature/debate-output</td><td><span class="badge badge-merged">Merged</span></td><td>Feature</td></tr>
+      <tr><td>190</td><td>feature/fix-retries</td><td><span class="badge badge-merged">Merged</span></td><td>Bug Fix</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Project Health Assessment</h2>
+    <div class="health-card">
+      <table>
+        <tr><th>Signal</th><th>Status</th><th>Notes</th></tr>
+        <tr><td>Commit Conventions</td><td style="color: var(--green);">Good</td><td>Uses conventional commits (feat:, fix:, chore:)</td></tr>
+        <tr><td>Release Process</td><td style="color: var(--green);">Good</td><td>Uses release branches with version bumps</td></tr>
+        <tr><td>PR Workflow</td><td style="color: var(--green);">Active</td><td>Recent PRs merged (#190, #191)</td></tr>
+        <tr><td>Issue Tracking</td><td style="color: var(--orange);">Disabled</td><td>GitHub Issues are disabled on this repository</td></tr>
+        <tr><td>License</td><td style="color: var(--green);">MIT</td><td>Permissive open-source license</td></tr>
+        <tr><td>Version Scheme</td><td style="color: var(--green);">CalVer</td><td>Calendar versioning: YYYYMMDD.minor.patch</td></tr>
+        <tr><td>Security Reports</td><td style="color: var(--text-muted);">N/A</td><td>No public security advisories found</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Key Observations</h2>
+    <ul style="list-style: none; padding: 0;">
+      <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);">Active development with recent feature additions (debate output, retry fixes)</li>
+      <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);">Structured release process with dedicated release branches</li>
+      <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);">Code review via pull requests with feedback cycles (cf5a3c2 addresses review feedback)</li>
+      <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);">Single primary author/maintainer based on commit history</li>
+      <li style="padding: 0.5rem 0;">Calendar-based versioning suggests production-oriented release cadence</li>
+    </ul>
+  </div>
+
+  <footer>
+    Analysis performed on 2026-03-29 | Commit f8852fc | lokomotiv v20260208.0.2
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture - Lokomotiv</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg-secondary: #161b22; --bg-tertiary: #21262d; --border: #30363d;
+    --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #d29922; --red: #f85149; --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; margin-bottom: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h3 { font-size: 1.1rem; margin-bottom: 0.5rem; color: var(--text); }
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; }
+  nav.top-nav { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  nav.top-nav a { color: var(--accent); text-decoration: none; padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+  nav.top-nav a:hover { background: var(--bg-secondary); }
+  nav.top-nav a.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .section { margin-bottom: 2.5rem; }
+  pre { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; overflow-x: auto; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.5; color: var(--green); }
+  .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1rem; }
+  .module-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; }
+  .module-card h3 { color: var(--accent); font-size: 0.95rem; margin-bottom: 0.3rem; }
+  .module-card .lines { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.5rem; }
+  .module-card p { color: var(--text-muted); font-size: 0.85rem; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.85rem; }
+  th { text-align: left; padding: 0.6rem 0.8rem; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-muted); font-weight: 600; }
+  td { padding: 0.6rem 0.8rem; border: 1px solid var(--border); }
+  tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+  code { background: var(--bg-tertiary); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--accent); }
+  .not-list { list-style: none; padding: 0; }
+  .not-list li { padding: 0.5rem 0; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 0.5rem; }
+  .not-list li::before { content: "X"; color: var(--red); font-weight: 700; }
+  .not-list li span { color: var(--text-muted); font-size: 0.85rem; }
+  footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="top-nav">
+    <a href="index.html">Overview</a>
+    <a href="security.html">Security</a>
+    <a href="architecture.html" class="active">Architecture</a>
+    <a href="dependencies.html">Dependencies</a>
+    <a href="risks.html">Risks</a>
+    <a href="github-activity.html">GitHub</a>
+  </nav>
+
+  <h1>Architecture & Data Flow</h1>
+  <p class="subtitle">Module structure, data flow, and storage for lokomotiv v20260208.0.2</p>
+
+  <div class="section">
+    <h2>Data Flow</h2>
+    <pre>
+  User CLI Input (e.g., "lok ask 'find bugs in this code'")
+       |
+       v
+  [main.rs] Parse CLI args (clap derive)
+       |
+       v
+  [config.rs] Load lok.toml
+       |  1. Explicit --config path
+       |  2. ./lok.toml (project)
+       |  3. ~/.config/lok/lok.toml (user)
+       |  4. Built-in defaults
+       v
+  [backend/mod.rs] Initialize enabled backends
+       |
+       +--- Check availability (which, env vars, network)
+       |
+       v
+  Route by command type:
+       |
+       +---> ask/hunt/audit/fix/ci
+       |      |
+       |      +---> [cache.rs] Check cache (SHA256 of prompt+backends+cwd)
+       |      |       |
+       |      |       +--- HIT: Return cached results
+       |      |       +--- MISS: Continue to query
+       |      |
+       |      +---> [tasks/mod.rs] Inject context (N+1, security patterns)
+       |      |
+       |      +---> [backend/mod.rs] run_query()
+       |      |       |
+       |      |       +--- Parallel: tokio::join_all(backends)
+       |      |       +--- Sequential: iterate one by one
+       |      |       |
+       |      |       +--- Each backend:
+       |      |       |     Codex  --> subprocess: codex exec --json
+       |      |       |     Gemini --> subprocess: npx @google/gemini-cli
+       |      |       |     Claude --> reqwest POST api.anthropic.com
+       |      |       |              or subprocess: claude -p
+       |      |       |     Ollama --> reqwest POST localhost:11434
+       |      |       |     Bedrock -> AWS SDK InvokeModel
+       |      |       |
+       |      |       +--- Collect QueryResult { backend, output, success, elapsed_ms }
+       |      |
+       |      +---> [cache.rs] Store results (TTL: 24h default)
+       |      |
+       |      +---> [output.rs] Format and display
+       |
+       +---> conduct
+       |      +---> [conductor.rs] Multi-round Claude orchestration
+       |             Tool-use loop: Claude picks backends, refines results
+       |
+       +---> debate
+       |      +---> [debate.rs] Multi-backend debate with synthesis
+       |             Rounds: initial -> rebuttals -> consensus
+       |
+       +---> spawn
+       |      +---> [spawn.rs] Break into parallel agent subtasks
+       |             Parse AGENT: format, execute in parallel, synthesize
+       |
+       +---> workflow
+       |      +---> [workflow.rs] TOML pipeline engine
+       |             Dependency resolution -> parallel execution -> interpolation
+       |             Supports: loops, conditions, edits, verification
+       |
+       +---> implement
+              +---> [tasks/implement.rs] ARF spec execution
+                     Step-by-step with checkpoints and rollback
+    </pre>
+  </div>
+
+  <div class="section">
+    <h2>Module Structure</h2>
+    <div class="module-grid">
+      <div class="module-card">
+        <h3>src/main.rs</h3>
+        <div class="lines">2,030 lines</div>
+        <p>CLI entry point. Defines all commands via clap derive. Routes to appropriate handlers. Contains PR review, diff analysis, doctor check, and init logic.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/workflow.rs</h3>
+        <div class="lines">3,988 lines</div>
+        <p>Workflow execution engine. TOML-based pipelines with dependency resolution, parallel execution, interpolation ({{ steps.X.output }}), conditions, loops, edit application, and verification.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/backend/mod.rs</h3>
+        <div class="lines">300 lines</div>
+        <p>Backend trait definition and factory. Parallel/sequential query runner with per-backend timeouts and progress tracking.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/backend/claude.rs</h3>
+        <div class="lines">215 lines</div>
+        <p>Dual-mode Claude backend: API mode (reqwest to Anthropic) or CLI mode (claude subprocess). SecretString for API key protection.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/backend/codex.rs</h3>
+        <div class="lines">89 lines</div>
+        <p>Codex CLI wrapper. Spawns codex exec in read-only mode, parses JSON event stream for agent messages.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/backend/gemini.rs</h3>
+        <div class="lines">83 lines</div>
+        <p>Gemini CLI wrapper via npx. Configurable output line skipping. 600s default timeout for agentic tasks.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/backend/ollama.rs</h3>
+        <div class="lines">111 lines</div>
+        <p>Ollama HTTP client. REST API to local server. Default model: llama3.2. Configurable base URL.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/backend/bedrock.rs</h3>
+        <div class="lines">159 lines</div>
+        <p>AWS Bedrock integration (optional feature). Uses AWS SDK with standard credential chain.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/config.rs</h3>
+        <div class="lines">464 lines</div>
+        <p>TOML configuration parsing. Default backend configs, task definitions, and config file discovery (project -> user -> defaults).</p>
+      </div>
+      <div class="module-card">
+        <h3>src/cache.rs</h3>
+        <div class="lines">403 lines</div>
+        <p>Query result caching. SHA256 key generation, TTL-based expiration, graceful degradation on errors.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/conductor.rs</h3>
+        <div class="lines">317 lines</div>
+        <p>Multi-round Claude API orchestration. Tool-use protocol for delegating to backends. Configurable max rounds and tokens.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/context.rs</h3>
+        <div class="lines">421 lines</div>
+        <p>Codebase context detection. Identifies languages, frameworks, infrastructure, CI/CD via file scanning.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/delegation.rs</h3>
+        <div class="lines">355 lines</div>
+        <p>Task classification and backend recommendation. Maps task types to backend strengths for optimal routing.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/debate.rs</h3>
+        <div class="lines">313 lines</div>
+        <p>Multi-backend debate engine. Backends respond, critique each other's answers, then synthesize consensus.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/spawn.rs</h3>
+        <div class="lines">378 lines</div>
+        <p>Parallel agent spawning. Breaks tasks into subtasks via Claude, executes in parallel, synthesizes results.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/git_agent.rs</h3>
+        <div class="lines">513 lines</div>
+        <p>Git checkpoint and event tracking. Stores agent events on orphan branch. Supports rollback on failure.</p>
+      </div>
+      <div class="module-card">
+        <h3>src/tasks/ (7 files)</h3>
+        <div class="lines">~2,100 lines total</div>
+        <p>Task implementations: hunt (bug detection), implement (ARF specs), spec (spec generation), fix (issue fixing), ci (CI analysis), context (codebase scanning), audit (security).</p>
+      </div>
+      <div class="module-card">
+        <h3>src/consensus.rs</h3>
+        <div class="lines">305 lines</div>
+        <p>Consensus algorithms and voting for multi-backend agreement. Used by debate and team modes.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Data Storage</h2>
+    <table>
+      <tr><th>Location</th><th>Format</th><th>Purpose</th><th>Lifecycle</th></tr>
+      <tr><td><code>~/.cache/lok/</code></td><td>JSON</td><td>Query result caching</td><td>TTL-based (default 24h)</td></tr>
+      <tr><td><code>~/.config/lok/lok.toml</code></td><td>TOML</td><td>User-level configuration</td><td>Persistent</td></tr>
+      <tr><td><code>./lok.toml</code></td><td>TOML</td><td>Project-level configuration</td><td>Persistent</td></tr>
+      <tr><td><code>.lok/workflows/</code></td><td>TOML</td><td>Project workflow definitions</td><td>Persistent</td></tr>
+      <tr><td><code>~/.config/lok/workflows/</code></td><td>TOML</td><td>User workflow definitions</td><td>Persistent</td></tr>
+      <tr><td><code>.arf/specs/</code></td><td>Markdown</td><td>ARF specification files</td><td>Persistent</td></tr>
+      <tr><td><code>.agent/</code></td><td>Git (orphan branch)</td><td>Agent checkpoints/events</td><td>Persistent</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Spawned Processes</h2>
+    <table>
+      <tr><th>Process</th><th>Command Pattern</th><th>Purpose</th></tr>
+      <tr><td>Codex</td><td><code>codex exec --json -s read-only -- &lt;prompt&gt;</code></td><td>LLM backend (code analysis)</td></tr>
+      <tr><td>Gemini</td><td><code>sh -c "echo '' | npx @google/gemini-cli &lt;prompt&gt;"</code></td><td>LLM backend (deep analysis)</td></tr>
+      <tr><td>Claude CLI</td><td><code>claude -p &lt;prompt&gt;</code></td><td>LLM backend (CLI mode)</td></tr>
+      <tr><td>Git</td><td><code>git diff/log/commit/worktree/...</code></td><td>Version control operations</td></tr>
+      <tr><td>GitHub CLI</td><td><code>gh issue/pr/api ...</code></td><td>GitHub integration</td></tr>
+      <tr><td>GitLab CLI</td><td><code>glab issue/mr ...</code></td><td>GitLab integration</td></tr>
+      <tr><td>Shell</td><td><code>sh -c &lt;workflow command&gt;</code></td><td>Workflow shell steps</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>What It Does NOT Do</h2>
+    <ul class="not-list">
+      <li>No GUI or web server - CLI only, no HTTP listener<span></span></li>
+      <li>No autonomous decisions - runs queries, returns results<span></span></li>
+      <li>No file watching or auto-rerun<span></span></li>
+      <li>No secrets vault or encrypted storage<span></span></li>
+      <li>No database - all state is file-based<span></span></li>
+      <li>No real-time streaming output during execution<span></span></li>
+      <li>No auto-install of backend CLIs<span></span></li>
+      <li>No model training or fine-tuning<span></span></li>
+      <li>No API usage/cost tracking<span></span></li>
+      <li>No multi-turn conversation history between invocations<span></span></li>
+    </ul>
+  </div>
+
+  <footer>
+    Analysis performed on 2026-03-29 | Commit f8852fc | lokomotiv v20260208.0.2
+  </footer>
+</div>
+</body>
+</html>

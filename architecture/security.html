@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security Audit - Lokomotiv</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg-secondary: #161b22; --bg-tertiary: #21262d; --border: #30363d;
+    --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #d29922; --red: #f85149; --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; margin-bottom: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; }
+  nav.top-nav { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  nav.top-nav a { color: var(--accent); text-decoration: none; padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+  nav.top-nav a:hover { background: var(--bg-secondary); }
+  nav.top-nav a.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .check-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .check-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .check-header h3 { font-size: 1.1rem; }
+  .badge { font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 12px; text-transform: uppercase; }
+  .badge-pass { background: rgba(63,185,80,0.2); color: var(--green); }
+  .badge-warn { background: rgba(210,153,34,0.2); color: var(--orange); }
+  .badge-fail { background: rgba(248,81,73,0.2); color: var(--red); }
+  .check-body { color: var(--text-muted); font-size: 0.9rem; }
+  .evidence-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+  .evidence-table th { text-align: left; padding: 0.6rem 0.8rem; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-muted); font-weight: 600; }
+  .evidence-table td { padding: 0.6rem 0.8rem; border: 1px solid var(--border); }
+  .evidence-table tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+  code { background: var(--bg-tertiary); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--accent); }
+  .section { margin-bottom: 2.5rem; }
+  footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="top-nav">
+    <a href="index.html">Overview</a>
+    <a href="security.html" class="active">Security</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="dependencies.html">Dependencies</a>
+    <a href="risks.html">Risks</a>
+    <a href="github-activity.html">GitHub</a>
+  </nav>
+
+  <h1>Security & Privacy Audit</h1>
+  <p class="subtitle">Detailed findings for lokomotiv v20260208.0.2</p>
+
+  <div class="section">
+    <h2>1. Network Connectivity</h2>
+    <div class="check-card">
+      <div class="check-header">
+        <h3>HTTP Client Usage</h3>
+        <span class="badge badge-warn">Review</span>
+      </div>
+      <div class="check-body">
+        <p>The project uses <code>reqwest</code> for HTTP calls. All calls go to configured LLM API endpoints - no unexpected destinations.</p>
+        <table class="evidence-table">
+          <tr><th>File</th><th>Line</th><th>Destination</th><th>Purpose</th></tr>
+          <tr><td>src/conductor.rs</td><td>233</td><td>api.anthropic.com/v1/messages</td><td>Claude API orchestration</td></tr>
+          <tr><td>src/spawn.rs</td><td>110</td><td>api.anthropic.com/v1/messages</td><td>Agent planning requests</td></tr>
+          <tr><td>src/backend/claude.rs</td><td>115</td><td>api.anthropic.com/v1/messages</td><td>Claude backend queries</td></tr>
+          <tr><td>src/backend/ollama.rs</td><td>77</td><td>localhost:11434/api/chat</td><td>Local Ollama queries</td></tr>
+          <tr><td>src/backend/bedrock.rs</td><td>110</td><td>AWS Bedrock (SDK)</td><td>AWS LLM queries (optional)</td></tr>
+        </table>
+        <p style="margin-top: 1rem;">All other URLs in source are documentation strings, error messages, or test fixtures.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>2. Telemetry & Analytics</h2>
+    <div class="check-card">
+      <div class="check-header">
+        <h3>Telemetry Detection</h3>
+        <span class="badge badge-pass">None Found</span>
+      </div>
+      <div class="check-body">
+        <p>Searched for: <code>telemetry</code>, <code>analytics</code>, <code>tracking</code>, <code>beacon</code>, <code>phone_home</code>, <code>sentry</code>, <code>datadog</code>, <code>mixpanel</code>, <code>amplitude</code>, <code>segment</code>, <code>posthog</code>, <code>opentelemetry</code>, <code>newrelic</code></p>
+        <p style="margin-top: 0.5rem;"><strong>Zero matches.</strong> The application does not collect or transmit any telemetry data.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>3. Data Exfiltration</h2>
+    <div class="check-card">
+      <div class="check-header">
+        <h3>Data Transmission</h3>
+        <span class="badge badge-pass">Safe</span>
+      </div>
+      <div class="check-body">
+        <p>All <code>send()</code> and <code>post()</code> calls are to the configured LLM API endpoints. No evidence of data being sent to unexpected third-party services, webhooks, or external collectors.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>4. Environment Variables</h2>
+    <div class="check-card">
+      <div class="check-header">
+        <h3>Environment Access</h3>
+        <span class="badge badge-pass">Safe</span>
+      </div>
+      <div class="check-body">
+        <p>Environment variables are accessed for legitimate purposes with proper error handling.</p>
+        <table class="evidence-table">
+          <tr><th>File</th><th>Line</th><th>Variable</th><th>Purpose</th></tr>
+          <tr><td>src/backend/claude.rs</td><td>59</td><td>ANTHROPIC_API_KEY (configurable)</td><td>Claude API authentication</td></tr>
+          <tr><td>src/backend/bedrock.rs</td><td>151-152</td><td>AWS_ACCESS_KEY_ID, AWS_PROFILE</td><td>AWS credential checks</td></tr>
+          <tr><td>src/backend/bedrock.rs</td><td>155</td><td>HOME</td><td>Home directory path</td></tr>
+          <tr><td>src/backend/ollama.rs</td><td>41</td><td>OLLAMA_HOST (via config)</td><td>Ollama server URL</td></tr>
+          <tr><td>src/main.rs</td><td>635</td><td>Configurable per-backend</td><td>Backend availability check</td></tr>
+          <tr><td>src/workflow.rs</td><td>1808</td><td>User-specified via {{ env.VAR }}</td><td>Workflow interpolation</td></tr>
+        </table>
+        <p style="margin-top: 0.5rem;">API keys use the <code>SecretString</code> type from the <code>secrecy</code> crate, preventing accidental logging or display.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>5. File System Operations</h2>
+    <div class="check-card">
+      <div class="check-header">
+        <h3>File Writes</h3>
+        <span class="badge badge-warn">Review</span>
+      </div>
+      <div class="check-body">
+        <p>The application writes files in several expected locations:</p>
+        <table class="evidence-table">
+          <tr><th>Location</th><th>Purpose</th><th>Files</th></tr>
+          <tr><td>~/.cache/lok/</td><td>Query result caching</td><td>src/cache.rs:300</td></tr>
+          <tr><td>./lok.toml</td><td>Config initialization</td><td>src/config.rs:260</td></tr>
+          <tr><td>./.arf/specs/</td><td>Generated spec files</td><td>src/tasks/spec.rs:257+</td></tr>
+          <tr><td>./.agent/</td><td>Git agent events</td><td>src/git_agent.rs:287</td></tr>
+          <tr><td>User-specified path</td><td>Output file (-o flag)</td><td>src/main.rs:511,998</td></tr>
+          <tr><td>Source files (edits)</td><td>Apply fixes/implementations</td><td>src/tasks/implement.rs:454</td></tr>
+          <tr><td>Workflow step files</td><td>Workflow edit application</td><td>src/workflow.rs:2260</td></tr>
+        </table>
+        <p style="margin-top: 0.5rem;">All file writes are within expected project directories or user cache. No writes to system directories.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>6. Process Execution</h2>
+    <div class="check-card">
+      <div class="check-header">
+        <h3>Subprocess Spawning</h3>
+        <span class="badge badge-warn">Review</span>
+      </div>
+      <div class="check-body">
+        <p>Extensive use of <code>tokio::process::Command</code> for backend execution and git operations. All spawned processes are expected for an LLM orchestration tool.</p>
+        <table class="evidence-table">
+          <tr><th>Process</th><th>Context</th><th>Files</th></tr>
+          <tr><td><code>codex exec</code></td><td>Codex LLM backend</td><td>src/backend/codex.rs:63</td></tr>
+          <tr><td><code>npx @google/gemini-cli</code></td><td>Gemini LLM backend</td><td>src/backend/gemini.rs:57</td></tr>
+          <tr><td><code>claude -p</code></td><td>Claude CLI backend</td><td>src/backend/claude.rs:151</td></tr>
+          <tr><td><code>git</code></td><td>Version control operations</td><td>src/git_agent.rs, src/main.rs</td></tr>
+          <tr><td><code>gh</code> / <code>glab</code></td><td>GitHub/GitLab CLI</td><td>src/main.rs, src/tasks/</td></tr>
+          <tr><td><code>sh -c</code></td><td>Workflow shell steps</td><td>src/workflow.rs:2041</td></tr>
+        </table>
+        <p style="margin-top: 0.5rem;">Processes use <code>kill_on_drop(true)</code> for cleanup. Workflow shell steps execute arbitrary commands by design (user-authored TOML).</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>7. Unsafe Code</h2>
+    <div class="check-card">
+      <div class="check-header">
+        <h3>Unsafe Rust Blocks</h3>
+        <span class="badge badge-pass">None Found</span>
+      </div>
+      <div class="check-body">
+        <p>Zero occurrences of <code>unsafe {</code>, <code>unsafe fn</code>, or <code>unsafe impl</code>. The codebase is 100% safe Rust.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>8. Hardcoded Secrets</h2>
+    <div class="check-card">
+      <div class="check-header">
+        <h3>Secret Detection</h3>
+        <span class="badge badge-pass">None Found</span>
+      </div>
+      <div class="check-body">
+        <p>No hardcoded API keys, passwords, or private keys. All sensitive values are:</p>
+        <ul style="margin: 0.5rem 0 0 1.5rem;">
+          <li>Loaded from environment variables at runtime</li>
+          <li>Protected using the <code>secrecy::SecretString</code> type</li>
+          <li>Only exposed via <code>.expose_secret()</code> when needed for API headers</li>
+        </ul>
+        <table class="evidence-table" style="margin-top: 1rem;">
+          <tr><th>File</th><th>Line</th><th>Pattern</th></tr>
+          <tr><td>src/backend/claude.rs</td><td>59</td><td><code>env::var(&api_key_env)</code> into SecretString</td></tr>
+          <tr><td>src/conductor.rs</td><td>234</td><td><code>.header("x-api-key", self.api_key.expose_secret())</code></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>9. Clipboard & Keyring</h2>
+    <div class="check-card">
+      <div class="check-header">
+        <h3>Credential Store Access</h3>
+        <span class="badge badge-pass">None Found</span>
+      </div>
+      <div class="check-body">
+        <p>No clipboard, keyring, keychain, or credential store access detected.</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Analysis performed on 2026-03-29 | Commit f8852fc | lokomotiv v20260208.0.2
+  </footer>
+</div>
+</body>
+</html>

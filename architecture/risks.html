@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Risks - Lokomotiv</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg-secondary: #161b22; --bg-tertiary: #21262d; --border: #30363d;
+    --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #d29922; --red: #f85149; --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; margin-bottom: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; }
+  nav.top-nav { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  nav.top-nav a { color: var(--accent); text-decoration: none; padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+  nav.top-nav a:hover { background: var(--bg-secondary); }
+  nav.top-nav a.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .section { margin-bottom: 2.5rem; }
+  .risk-card { background: var(--bg-secondary); border-left: 4px solid; border-radius: 0 8px 8px 0; padding: 1.5rem; margin-bottom: 1rem; }
+  .risk-high { border-left-color: var(--red); }
+  .risk-medium { border-left-color: var(--orange); }
+  .risk-low { border-left-color: var(--green); }
+  .risk-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; }
+  .risk-header h3 { font-size: 1rem; }
+  .badge { font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 12px; text-transform: uppercase; }
+  .badge-high { background: rgba(248,81,73,0.2); color: var(--red); }
+  .badge-medium { background: rgba(210,153,34,0.2); color: var(--orange); }
+  .badge-low { background: rgba(63,185,80,0.2); color: var(--green); }
+  .risk-body { color: var(--text-muted); font-size: 0.9rem; }
+  .risk-body p { margin-bottom: 0.5rem; }
+  .risk-evidence { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem; }
+  .risk-evidence code { background: var(--bg-tertiary); padding: 0.15rem 0.4rem; border-radius: 4px; color: var(--accent); }
+  .risk-mitigation { background: var(--bg-tertiary); padding: 0.8rem 1rem; border-radius: 6px; margin-top: 0.8rem; font-size: 0.85rem; }
+  .risk-mitigation strong { color: var(--green); }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.85rem; }
+  th { text-align: left; padding: 0.6rem 0.8rem; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-muted); font-weight: 600; }
+  td { padding: 0.6rem 0.8rem; border: 1px solid var(--border); }
+  tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+  .rec-list { list-style: none; padding: 0; }
+  .rec-list li { padding: 0.8rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 0.5rem; display: flex; gap: 0.8rem; align-items: baseline; }
+  .rec-num { color: var(--accent); font-weight: 700; min-width: 1.5rem; }
+  footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="top-nav">
+    <a href="index.html">Overview</a>
+    <a href="security.html">Security</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="dependencies.html">Dependencies</a>
+    <a href="risks.html" class="active">Risks</a>
+    <a href="github-activity.html">GitHub</a>
+  </nav>
+
+  <h1>Risks & Known Issues</h1>
+  <p class="subtitle">Risk assessment and recommendations for lokomotiv v20260208.0.2</p>
+
+  <div class="section">
+    <h2>Identified Risks</h2>
+
+    <div class="risk-card risk-medium">
+      <div class="risk-header">
+        <h3>Workflow Shell Execution</h3>
+        <span class="badge badge-medium">Medium</span>
+      </div>
+      <div class="risk-body">
+        <p>Workflow TOML files can define arbitrary shell commands via the <code>shell</code> field. While this is by design (user-authored pipelines), it means any TOML workflow file should be treated as executable code.</p>
+        <div class="risk-evidence">
+          <strong>Evidence:</strong> <code>src/workflow.rs:2041-2048</code> - Executes <code>sh -c &lt;command&gt;</code> for shell steps.
+        </div>
+        <div class="risk-mitigation">
+          <strong>Mitigation:</strong> Only run workflows from trusted sources. Review .lok/workflows/ content before execution. The application does not download workflows from the internet.
+        </div>
+      </div>
+    </div>
+
+    <div class="risk-card risk-medium">
+      <div class="risk-header">
+        <h3>Code Edit Application</h3>
+        <span class="badge badge-medium">Medium</span>
+      </div>
+      <div class="risk-body">
+        <p>The <code>implement</code> command and workflows with <code>apply_edits = true</code> can modify source files based on LLM output. While checkpoints provide rollback, malformed edits could corrupt files.</p>
+        <div class="risk-evidence">
+          <strong>Evidence:</strong> <code>src/tasks/implement.rs:454</code>, <code>src/workflow.rs:2260</code> - Write files from LLM-generated content.
+        </div>
+        <div class="risk-mitigation">
+          <strong>Mitigation:</strong> Git checkpoints created before edits. Use <code>--dry-run</code> where available. Review changes before committing. The <code>verify</code> step can validate edits.
+        </div>
+      </div>
+    </div>
+
+    <div class="risk-card risk-low">
+      <div class="risk-header">
+        <h3>LLM Prompt Injection via Source Code</h3>
+        <span class="badge badge-low">Low</span>
+      </div>
+      <div class="risk-body">
+        <p>When analyzing codebases, source file contents are included in prompts. Maliciously crafted source files could attempt prompt injection on the LLM backends.</p>
+        <div class="risk-evidence">
+          <strong>Evidence:</strong> Codebase context is prepended to prompts in <code>src/tasks/mod.rs</code> and <code>src/context.rs</code>.
+        </div>
+        <div class="risk-mitigation">
+          <strong>Mitigation:</strong> This is inherent to any LLM-based code analysis tool. The risk is limited because lok itself does not auto-execute LLM responses (except when explicitly told to via implement/workflow). Use read-only mode (codex backend) for untrusted code.
+        </div>
+      </div>
+    </div>
+
+    <div class="risk-card risk-low">
+      <div class="risk-header">
+        <h3>API Key Exposure in Logs</h3>
+        <span class="badge badge-low">Low</span>
+      </div>
+      <div class="risk-body">
+        <p>While API keys use <code>SecretString</code>, the <code>--verbose</code> flag shows additional debug output. Care must be taken that verbose logging does not inadvertently expose secrets.</p>
+        <div class="risk-evidence">
+          <strong>Evidence:</strong> <code>src/backend/claude.rs:59</code> - API key loaded as SecretString, only exposed via <code>.expose_secret()</code> for HTTP headers.
+        </div>
+        <div class="risk-mitigation">
+          <strong>Mitigation:</strong> SecretString prevents accidental Display/Debug printing. The <code>.expose_secret()</code> call is only used in the HTTP header construction, not in logging paths.
+        </div>
+      </div>
+    </div>
+
+    <div class="risk-card risk-low">
+      <div class="risk-header">
+        <h3>Cache Poisoning</h3>
+        <span class="badge badge-low">Low</span>
+      </div>
+      <div class="risk-body">
+        <p>Cache files at <code>~/.cache/lok/</code> contain LLM responses in JSON. If an attacker gains write access to this directory, they could inject malicious cached responses.</p>
+        <div class="risk-evidence">
+          <strong>Evidence:</strong> <code>src/cache.rs:300</code> - Cache stored as JSON files keyed by SHA256 hash.
+        </div>
+        <div class="risk-mitigation">
+          <strong>Mitigation:</strong> Cache directory permissions follow user defaults. Disable cache with <code>--no-cache</code> flag or <code>cache.enabled = false</code> in config if concerned.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Harm Assessment</h2>
+    <p style="color: var(--text-muted); margin-bottom: 1rem;">What this project cannot do, based on its code and dependencies.</p>
+    <table>
+      <tr><th>Potential Harm</th><th>Possible?</th><th>Explanation</th></tr>
+      <tr><td>Steal credentials from keychain</td><td style="color: var(--green);">No</td><td>No keychain/keyring access. No clipboard access.</td></tr>
+      <tr><td>Exfiltrate data to third parties</td><td style="color: var(--green);">No</td><td>Only sends data to user-configured LLM endpoints.</td></tr>
+      <tr><td>Install malware</td><td style="color: var(--green);">No</td><td>Does not download or install executables.</td></tr>
+      <tr><td>Run as background service</td><td style="color: var(--green);">No</td><td>CLI tool - runs and exits. No daemon mode.</td></tr>
+      <tr><td>Collect usage telemetry</td><td style="color: var(--green);">No</td><td>Zero telemetry/analytics code or dependencies.</td></tr>
+      <tr><td>Modify system files</td><td style="color: var(--green);">No</td><td>Only writes to project directory and user cache/config.</td></tr>
+      <tr><td>Execute arbitrary code</td><td style="color: var(--orange);">Partial</td><td>Workflows can run shell commands by design. Backends spawn subprocesses.</td></tr>
+      <tr><td>Modify source files</td><td style="color: var(--orange);">Partial</td><td>Only via explicit implement/fix commands. Git checkpoints for rollback.</td></tr>
+      <tr><td>Send prompts to LLM APIs</td><td style="color: var(--orange);">Yes</td><td>Core functionality. Prompts may include codebase context.</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Recommendations</h2>
+    <ul class="rec-list">
+      <li>
+        <span class="rec-num">1</span>
+        <div><strong>Review workflow files before execution.</strong> Treat <code>.lok/workflows/*.toml</code> as executable code. Never run workflows from untrusted sources without review.</div>
+      </li>
+      <li>
+        <span class="rec-num">2</span>
+        <div><strong>Use <code>--dry-run</code> for fix/implement commands</strong> on unfamiliar codebases to preview changes before application.</div>
+      </li>
+      <li>
+        <span class="rec-num">3</span>
+        <div><strong>Set API keys via environment variables</strong> rather than config files. The codebase already supports this pattern.</div>
+      </li>
+      <li>
+        <span class="rec-num">4</span>
+        <div><strong>Use the Codex backend in read-only mode</strong> (<code>-s read-only</code>, already the default) when analyzing untrusted repositories.</div>
+      </li>
+      <li>
+        <span class="rec-num">5</span>
+        <div><strong>Review git checkpoints</strong> after implement/fix operations. The git-agent creates rollback points but they require manual verification.</div>
+      </li>
+      <li>
+        <span class="rec-num">6</span>
+        <div><strong>Be aware of prompt content.</strong> When querying LLMs about a codebase, relevant source code is included in prompts. Ensure this is acceptable for your API provider's data policies.</div>
+      </li>
+    </ul>
+  </div>
+
+  <footer>
+    Analysis performed on 2026-03-29 | Commit f8852fc | lokomotiv v20260208.0.2
+  </footer>
+</div>
+</body>
+</html>

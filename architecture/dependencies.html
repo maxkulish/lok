@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dependencies - Lokomotiv</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg-secondary: #161b22; --bg-tertiary: #21262d; --border: #30363d;
+    --text: #c9d1d9; --text-muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #d29922; --red: #f85149; --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; margin-bottom: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; }
+  nav.top-nav { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  nav.top-nav a { color: var(--accent); text-decoration: none; padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+  nav.top-nav a:hover { background: var(--bg-secondary); }
+  nav.top-nav a.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .section { margin-bottom: 2.5rem; }
+  .stats-row { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .stat-box { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; flex: 1; min-width: 150px; }
+  .stat-label { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; }
+  .stat-value { font-size: 1.5rem; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.85rem; }
+  th { text-align: left; padding: 0.6rem 0.8rem; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-muted); font-weight: 600; }
+  td { padding: 0.6rem 0.8rem; border: 1px solid var(--border); }
+  tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+  .badge { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 12px; text-transform: uppercase; }
+  .badge-safe { background: rgba(63,185,80,0.2); color: var(--green); }
+  .badge-review { background: rgba(210,153,34,0.2); color: var(--orange); }
+  .badge-concern { background: rgba(248,81,73,0.2); color: var(--red); }
+  code { background: var(--bg-tertiary); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--accent); }
+  .absence-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin-bottom: 1rem; }
+  .absence-card h3 { color: var(--green); font-size: 0.95rem; margin-bottom: 0.3rem; }
+  .absence-card p { color: var(--text-muted); font-size: 0.85rem; }
+  footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="top-nav">
+    <a href="index.html">Overview</a>
+    <a href="security.html">Security</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="dependencies.html" class="active">Dependencies</a>
+    <a href="risks.html">Risks</a>
+    <a href="github-activity.html">GitHub</a>
+  </nav>
+
+  <h1>Dependency Analysis</h1>
+  <p class="subtitle">Risk classification of all dependencies for lokomotiv v20260208.0.2</p>
+
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-label">Direct Dependencies</div>
+      <div class="stat-value">17</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Optional Dependencies</div>
+      <div class="stat-value">2</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Dev Dependencies</div>
+      <div class="stat-value">1</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Transitive (Cargo.lock)</div>
+      <div class="stat-value">312</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Build Scripts</div>
+      <div class="stat-value" style="color: var(--green);">0</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Direct Dependencies</h2>
+    <table>
+      <tr><th>Crate</th><th>Version</th><th>Purpose</th><th>Network?</th><th>Risk</th></tr>
+      <tr><td><code>tokio</code></td><td>1.*</td><td>Async runtime (full features)</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>clap</code></td><td>4.*</td><td>CLI argument parsing (derive)</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>serde</code></td><td>1.*</td><td>Serialization framework</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>serde_json</code></td><td>1.*</td><td>JSON serialization</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>toml</code></td><td>0.8</td><td>TOML config parsing</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>async-trait</code></td><td>0.1</td><td>Async trait support</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>indicatif</code></td><td>0.17</td><td>Progress bars/spinners</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>colored</code></td><td>2.*</td><td>Terminal color output</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>anyhow</code></td><td>1.*</td><td>Error handling</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>thiserror</code></td><td>2.*</td><td>Error type derivation</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>dirs</code></td><td>5.*</td><td>User directory paths</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>futures</code></td><td>0.3</td><td>Async utilities</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>sha2</code></td><td>0.10</td><td>SHA-256 for cache keys</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>secrecy</code></td><td>0.10</td><td>Secret string protection</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>regex</code></td><td>1.*</td><td>Pattern matching</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>which</code></td><td>7.*</td><td>Find executables in PATH</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>chrono</code></td><td>0.4.43</td><td>Date/time handling</td><td>No</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr style="background: rgba(210,153,34,0.08);"><td><code>reqwest</code></td><td>0.12</td><td>HTTP client (JSON feature)</td><td><strong>Yes</strong></td><td><span class="badge badge-review">Review</span></td></tr>
+    </table>
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;"><code>reqwest</code> is the only dependency with network capability. It is used legitimately for LLM API calls (Anthropic, Ollama).</p>
+  </div>
+
+  <div class="section">
+    <h2>Optional Dependencies (Feature-Gated)</h2>
+    <table>
+      <tr><th>Crate</th><th>Version</th><th>Feature Flag</th><th>Purpose</th><th>Risk</th></tr>
+      <tr><td><code>aws-config</code></td><td>1.*</td><td><code>bedrock</code></td><td>AWS SDK configuration</td><td><span class="badge badge-review">Review</span></td></tr>
+      <tr><td><code>aws-sdk-bedrockruntime</code></td><td>1.*</td><td><code>bedrock</code></td><td>AWS Bedrock LLM runtime</td><td><span class="badge badge-review">Review</span></td></tr>
+    </table>
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">AWS dependencies are <strong>not included by default</strong>. Only compiled when building with <code>--features bedrock</code>.</p>
+  </div>
+
+  <div class="section">
+    <h2>Dev Dependencies</h2>
+    <table>
+      <tr><th>Crate</th><th>Version</th><th>Purpose</th><th>Risk</th></tr>
+      <tr><td><code>tempfile</code></td><td>3.*</td><td>Temporary files for tests</td><td><span class="badge badge-safe">Safe</span></td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>What's NOT in Dependencies</h2>
+    <p style="color: var(--text-muted); margin-bottom: 1rem;">The absence of these categories is a strong safety signal.</p>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+      <div class="absence-card">
+        <h3>No Analytics / Telemetry</h3>
+        <p>No sentry, datadog, segment, mixpanel, amplitude, posthog, opentelemetry, or newrelic crates.</p>
+      </div>
+      <div class="absence-card">
+        <h3>No Tracking Libraries</h3>
+        <p>No user analytics, behavior tracking, or usage metrics collection.</p>
+      </div>
+      <div class="absence-card">
+        <h3>No Build Scripts</h3>
+        <p>No build.rs file found. No code runs at compile time beyond proc-macros.</p>
+      </div>
+      <div class="absence-card">
+        <h3>No Database Drivers</h3>
+        <p>No diesel, sqlx, rusqlite, or other database client crates. All state is file-based.</p>
+      </div>
+      <div class="absence-card">
+        <h3>No Git Dependencies</h3>
+        <p>All crates sourced from crates.io. No git repository or path dependencies.</p>
+      </div>
+      <div class="absence-card">
+        <h3>No Obfuscation</h3>
+        <p>No code obfuscation, packing, or anti-analysis crates detected.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Proc-Macro Dependencies</h2>
+    <p style="color: var(--text-muted); margin-bottom: 1rem;">These crates run code at compile time to generate Rust code.</p>
+    <table>
+      <tr><th>Proc-Macro</th><th>Source Crate</th><th>Purpose</th><th>Risk</th></tr>
+      <tr><td><code>async-trait</code></td><td>async-trait</td><td>Async trait expansion</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>clap_derive</code></td><td>clap</td><td>CLI derive macros</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>serde_derive</code></td><td>serde</td><td>Serialization derive</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>futures-macro</code></td><td>futures</td><td>Future utilities</td><td><span class="badge badge-safe">Safe</span></td></tr>
+      <tr><td><code>thiserror-impl</code></td><td>thiserror</td><td>Error derive macros</td><td><span class="badge badge-safe">Safe</span></td></tr>
+    </table>
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">All proc-macros are from widely-used, trusted crates with no network capability.</p>
+  </div>
+
+  <div class="section">
+    <h2>Notable Transitive Dependencies</h2>
+    <table>
+      <tr><th>Category</th><th>Crates</th><th>Notes</th></tr>
+      <tr><td>HTTP Protocol</td><td>hyper, http, httpdate, h2</td><td>Via reqwest - HTTP/1.1 and HTTP/2 support</td></tr>
+      <tr><td>TLS</td><td>rustls / native-tls</td><td>Via reqwest - encrypted connections</td></tr>
+      <tr><td>Encoding</td><td>encoding_rs</td><td>Character encoding support</td></tr>
+      <tr><td>UUID</td><td>uuid</td><td>Unique identifiers</td></tr>
+      <tr><td>Memory Safety</td><td>zeroize</td><td>Secure memory wiping (good practice)</td></tr>
+      <tr><td>Unicode</td><td>icudata, unicode-*</td><td>Unicode text handling</td></tr>
+    </table>
+  </div>
+
+  <footer>
+    Analysis performed on 2026-03-29 | Commit f8852fc | lokomotiv v20260208.0.2
+  </footer>
+</div>
+</body>
+</html>
