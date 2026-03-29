@@ -161,6 +161,39 @@ backend = "haiku"            # LLM validation only if heuristic passes
 prompt = "Clean noise from: {{ output }}"
 ```
 
+### FR Group: Per-Step Model Override
+
+| ID | Requirement | Priority | Acceptance Criteria |
+|----|-------------|----------|-------------------|
+| FR-31 | Workflow steps support a `model` field to override the backend's default model | Must | `backend = "claude"` + `model = "haiku"` uses Claude backend infrastructure with Haiku model |
+| FR-32 | Model override applies to both direct backend steps and `validate.backend` | Must | `[steps.validate]` can specify `model = "haiku"` alongside `backend = "claude"` |
+| FR-33 | Model override passed through to `Backend::query()` | Must | Backend implementations receive the model name and use it instead of their configured default |
+
+**Why this is needed**: Lok v20260208.0.2 only supports built-in backend names (`claude`, `codex`, `gemini`, `ollama`). Custom backend aliases (e.g., `[backends.haiku]` pointing to claude with model=haiku) are not resolved by `create_backend()`. Validation and synthesis steps need fast/cheap models (Haiku, Gemini Flash) but must go through the `claude` or `gemini` backend infrastructure. Without per-step model override, all claude backend steps use the same model (Sonnet by default), eliminating cost control for lightweight validation tasks.
+
+**TOML syntax:**
+
+```toml
+[[steps]]
+name = "validate-output"
+backend = "claude"
+model = "haiku"
+prompt = "Validate this review output..."
+
+# Also works in validate clause
+[steps.validate]
+backend = "claude"
+model = "haiku"
+prompt = "..."
+```
+
+**Backend trait change:**
+
+```rust
+// query() receives optional model override
+async fn query(&self, prompt: &str, cwd: &Path, model: Option<&str>) -> Result<QueryOutput>;
+```
+
 ### FR Group: Health Checks
 
 | ID | Requirement | Priority | Acceptance Criteria |
@@ -192,6 +225,7 @@ prompt = "Clean noise from: {{ output }}"
 
 ### Phase 1: Core Validation (Smallest Useful Change)
 
+- Per-step model override (FR-31, FR-32, FR-33)
 - Stderr separation for CLI backends (FR-1, FR-3, FR-4)
 - Exit code capture (FR-5)
 - StepResult extensions (FR-8, FR-9, FR-10, FR-11)
@@ -329,6 +363,7 @@ New fields added to step definition:
 [[steps]]
 name = "example"
 backend = "gemini"
+model = "gemini-3.1-flash"       # NEW: Override backend's default model
 prompt = "..."
 
 # NEW: Validation clause
@@ -336,7 +371,8 @@ prompt = "..."
 check = "not_empty"              # Heuristic check (no LLM needed)
 check = "min_length(200)"        # Minimum content length
 check = "contains('## Summary')" # Expected content marker
-backend = "haiku"                # LLM validator (optional, runs after check passes)
+backend = "claude"               # LLM validator (optional, runs after check passes)
+model = "haiku"                  # Override model for validation
 prompt = "Validate: {{ output }}" # Validation prompt ({{ output }} = step's raw output)
 
 # NEW: Health check before execution

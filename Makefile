@@ -1,4 +1,4 @@
-.PHONY: help version-bump release build test clean clippy
+.PHONY: help build test check clippy fmt clean sync feature release install
 
 # Auto-generate version from today's date with auto-incrementing patch
 # Format: YYYYMMDD.0.X where X increments if releasing multiple times per day
@@ -16,67 +16,101 @@ $(shell \
 endef
 
 VERSION := $(get_next_version)
+BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 help:
 	@echo "Lok Makefile"
 	@echo ""
-	@echo "Usage:"
-	@echo "  make release                       - Auto-version and release (recommended)"
-	@echo "  make release VERSION=20260125.0.0  - Release with specific version"
+	@echo "Development:"
 	@echo "  make build                         - Build release binary"
+	@echo "  make install                       - Build and install to cargo bin"
 	@echo "  make test                          - Run tests"
+	@echo "  make check                         - Run fmt check + clippy + test"
 	@echo "  make clippy                        - Run clippy"
+	@echo "  make fmt                           - Format code"
 	@echo "  make clean                         - Clean build artifacts"
 	@echo ""
-	@echo "Next version will be: $(VERSION)"
-
-# Bump version in Cargo.toml and commit on a branch
-version-bump:
-	@echo "Next version: $(VERSION)"
-	@echo "Creating release branch for version $(VERSION)..."
-	@git checkout -b release/v$(VERSION)
-	@echo "Bumping version to $(VERSION)..."
-	@sed -i 's/^version = .*/version = "$(VERSION)"/' Cargo.toml
-	@echo "Updating Cargo.lock..."
-	@cargo check --quiet 2>/dev/null || true
-	@git add Cargo.toml Cargo.lock
-	@git commit -m "chore: bump version to $(VERSION)"
+	@echo "Workflow:"
+	@echo "  make sync                          - Pull latest from upstream into main"
+	@echo "  make feature NAME=my-feature       - Create feature branch from main"
+	@echo "  make merge                         - Merge current feature branch into main"
 	@echo ""
-	@echo "Created branch release/v$(VERSION)"
-	@echo "Version bumped to $(VERSION)"
-	@echo "Commit created"
-
-# Merge to main, tag, push, and publish to crates.io
-release: version-bump
-	@echo "Merging into main..."
-	@git checkout main
-	@git merge --no-ff release/v$(VERSION) -m "Merge branch 'release/v$(VERSION)'"
-	@echo "Creating tag v$(VERSION) on main..."
-	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
-	@echo "Pushing to origin..."
-	@git push origin main
-	@git push origin v$(VERSION)
-	@echo "Publishing to crates.io..."
-	@cargo publish
+	@echo "Release:"
+	@echo "  make release                       - Auto-version release ($(VERSION))"
+	@echo "  make release VERSION=20260329.0.0  - Release with specific version"
 	@echo ""
-	@echo "Released v$(VERSION)"
-	@echo "  - Merged release/v$(VERSION) into main"
-	@echo "  - Tagged v$(VERSION)"
-	@echo "  - Pushed to GitHub"
-	@echo "  - Published to crates.io"
+	@echo "Current branch: $(BRANCH)"
+	@echo "Next version:   $(VERSION)"
 
-# Build release binary
+# --- Development ---
+
 build:
 	cargo build --release
 
-# Run tests
+install: check
+	cargo install --path .
+
 test:
 	cargo test
 
-# Run clippy
 clippy:
 	cargo clippy -- -D warnings
 
-# Clean build artifacts
+fmt:
+	cargo fmt
+
+check: fmt
+	cargo clippy -- -D warnings
+	cargo test
+
 clean:
 	cargo clean
+
+# --- Workflow ---
+
+sync:
+	@git checkout main
+	@git fetch upstream
+	@git merge upstream/main
+	@git push origin main
+	@echo "main synced with upstream and pushed to origin"
+
+feature:
+ifndef NAME
+	$(error Usage: make feature NAME=my-feature)
+endif
+	@git checkout main
+	@git checkout -b feature/$(NAME)
+	@echo "Created feature/$(NAME) from main"
+
+merge:
+	@if [ "$(BRANCH)" = "main" ]; then echo "Already on main - switch to a feature branch first"; exit 1; fi
+	@echo "Merging $(BRANCH) into main..."
+	@git checkout main
+	@git merge --no-ff $(BRANCH) -m "Merge $(BRANCH)"
+	@echo "Merged. Run 'git push origin main' when ready."
+
+# --- Release ---
+
+release:
+	@echo "Running checks before release..."
+	@cargo fmt -- --check
+	@cargo clippy -- -D warnings
+	@cargo test
+	@echo ""
+	@echo "Creating release v$(VERSION)..."
+	@git checkout -b release/v$(VERSION)
+	@sed -i '' 's/^version = .*/version = "$(VERSION)"/' Cargo.toml
+	@cargo check --quiet 2>/dev/null || true
+	@git add Cargo.toml Cargo.lock
+	@git commit -m "chore: bump version to $(VERSION)"
+	@git checkout main
+	@git merge --no-ff release/v$(VERSION) -m "Merge branch 'release/v$(VERSION)'"
+	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
+	@git branch -d release/v$(VERSION)
+	@git push origin main
+	@git push origin v$(VERSION)
+	@echo ""
+	@echo "Released v$(VERSION)"
+	@echo "  - Tagged v$(VERSION)"
+	@echo "  - Pushed to origin"
