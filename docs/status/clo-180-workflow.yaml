@@ -1,0 +1,98 @@
+task_id: CLO-180
+title: "Extend Backend::query() to return QueryOutput struct"
+url: https://linear.app/cloud-ai/issue/CLO-180/extend-backendquery-to-return-queryoutput-struct
+task_type: development
+branch: kmamemo/clo-180-extend-backendquery-to-return-queryoutput-struct
+blocks:
+  - CLO-181
+  - CLO-182
+
+workflow:
+  current_phase: design
+  status: in_progress
+  started_at: "2026-03-30T00:00:00Z"
+
+phases:
+  discovery:
+    status: checkpoint
+    prd_exists: true
+    prd_file: docs/prds/prd-output-validation-pipeline.md
+    prd_created: false
+    problem_framed: true
+    discovery_report: docs/prds/discovery-report-2026-03-30.md
+    discovery_debt: 11
+    baseline_score: 60
+    approaches_identified: 3
+    approach_chosen: "Change Backend::query() return type to Result<QueryOutput> with stdout/stderr/exit_code. Update all backends and callers."
+    approved: true
+    status: complete
+  design:
+    status: complete
+    design_doc: docs/design-docs/clo-180-query-output-struct.md
+    draft_ready: true
+    finalized: true
+    discovery_context_used: true
+    review_gemini: null  # Gemini produced MCP noise instead of review
+    review_ollama: docs/reviews/clo-180-review-ollama.md
+    review_claude: docs/reviews/clo-180-review-claude.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - "Fixed affected components table - added conductor.rs, spawn.rs, debate.rs, team.rs (6 missing call sites)"
+      - "Fixed blast radius count from 6 to 13 direct call sites"
+      - "Documented conductor.rs:191 .len() compile break"
+      - "Added #[derive(Debug, Clone)] to QueryOutput - resolved open question"
+      - "Updated CLI backend code to show parse_output() before QueryOutput construction"
+      - "Added empty stderr normalization to None"
+      - "Added query_with_system() wrapping note"
+      - "Documented error path stderr loss as deliberate design choice"
+      - "Added empty stdout + exit code 0 evaluation test"
+      - "Added bedrock feature gate test to evaluation table"
+    flagged_suggestions: []
+  plan:
+    status: pending
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+
+history:
+  - timestamp: "2026-03-30T00:00:00Z"
+    action: workflow_started
+    phase: init
+    details: "Development workflow initialized for CLO-180. No project aggregation files exist yet - skipping project sync."
+  - timestamp: "2026-03-30T00:01:00Z"
+    action: problem_framed
+    phase: discovery
+    details: "Problem statement validated - Backend::query() returns Result<String>, needs to return Result<QueryOutput> with stderr and exit_code."
+  - timestamp: "2026-03-30T00:05:00Z"
+    action: discovery_report_complete
+    phase: discovery
+    details: "PRD discovery complete. Baseline 60%, 11 killer assumptions, verdict: Needs Iteration. Report at docs/prds/discovery-report-2026-03-30.md"
+  - timestamp: "2026-03-30T00:06:00Z"
+    action: discovery_approved
+    phase: discovery
+    details: "Discovery approved. CLO-180 scoped to trait change only - most killer assumptions apply to validation (future tasks), not this task. Proceeding to design."
+  - timestamp: "2026-03-30T00:10:00Z"
+    action: design_started
+    phase: design
+    details: "Design doc created at docs/design-docs/clo-180-query-output-struct.md. Branch: feat/clo-180-query-output-struct. Comment posted to Linear."
+  - timestamp: "2026-03-30T00:11:00Z"
+    action: design_draft_ready
+    phase: design
+    details: "Design doc draft complete. Starting AI review."
+  - timestamp: "2026-03-30T00:15:00Z"
+    action: design_review_complete
+    phase: design
+    details: "AI review complete. Gemini FAILED (MCP noise), Ollama APPROVE_WITH_SUGGESTIONS, Claude APPROVE_WITH_SUGGESTIONS. Consensus: APPROVE_WITH_SUGGESTIONS."
+  - timestamp: "2026-03-30T00:16:00Z"
+    action: review_applied
+    phase: design
+    details: "Auto-applied 10 suggestions. Key fixes: blast radius 6->13 call sites, conductor.rs .len() break, derive traits, parse_output ordering, empty stderr normalization. No conflicts with prior decisions."
+  - timestamp: "2026-03-30T00:20:00Z"
+    action: design_finalized
+    phase: design
+    details: "Design document approved and finalized. Comment posted to Linear. Ready for implementation planning."
