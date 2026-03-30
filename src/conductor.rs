@@ -188,10 +188,10 @@ Always explain your reasoning briefly before making tool calls."#,
                     "  {} {} responded ({} chars)",
                     "←".green(),
                     backend_name.yellow(),
-                    result.len()
+                    result.stdout.len()
                 );
 
-                Ok(result)
+                Ok(result.stdout)
             }
             _ => anyhow::bail!("Unknown tool: {}", name),
         }

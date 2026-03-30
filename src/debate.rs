@@ -228,10 +228,10 @@ impl<'a> Debate<'a> {
             println!("  {} thinking...", backend.name().dimmed());
 
             match backend.query(&prompt, &self.cwd).await {
-                Ok(response) => {
+                Ok(query_output) => {
                     new_positions.push(Position {
                         backend: backend.name().to_string(),
-                        stance: response,
+                        stance: query_output.stdout,
                     });
                 }
                 Err(e) => {

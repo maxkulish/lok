@@ -99,8 +99,9 @@ impl Backend for OllamaBackend {
         "ollama"
     }
 
-    async fn query(&self, prompt: &str, _cwd: &Path) -> Result<String> {
-        self.chat(prompt).await
+    async fn query(&self, prompt: &str, _cwd: &Path) -> Result<super::QueryOutput> {
+        let text = self.chat(prompt).await?;
+        Ok(super::QueryOutput::from_text(text))
     }
 
     fn is_available(&self) -> bool {

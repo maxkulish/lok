@@ -125,7 +125,7 @@ impl super::Backend for BedrockBackend {
         "bedrock"
     }
 
-    async fn query(&self, prompt: &str, _cwd: &Path) -> Result<String> {
+    async fn query(&self, prompt: &str, _cwd: &Path) -> Result<super::QueryOutput> {
         let messages = vec![Message {
             role: "user".to_string(),
             content: MessageContent::Text(prompt.to_string()),
@@ -143,7 +143,7 @@ impl super::Backend for BedrockBackend {
             .collect::<Vec<_>>()
             .join("\n");
 
-        Ok(text)
+        Ok(super::QueryOutput::from_text(text))
     }
 
     fn is_available(&self) -> bool {

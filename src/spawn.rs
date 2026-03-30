@@ -171,7 +171,7 @@ AGENT: frontend | Build the UI"#,
         );
 
         let output = backend.query(&prompt, &self.cwd).await?;
-        self.parse_agent_tasks(&output)
+        self.parse_agent_tasks(&output.stdout)
     }
 
     fn parse_agent_tasks(&self, text: &str) -> Result<Vec<AgentTask>> {
@@ -280,10 +280,10 @@ AGENT: frontend | Build the UI"#,
                     );
 
                     match backend.query(&prompt, &cwd).await {
-                        Ok(output) => AgentResult {
+                        Ok(query_output) => AgentResult {
                             name: task.name,
                             backend: backend.name().to_string(),
-                            output,
+                            output: query_output.stdout,
                             success: true,
                         },
                         Err(e) => AgentResult {

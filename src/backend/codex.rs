@@ -59,7 +59,7 @@ impl super::Backend for CodexBackend {
         "codex"
     }
 
-    async fn query(&self, prompt: &str, cwd: &Path) -> Result<String> {
+    async fn query(&self, prompt: &str, cwd: &Path) -> Result<super::QueryOutput> {
         let mut cmd = Command::new(&self.command);
         cmd.args(&self.args)
             .arg("--") // Prevent prompt from being interpreted as flags
@@ -74,13 +74,16 @@ impl super::Backend for CodexBackend {
             .await
             .context("Failed to execute codex command")?;
 
+        let exit_code = output.status.code().unwrap_or(-1);
+        let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Codex failed: {}", stderr);
+            anyhow::bail!("Codex failed: {}", stderr_str);
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(self.parse_output(&stdout))
+        let parsed_stdout = self.parse_output(&stdout);
+        Ok(super::QueryOutput::from_process(parsed_stdout, stderr_str, exit_code))
     }
 
     fn is_available(&self) -> bool {

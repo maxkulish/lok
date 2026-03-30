@@ -19,10 +19,38 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Structured output from a backend query, capturing stdout, stderr, and exit code.
+#[derive(Debug, Clone)]
+pub struct QueryOutput {
+    pub stdout: String,
+    pub stderr: Option<String>,
+    pub exit_code: Option<i32>,
+}
+
+impl QueryOutput {
+    /// Create output for API backends (no process I/O).
+    pub fn from_text(text: String) -> Self {
+        Self {
+            stdout: text,
+            stderr: None,
+            exit_code: None,
+        }
+    }
+
+    /// Create output for CLI backends with full process data.
+    pub fn from_process(stdout: String, stderr: String, exit_code: i32) -> Self {
+        Self {
+            stdout,
+            stderr: Some(stderr).filter(|s| !s.is_empty()),
+            exit_code: Some(exit_code),
+        }
+    }
+}
+
 #[async_trait]
 pub trait Backend: Send + Sync {
     fn name(&self) -> &str;
-    async fn query(&self, prompt: &str, cwd: &Path) -> Result<String>;
+    async fn query(&self, prompt: &str, cwd: &Path) -> Result<QueryOutput>;
     fn is_available(&self) -> bool;
 }
 
@@ -146,9 +174,9 @@ pub async fn run_query_with_config(
         pb.inc(1);
 
         match result {
-            Ok(Ok(output)) => QueryResult {
+            Ok(Ok(query_output)) => QueryResult {
                 backend: backend.name().to_string(),
-                output,
+                output: query_output.stdout,
                 success: true,
                 elapsed_ms,
             },
@@ -297,4 +325,45 @@ pub fn list_backends(config: &Config) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_query_output_from_text() {
+        let output = QueryOutput::from_text("hello world".to_string());
+        assert_eq!(output.stdout, "hello world");
+        assert!(output.stderr.is_none());
+        assert!(output.exit_code.is_none());
+    }
+
+    #[test]
+    fn test_query_output_from_process_with_stderr() {
+        let output = QueryOutput::from_process(
+            "stdout content".to_string(),
+            "stderr content".to_string(),
+            0,
+        );
+        assert_eq!(output.stdout, "stdout content");
+        assert_eq!(output.stderr, Some("stderr content".to_string()));
+        assert_eq!(output.exit_code, Some(0));
+    }
+
+    #[test]
+    fn test_query_output_from_process_empty_stderr_normalized() {
+        let output = QueryOutput::from_process("stdout".to_string(), "".to_string(), 0);
+        assert_eq!(output.stdout, "stdout");
+        assert!(output.stderr.is_none());
+        assert_eq!(output.exit_code, Some(0));
+    }
+
+    #[test]
+    fn test_query_output_from_process_empty_stdout() {
+        let output = QueryOutput::from_process("".to_string(), "".to_string(), 0);
+        assert_eq!(output.stdout, "");
+        assert!(output.stderr.is_none());
+        assert_eq!(output.exit_code, Some(0));
+    }
 }
