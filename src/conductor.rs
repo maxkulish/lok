@@ -182,7 +182,7 @@ Always explain your reasoning briefly before making tool calls."#,
                     .ok_or_else(|| anyhow::anyhow!("Backend not found: {}", backend_name))?;
 
                 let backend = backend::create_backend(backend_name, backend_config)?;
-                let result = backend.query(prompt, cwd).await?;
+                let result = backend.query(prompt, cwd, None).await?;
 
                 println!(
                     "  {} {} responded ({} chars)",

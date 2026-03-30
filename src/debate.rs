@@ -227,7 +227,7 @@ impl<'a> Debate<'a> {
 
             println!("  {} thinking...", backend.name().dimmed());
 
-            match backend.query(&prompt, &self.cwd).await {
+            match backend.query(&prompt, &self.cwd, None).await {
                 Ok(query_output) => {
                     new_positions.push(Position {
                         backend: backend.name().to_string(),

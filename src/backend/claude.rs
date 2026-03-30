@@ -89,8 +89,8 @@ impl ClaudeBackend {
         }
     }
 
-    async fn query_api(&self, system: &str, prompt: &str) -> Result<String> {
-        let (api_key, model, client) = match &self.mode {
+    async fn query_api(&self, system: &str, prompt: &str, model_override: Option<&str>) -> Result<String> {
+        let (api_key, default_model, client) = match &self.mode {
             ClaudeMode::Api {
                 api_key,
                 model,
@@ -99,8 +99,12 @@ impl ClaudeBackend {
             ClaudeMode::Cli { .. } => anyhow::bail!("API mode required for this operation"),
         };
 
+        let effective_model = model_override
+            .filter(|m| !m.is_empty())
+            .unwrap_or(default_model);
+
         let request = serde_json::json!({
-            "model": model,
+            "model": effective_model,
             "max_tokens": 4096,
             "system": system,
             "messages": [
@@ -142,18 +146,22 @@ impl ClaudeBackend {
         Ok(text)
     }
 
-    async fn query_cli(&self, prompt: &str, cwd: &Path) -> Result<super::QueryOutput> {
-        let (command, model) = match &self.mode {
+    async fn query_cli(&self, prompt: &str, cwd: &Path, model_override: Option<&str>) -> Result<super::QueryOutput> {
+        let (command, default_model) = match &self.mode {
             ClaudeMode::Cli { command, model } => (command, model),
             ClaudeMode::Api { .. } => anyhow::bail!("CLI mode required for this operation"),
         };
+
+        let effective_model = model_override
+            .filter(|m| !m.is_empty())
+            .or(default_model.as_deref());
 
         let mut cmd = Command::new(command);
         cmd.arg("-p") // print mode
             .arg("--output-format")
             .arg("text");
 
-        if let Some(m) = model {
+        if let Some(m) = effective_model {
             cmd.arg("--model").arg(m);
         }
 
@@ -184,13 +192,14 @@ impl ClaudeBackend {
         ))
     }
 
+    #[allow(dead_code)]
     pub async fn query_with_system(&self, system: &str, prompt: &str) -> Result<String> {
         match &self.mode {
-            ClaudeMode::Api { .. } => self.query_api(system, prompt).await,
+            ClaudeMode::Api { .. } => self.query_api(system, prompt, None).await,
             ClaudeMode::Cli { .. } => {
                 // For CLI mode, prepend system prompt to user prompt
                 let full_prompt = format!("{}\n\n{}", system, prompt);
-                let output = self.query_cli(&full_prompt, Path::new(".")).await?;
+                let output = self.query_cli(&full_prompt, Path::new("."), None).await?;
                 Ok(output.stdout)
             }
         }
@@ -203,14 +212,14 @@ impl super::Backend for ClaudeBackend {
         "claude"
     }
 
-    async fn query(&self, prompt: &str, cwd: &Path) -> Result<super::QueryOutput> {
+    async fn query(&self, prompt: &str, cwd: &Path, model: Option<&str>) -> Result<super::QueryOutput> {
         match &self.mode {
             ClaudeMode::Api { .. } => {
-                let text = self.query_with_system("You are a helpful assistant.", prompt)
+                let text = self.query_api("You are a helpful assistant.", prompt, model)
                     .await?;
                 Ok(super::QueryOutput::from_text(text))
             }
-            ClaudeMode::Cli { .. } => self.query_cli(prompt, cwd).await,
+            ClaudeMode::Cli { .. } => self.query_cli(prompt, cwd, model).await,
         }
     }
 

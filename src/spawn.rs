@@ -170,7 +170,7 @@ AGENT: frontend | Build the UI"#,
             task
         );
 
-        let output = backend.query(&prompt, &self.cwd).await?;
+        let output = backend.query(&prompt, &self.cwd, None).await?;
         self.parse_agent_tasks(&output.stdout)
     }
 
@@ -279,7 +279,7 @@ AGENT: frontend | Build the UI"#,
                         shared_context, task.name, task.description
                     );
 
-                    match backend.query(&prompt, &cwd).await {
+                    match backend.query(&prompt, &cwd, None).await {
                         Ok(query_output) => AgentResult {
                             name: task.name,
                             backend: backend.name().to_string(),

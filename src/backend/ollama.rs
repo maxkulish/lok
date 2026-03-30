@@ -62,9 +62,12 @@ impl OllamaBackend {
         })
     }
 
-    async fn chat(&self, prompt: &str) -> Result<String> {
+    async fn chat(&self, prompt: &str, model_override: Option<&str>) -> Result<String> {
+        let effective_model = model_override
+            .filter(|m| !m.is_empty())
+            .unwrap_or(&self.model);
         let request = ChatRequest {
-            model: self.model.clone(),
+            model: effective_model.to_string(),
             messages: vec![ChatMessage {
                 role: "user".to_string(),
                 content: prompt.to_string(),
@@ -99,8 +102,8 @@ impl Backend for OllamaBackend {
         "ollama"
     }
 
-    async fn query(&self, prompt: &str, _cwd: &Path) -> Result<super::QueryOutput> {
-        let text = self.chat(prompt).await?;
+    async fn query(&self, prompt: &str, _cwd: &Path, model: Option<&str>) -> Result<super::QueryOutput> {
+        let text = self.chat(prompt, model).await?;
         Ok(super::QueryOutput::from_text(text))
     }
 

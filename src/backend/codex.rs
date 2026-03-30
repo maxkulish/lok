@@ -59,10 +59,15 @@ impl super::Backend for CodexBackend {
         "codex"
     }
 
-    async fn query(&self, prompt: &str, cwd: &Path) -> Result<super::QueryOutput> {
+    async fn query(&self, prompt: &str, cwd: &Path, model: Option<&str>) -> Result<super::QueryOutput> {
         let mut cmd = Command::new(&self.command);
-        cmd.args(&self.args)
-            .arg("--") // Prevent prompt from being interpreted as flags
+        cmd.args(&self.args);
+
+        if let Some(m) = model.filter(|m| !m.is_empty()) {
+            cmd.arg("--model").arg(m);
+        }
+
+        cmd.arg("--") // Prevent prompt from being interpreted as flags
             .arg(prompt)
             .current_dir(cwd)
             .kill_on_drop(true)
