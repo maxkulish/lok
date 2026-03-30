@@ -169,8 +169,11 @@ pub async fn run_query_with_config(
         pb.set_message(format!("Querying {}...", backend.name()));
 
         let start = Instant::now();
-        let result =
-            tokio::time::timeout(Duration::from_secs(timeout), backend.query(&prompt, &cwd, None)).await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(timeout),
+            backend.query(&prompt, &cwd, None),
+        )
+        .await;
         let elapsed_ms = start.elapsed().as_millis() as u64;
 
         pb.inc(1);

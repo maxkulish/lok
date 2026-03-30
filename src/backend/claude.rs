@@ -89,7 +89,12 @@ impl ClaudeBackend {
         }
     }
 
-    async fn query_api(&self, system: &str, prompt: &str, model_override: Option<&str>) -> Result<String> {
+    async fn query_api(
+        &self,
+        system: &str,
+        prompt: &str,
+        model_override: Option<&str>,
+    ) -> Result<String> {
         let (api_key, default_model, client) = match &self.mode {
             ClaudeMode::Api {
                 api_key,
@@ -146,7 +151,12 @@ impl ClaudeBackend {
         Ok(text)
     }
 
-    async fn query_cli(&self, prompt: &str, cwd: &Path, model_override: Option<&str>) -> Result<super::QueryOutput> {
+    async fn query_cli(
+        &self,
+        prompt: &str,
+        cwd: &Path,
+        model_override: Option<&str>,
+    ) -> Result<super::QueryOutput> {
         let (command, default_model) = match &self.mode {
             ClaudeMode::Cli { command, model } => (command, model),
             ClaudeMode::Api { .. } => anyhow::bail!("CLI mode required for this operation"),
@@ -191,7 +201,6 @@ impl ClaudeBackend {
             exit_code,
         ))
     }
-
 }
 
 #[async_trait]
@@ -200,10 +209,16 @@ impl super::Backend for ClaudeBackend {
         "claude"
     }
 
-    async fn query(&self, prompt: &str, cwd: &Path, model: Option<&str>) -> Result<super::QueryOutput> {
+    async fn query(
+        &self,
+        prompt: &str,
+        cwd: &Path,
+        model: Option<&str>,
+    ) -> Result<super::QueryOutput> {
         match &self.mode {
             ClaudeMode::Api { .. } => {
-                let text = self.query_api("You are a helpful assistant.", prompt, model)
+                let text = self
+                    .query_api("You are a helpful assistant.", prompt, model)
                     .await?;
                 Ok(super::QueryOutput::from_text(text))
             }

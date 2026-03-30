@@ -102,7 +102,12 @@ impl Backend for OllamaBackend {
         "ollama"
     }
 
-    async fn query(&self, prompt: &str, _cwd: &Path, model: Option<&str>) -> Result<super::QueryOutput> {
+    async fn query(
+        &self,
+        prompt: &str,
+        _cwd: &Path,
+        model: Option<&str>,
+    ) -> Result<super::QueryOutput> {
         let text = self.chat(prompt, model).await?;
         Ok(super::QueryOutput::from_text(text))
     }

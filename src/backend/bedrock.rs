@@ -91,7 +91,8 @@ impl BedrockBackend {
         messages: Vec<Message>,
         tools: Option<Vec<serde_json::Value>>,
     ) -> Result<BedrockResponse> {
-        self.invoke_with_messages_model(&self.model_id, system, messages, tools).await
+        self.invoke_with_messages_model(&self.model_id, system, messages, tools)
+            .await
     }
 
     async fn invoke_with_messages_model(
@@ -135,17 +136,22 @@ impl super::Backend for BedrockBackend {
         "bedrock"
     }
 
-    async fn query(&self, prompt: &str, _cwd: &Path, model: Option<&str>) -> Result<super::QueryOutput> {
+    async fn query(
+        &self,
+        prompt: &str,
+        _cwd: &Path,
+        model: Option<&str>,
+    ) -> Result<super::QueryOutput> {
         let messages = vec![Message {
             role: "user".to_string(),
             content: MessageContent::Text(prompt.to_string()),
         }];
 
-        let effective_model_id = model
-            .filter(|m| !m.is_empty())
-            .unwrap_or(&self.model_id);
+        let effective_model_id = model.filter(|m| !m.is_empty()).unwrap_or(&self.model_id);
 
-        let response = self.invoke_with_messages_model(effective_model_id, None, messages, None).await?;
+        let response = self
+            .invoke_with_messages_model(effective_model_id, None, messages, None)
+            .await?;
 
         let text = response
             .content

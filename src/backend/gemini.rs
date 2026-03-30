@@ -43,7 +43,12 @@ impl super::Backend for GeminiBackend {
         "gemini"
     }
 
-    async fn query(&self, prompt: &str, cwd: &Path, model: Option<&str>) -> Result<super::QueryOutput> {
+    async fn query(
+        &self,
+        prompt: &str,
+        cwd: &Path,
+        model: Option<&str>,
+    ) -> Result<super::QueryOutput> {
         // Gemini CLI requires stdin to be a pipe (not null/tty), so we use shell
         // to pipe empty input: echo '' | npx @google/gemini-cli 'prompt'
         let escaped_prompt = prompt.replace("'", "'\\''");
@@ -81,7 +86,11 @@ impl super::Backend for GeminiBackend {
         }
 
         let parsed_stdout = self.parse_output(&stdout);
-        Ok(super::QueryOutput::from_process(parsed_stdout, stderr_str, exit_code))
+        Ok(super::QueryOutput::from_process(
+            parsed_stdout,
+            stderr_str,
+            exit_code,
+        ))
     }
 
     fn is_available(&self) -> bool {

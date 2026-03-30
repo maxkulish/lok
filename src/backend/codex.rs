@@ -59,7 +59,12 @@ impl super::Backend for CodexBackend {
         "codex"
     }
 
-    async fn query(&self, prompt: &str, cwd: &Path, model: Option<&str>) -> Result<super::QueryOutput> {
+    async fn query(
+        &self,
+        prompt: &str,
+        cwd: &Path,
+        model: Option<&str>,
+    ) -> Result<super::QueryOutput> {
         let mut cmd = Command::new(&self.command);
         cmd.args(&self.args);
 
@@ -88,7 +93,11 @@ impl super::Backend for CodexBackend {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let parsed_stdout = self.parse_output(&stdout);
-        Ok(super::QueryOutput::from_process(parsed_stdout, stderr_str, exit_code))
+        Ok(super::QueryOutput::from_process(
+            parsed_stdout,
+            stderr_str,
+            exit_code,
+        ))
     }
 
     fn is_available(&self) -> bool {
