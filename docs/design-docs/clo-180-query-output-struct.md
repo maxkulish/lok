@@ -122,7 +122,7 @@ impl QueryOutput {
     pub fn from_process(stdout: String, stderr: String, exit_code: i32) -> Self {
         Self {
             stdout,
-            stderr: Some(stderr),
+            stderr: Some(stderr).filter(|s| !s.is_empty()),
             exit_code: Some(exit_code),
         }
     }
