@@ -8,7 +8,7 @@ blocks:
   - CLO-182
 
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: complete
   started_at: "2026-03-30T00:00:00Z"
 
@@ -59,10 +59,12 @@ phases:
     status: complete
   pr:
     status: complete
-    pr_url: https://github.com/ducks/lok/pull/212
-    pr_number: 212
+    pr_url: https://github.com/maxkulish/lok/pull/1
+    pr_number: 1
   complete:
-    status: pending
+    status: complete
+    merged_at: "2026-03-30T20:41:10Z"
+    merge_commit: 5de721b
 
 history:
   - timestamp: "2026-03-30T00:00:00Z"
@@ -125,3 +127,15 @@ history:
     action: pr_created
     phase: pr
     details: "PR #212 created: https://github.com/ducks/lok/pull/212"
+  - timestamp: "2026-03-30T20:39:00Z"
+    action: review_addressed
+    phase: pr
+    details: "Addressed 3 Copilot review comments (doc snippet, duplicate YAML key, workflow status). Commit b1a1198."
+  - timestamp: "2026-03-30T20:41:10Z"
+    action: pr_merged
+    phase: pr
+    details: "PR #1 merged to main (maxkulish/lok). Merge commit 5de721b."
+  - timestamp: "2026-03-30T20:49:00Z"
+    action: workflow_complete
+    phase: complete
+    details: "Task CLO-180 fully completed. Linear status set to Done. Unblocks CLO-181 and CLO-182."
