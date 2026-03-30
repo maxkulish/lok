@@ -23,7 +23,9 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone)]
 pub struct QueryOutput {
     pub stdout: String,
+    #[allow(dead_code)]
     pub stderr: Option<String>,
+    #[allow(dead_code)]
     pub exit_code: Option<i32>,
 }
 
@@ -50,7 +52,7 @@ impl QueryOutput {
 #[async_trait]
 pub trait Backend: Send + Sync {
     fn name(&self) -> &str;
-    async fn query(&self, prompt: &str, cwd: &Path) -> Result<QueryOutput>;
+    async fn query(&self, prompt: &str, cwd: &Path, model: Option<&str>) -> Result<QueryOutput>;
     fn is_available(&self) -> bool;
 }
 
@@ -168,7 +170,7 @@ pub async fn run_query_with_config(
 
         let start = Instant::now();
         let result =
-            tokio::time::timeout(Duration::from_secs(timeout), backend.query(&prompt, &cwd)).await;
+            tokio::time::timeout(Duration::from_secs(timeout), backend.query(&prompt, &cwd, None)).await;
         let elapsed_ms = start.elapsed().as_millis() as u64;
 
         pb.inc(1);

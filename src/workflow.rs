@@ -256,6 +256,10 @@ pub struct Step {
     /// Alternative to comma-separated backend field
     #[serde(default)]
     pub backends: Vec<String>,
+    /// Model override - when set, backend uses this model instead of its configured default
+    /// Example: model = "haiku" with backend = "claude" uses Claude with Haiku model
+    #[serde(default)]
+    pub model: Option<String>,
     /// Prompt to send to LLM. Not needed for shell steps.
     #[serde(default)]
     pub prompt: String,
@@ -697,6 +701,7 @@ impl WorkflowRunner {
                     let step_name = step.name.clone();
                     let backend_name = step.backend.clone();
                     let backends_list = step.get_backends();
+                    let model_override = step.model.clone();
                     let consensus_strategy = step.get_consensus_strategy();
                     let apply_edits_flag = step.apply_edits;
                     let fix_retries = step.fix_retries;
@@ -794,7 +799,7 @@ impl WorkflowRunner {
                                         }
                                     };
 
-                                    match tokio::time::timeout(timeout_duration, backend.query(&iter_prompt, &cwd)).await {
+                                    match tokio::time::timeout(timeout_duration, backend.query(&iter_prompt, &cwd, model_override.as_deref())).await {
                                         Ok(Ok(qo)) => {
                                             iter_output = qo.stdout;
                                             iter_success = true;
@@ -952,6 +957,7 @@ impl WorkflowRunner {
                                 let prompt = prompt.clone();
                                 let cwd = cwd.clone();
                                 let timeout_dur = timeout_duration;
+                                let model_override = model_override.clone();
 
                                 handles.push(tokio::spawn(async move {
                                     let backend_config = match cfg.backends.get(&bn) {
@@ -965,7 +971,7 @@ impl WorkflowRunner {
                                     if !backend.is_available() {
                                         return (bn.clone(), Err(format!("Backend {} not available", bn)));
                                     }
-                                    match tokio::time::timeout(timeout_dur, backend.query(&prompt, &cwd)).await {
+                                    match tokio::time::timeout(timeout_dur, backend.query(&prompt, &cwd, model_override.as_deref())).await {
                                         Ok(Ok(qo)) => (bn.clone(), Ok(qo.stdout)),
                                         Ok(Err(e)) => (bn.clone(), Err(e.to_string())),
                                         Err(_) => (bn.clone(), Err(format!("Timeout after {}s", timeout_dur.as_secs()))),
@@ -1069,7 +1075,7 @@ impl WorkflowRunner {
 
                                     if let Some(synth_config) = config.backends.get(synth_backend_name) {
                                         if let Ok(synth_backend) = backend::create_backend(synth_backend_name, synth_config) {
-                                            match tokio::time::timeout(timeout_duration, synth_backend.query(&synth_prompt, &cwd)).await {
+                                            match tokio::time::timeout(timeout_duration, synth_backend.query(&synth_prompt, &cwd, None)).await {
                                                 Ok(Ok(qo)) => {
                                                     let synthesized = qo.stdout;
                                                     println!("    {} Synthesized", "✓".green());
@@ -1180,7 +1186,7 @@ impl WorkflowRunner {
 
                             // Record backend query
 
-                            match tokio::time::timeout(timeout_duration, backend.query(&prompt, &cwd)).await {
+                            match tokio::time::timeout(timeout_duration, backend.query(&prompt, &cwd, model_override.as_deref())).await {
                                 Ok(Ok(qo)) => {
                                     text = qo.stdout;
                                     query_success = true;
@@ -1387,7 +1393,7 @@ impl WorkflowRunner {
                                                     "{}\n\n## Previous Attempt Failed\n\nVerification error:\n```\n{}\n```\n\nPlease provide a corrected fix.",
                                                     prompt, error_msg
                                                 );
-                                                match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd)).await {
+                                                match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd, model_override.as_deref())).await {
                                                     Ok(Ok(qo)) => {
                                                         current_text = qo.stdout;
                                                         continue 'fix_loop;
@@ -1435,7 +1441,7 @@ impl WorkflowRunner {
                                                     "{}\n\n## Previous Attempt Failed\n\n{}\n\nPlease provide a corrected fix.",
                                                     prompt, error_msg
                                                 );
-                                                match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd)).await {
+                                                match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd, model_override.as_deref())).await {
                                                     Ok(Ok(qo)) => {
                                                         current_text = qo.stdout;
                                                         continue 'fix_loop;
@@ -2830,6 +2836,7 @@ line2"}"#;
                 name: "fetch".to_string(),
                 backend: String::new(),
                 backends: vec![],
+                model: None,
                 prompt: String::new(),
                 depends_on: vec![],
                 when: None,
@@ -2850,6 +2857,7 @@ line2"}"#;
                 name: "fetch".to_string(), // duplicate!
                 backend: String::new(),
                 backends: vec![],
+                model: None,
                 prompt: String::new(),
                 depends_on: vec![],
                 when: None,
@@ -2893,6 +2901,7 @@ line2"}"#;
             name: "lonely".to_string(),
             backend: String::new(),
             backends: vec![],
+            model: None,
             prompt: String::new(),
             depends_on: vec![], // Empty!
             when: None,
@@ -2939,6 +2948,7 @@ line2"}"#;
                 name: "early_step".to_string(),
                 backend: String::new(),
                 backends: vec![],
+                model: None,
                 prompt: String::new(),
                 depends_on: vec!["late_step".to_string()], // depends on step defined later
                 when: None,
@@ -2959,6 +2969,7 @@ line2"}"#;
                 name: "late_step".to_string(),
                 backend: String::new(),
                 backends: vec![],
+                model: None,
                 prompt: String::new(),
                 depends_on: vec![], // no dependencies
                 when: None,

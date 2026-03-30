@@ -1,0 +1,87 @@
+task_id: CLO-181
+title: "Add per-step model override for Backend::query()"
+url: https://linear.app/cloud-ai/issue/CLO-181/add-per-step-model-override-for-backendquery
+task_type: specification
+branch: feat/clo-181-per-step-model-override
+blocks:
+  - CLO-184
+blocked_by:
+  - CLO-180  # Done
+
+workflow:
+  current_phase: implement
+  status: in_progress
+  started_at: "2026-03-30T21:00:00Z"
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: specs/2026-03-30-clo-181-per-step-model-override.md
+    approved: true
+    review_gemini: null  # Gemini produced MCP noise instead of review
+    review_ollama: docs/reviews/clo-181-review-ollama.md
+    review_claude: docs/reviews/clo-181-review-claude.md
+    review_synthesis: docs/reviews/clo-181-review-synthesis.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - "Added CLO-180 dependency reference"
+      - "Fixed file count from 7 to 6"
+      - "Gemini/Codex CLIs support --model flag - updated to pass it"
+      - "Claude API: specified query_api() accepts model override"
+      - "Ollama: specified chat() threading for model override"
+      - "Added empty-string normalization convention to constraints"
+      - "Added logging preference for model overrides"
+      - "Clarified synthesis query uses backend default, not step model"
+      - "Documented Bedrock full model ID requirement"
+    flagged_suggestions: []
+  implement:
+    status: complete
+  pr:
+    status: complete
+    pr_url: https://github.com/maxkulish/lok/pull/2
+    pr_number: 2
+  complete:
+    status: pending
+
+history:
+  - timestamp: "2026-03-30T21:00:00Z"
+    action: workflow_started
+    phase: init
+    details: "Specification workflow initialized for CLO-181. Blocker CLO-180 is Done. Branch: feat/clo-181-per-step-model-override."
+  - timestamp: "2026-03-30T21:05:00Z"
+    action: spec_created
+    phase: spec
+    details: "Spec created at specs/2026-03-30-clo-181-per-step-model-override.md. M scope, 8 sub-tasks, 11 files."
+  - timestamp: "2026-03-30T21:10:00Z"
+    action: spec_review_complete
+    phase: spec
+    details: "AI review complete. Gemini FAILED (MCP noise), Ollama APPROVE, Claude APPROVE_WITH_SUGGESTIONS. Consensus: APPROVE_WITH_SUGGESTIONS."
+  - timestamp: "2026-03-30T21:12:00Z"
+    action: spec_review_applied
+    phase: spec
+    details: "Applied 9 suggestions. Key changes: Gemini/Codex model flags, Claude API query_api() threading, Ollama chat() threading, empty-string normalization, synthesis query behavior."
+  - timestamp: "2026-03-30T21:15:00Z"
+    action: spec_approved
+    phase: spec
+    details: "Spec approved. Proceeding to implementation."
+  - timestamp: "2026-03-30T21:25:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "All 8 sub-tasks complete. 11 source files modified. 173 tests passing. Commit 1538601."
+  - timestamp: "2026-03-30T21:26:00Z"
+    action: pushed_to_remote
+    phase: pr
+    details: "Branch pushed to origin/feat/clo-181-per-step-model-override"
+  - timestamp: "2026-03-30T21:26:30Z"
+    action: pr_created
+    phase: pr
+    details: "PR #2 created: https://github.com/maxkulish/lok/pull/2"
