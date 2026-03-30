@@ -795,8 +795,8 @@ impl WorkflowRunner {
                                     };
 
                                     match tokio::time::timeout(timeout_duration, backend.query(&iter_prompt, &cwd)).await {
-                                        Ok(Ok(text)) => {
-                                            iter_output = text;
+                                        Ok(Ok(qo)) => {
+                                            iter_output = qo.stdout;
                                             iter_success = true;
                                         }
                                         Ok(Err(e)) => {
@@ -966,7 +966,7 @@ impl WorkflowRunner {
                                         return (bn.clone(), Err(format!("Backend {} not available", bn)));
                                     }
                                     match tokio::time::timeout(timeout_dur, backend.query(&prompt, &cwd)).await {
-                                        Ok(Ok(text)) => (bn.clone(), Ok(text)),
+                                        Ok(Ok(qo)) => (bn.clone(), Ok(qo.stdout)),
                                         Ok(Err(e)) => (bn.clone(), Err(e.to_string())),
                                         Err(_) => (bn.clone(), Err(format!("Timeout after {}s", timeout_dur.as_secs()))),
                                     }
@@ -1070,7 +1070,8 @@ impl WorkflowRunner {
                                     if let Some(synth_config) = config.backends.get(synth_backend_name) {
                                         if let Ok(synth_backend) = backend::create_backend(synth_backend_name, synth_config) {
                                             match tokio::time::timeout(timeout_duration, synth_backend.query(&synth_prompt, &cwd)).await {
-                                                Ok(Ok(synthesized)) => {
+                                                Ok(Ok(qo)) => {
+                                                    let synthesized = qo.stdout;
                                                     println!("    {} Synthesized", "✓".green());
                                                     (synthesized, Some(synth_backend_name.to_string()))
                                                 }
@@ -1180,8 +1181,8 @@ impl WorkflowRunner {
                             // Record backend query
 
                             match tokio::time::timeout(timeout_duration, backend.query(&prompt, &cwd)).await {
-                                Ok(Ok(t)) => {
-                                    text = t;
+                                Ok(Ok(qo)) => {
+                                    text = qo.stdout;
                                     query_success = true;
                                     break;
                                 }
@@ -1387,8 +1388,8 @@ impl WorkflowRunner {
                                                     prompt, error_msg
                                                 );
                                                 match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd)).await {
-                                                    Ok(Ok(new_response)) => {
-                                                        current_text = new_response;
+                                                    Ok(Ok(qo)) => {
+                                                        current_text = qo.stdout;
                                                         continue 'fix_loop;
                                                     }
                                                     Ok(Err(e)) => {
@@ -1435,8 +1436,8 @@ impl WorkflowRunner {
                                                     prompt, error_msg
                                                 );
                                                 match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd)).await {
-                                                    Ok(Ok(new_response)) => {
-                                                        current_text = new_response;
+                                                    Ok(Ok(qo)) => {
+                                                        current_text = qo.stdout;
                                                         continue 'fix_loop;
                                                     }
                                                     Ok(Err(e)) => {

@@ -79,7 +79,7 @@ impl Team {
 
         // Query primary
         println!("{} Querying {}...", "→".cyan(), primary.name.to_uppercase());
-        let primary_result = primary_backend.query(task, &self.cwd).await?;
+        let primary_result = primary_backend.query(task, &self.cwd).await?.stdout;
 
         println!();
         println!(
@@ -119,7 +119,7 @@ impl Team {
                 );
 
                 match other_backend.query(&prompt, &self.cwd).await {
-                    Ok(response) => {
+                    Ok(query_output) => {
                         println!();
                         println!(
                             "{}",
@@ -127,8 +127,8 @@ impl Team {
                                 .green()
                                 .bold()
                         );
-                        println!("{}", response);
-                        all_responses.push((other_profile.name.clone(), response));
+                        println!("{}", query_output.stdout);
+                        all_responses.push((other_profile.name.clone(), query_output.stdout));
                     }
                     Err(e) => {
                         eprintln!("{} {} failed: {}", "!".red(), other_profile.name, e);

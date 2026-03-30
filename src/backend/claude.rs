@@ -142,7 +142,7 @@ impl ClaudeBackend {
         Ok(text)
     }
 
-    async fn query_cli(&self, prompt: &str, cwd: &Path) -> Result<String> {
+    async fn query_cli(&self, prompt: &str, cwd: &Path) -> Result<super::QueryOutput> {
         let (command, model) = match &self.mode {
             ClaudeMode::Cli { command, model } => (command, model),
             ClaudeMode::Api { .. } => anyhow::bail!("CLI mode required for this operation"),
@@ -169,13 +169,19 @@ impl ClaudeBackend {
             .await
             .context("Failed to execute claude command")?;
 
+        let exit_code = output.status.code().unwrap_or(-1);
+        let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Claude CLI failed: {}", stderr);
+            anyhow::bail!("Claude CLI failed: {}", stderr_str);
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(stdout.trim().to_string())
+        Ok(super::QueryOutput::from_process(
+            stdout.trim().to_string(),
+            stderr_str,
+            exit_code,
+        ))
     }
 
     pub async fn query_with_system(&self, system: &str, prompt: &str) -> Result<String> {
@@ -184,7 +190,8 @@ impl ClaudeBackend {
             ClaudeMode::Cli { .. } => {
                 // For CLI mode, prepend system prompt to user prompt
                 let full_prompt = format!("{}\n\n{}", system, prompt);
-                self.query_cli(&full_prompt, Path::new(".")).await
+                let output = self.query_cli(&full_prompt, Path::new(".")).await?;
+                Ok(output.stdout)
             }
         }
     }
@@ -196,11 +203,12 @@ impl super::Backend for ClaudeBackend {
         "claude"
     }
 
-    async fn query(&self, prompt: &str, cwd: &Path) -> Result<String> {
+    async fn query(&self, prompt: &str, cwd: &Path) -> Result<super::QueryOutput> {
         match &self.mode {
             ClaudeMode::Api { .. } => {
-                self.query_with_system("You are a helpful assistant.", prompt)
-                    .await
+                let text = self.query_with_system("You are a helpful assistant.", prompt)
+                    .await?;
+                Ok(super::QueryOutput::from_text(text))
             }
             ClaudeMode::Cli { .. } => self.query_cli(prompt, cwd).await,
         }
