@@ -21,10 +21,11 @@ use std::time::{Duration, Instant};
 
 /// Structured output from a backend query, capturing stdout, stderr, and exit code.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct QueryOutput {
     pub stdout: String,
+    #[allow(dead_code)]
     pub stderr: Option<String>,
+    #[allow(dead_code)]
     pub exit_code: Option<i32>,
 }
 

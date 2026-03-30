@@ -192,18 +192,6 @@ impl ClaudeBackend {
         ))
     }
 
-    #[allow(dead_code)]
-    pub async fn query_with_system(&self, system: &str, prompt: &str) -> Result<String> {
-        match &self.mode {
-            ClaudeMode::Api { .. } => self.query_api(system, prompt, None).await,
-            ClaudeMode::Cli { .. } => {
-                // For CLI mode, prepend system prompt to user prompt
-                let full_prompt = format!("{}\n\n{}", system, prompt);
-                let output = self.query_cli(&full_prompt, Path::new("."), None).await?;
-                Ok(output.stdout)
-            }
-        }
-    }
 }
 
 #[async_trait]
