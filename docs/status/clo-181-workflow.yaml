@@ -44,9 +44,11 @@ phases:
       - "Documented Bedrock full model ID requirement"
     flagged_suggestions: []
   implement:
-    status: pending
+    status: complete
   pr:
-    status: pending
+    status: complete
+    pr_url: https://github.com/maxkulish/lok/pull/2
+    pr_number: 2
   complete:
     status: pending
 
@@ -71,3 +73,15 @@ history:
     action: spec_approved
     phase: spec
     details: "Spec approved. Proceeding to implementation."
+  - timestamp: "2026-03-30T21:25:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "All 8 sub-tasks complete. 11 source files modified. 173 tests passing. Commit 1538601."
+  - timestamp: "2026-03-30T21:26:00Z"
+    action: pushed_to_remote
+    phase: pr
+    details: "Branch pushed to origin/feat/clo-181-per-step-model-override"
+  - timestamp: "2026-03-30T21:26:30Z"
+    action: pr_created
+    phase: pr
+    details: "PR #2 created: https://github.com/maxkulish/lok/pull/2"
