@@ -2023,6 +2023,7 @@ async fn run_shell(cmd: &str, cwd: &Path, wrapper: Option<&str>) -> Result<Shell
         .arg(&final_cmd)
         .current_dir(cwd)
         .kill_on_drop(true)
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
