@@ -410,7 +410,9 @@ pub struct StepResult {
     pub success: bool,
     pub elapsed_ms: u64,
     pub backend: Option<String>,
-    /// Original output before validation cleaning. None when no validation ran.
+    /// Original output before validation mutations. Populated only when validation
+    /// changes `output`; None if validation ran but made no changes, or when no
+    /// validation ran.
     #[allow(dead_code)]
     pub raw_output: Option<String>,
     /// Captured stderr from CLI backends. None for API backends and error-path results.
@@ -2040,7 +2042,7 @@ async fn run_shell(cmd: &str, cwd: &Path, wrapper: Option<&str>) -> Result<Shell
 
     Ok(ShellOutput {
         stdout,
-        stderr: Some(stderr_str).filter(|s| !s.is_empty()),
+        stderr: Some(stderr_str).filter(|s| !s.trim().is_empty()),
         exit_code: output.status.code(),
     })
 }
