@@ -23,9 +23,7 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone)]
 pub struct QueryOutput {
     pub stdout: String,
-    #[allow(dead_code)]
     pub stderr: Option<String>,
-    #[allow(dead_code)]
     pub exit_code: Option<i32>,
 }
 

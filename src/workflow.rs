@@ -410,6 +410,60 @@ pub struct StepResult {
     pub success: bool,
     pub elapsed_ms: u64,
     pub backend: Option<String>,
+    /// Original output before validation cleaning. None when no validation ran.
+    #[allow(dead_code)]
+    pub raw_output: Option<String>,
+    /// Captured stderr from CLI backends. None for API backends and error-path results.
+    #[allow(dead_code)]
+    pub stderr: Option<String>,
+    /// Process exit code from CLI backends. None for API backends, error-path results,
+    /// and processes killed by signal (Unix: status.code() returns None for signal kills).
+    #[allow(dead_code)]
+    pub exit_code: Option<i32>,
+    /// Validation result. None when step has no `validate` clause.
+    #[allow(dead_code)]
+    pub validation: Option<ValidationResult>,
+}
+
+impl StepResult {
+    /// Create an error result with all extension fields set to None.
+    fn error(name: String, output: String, elapsed_ms: u64, backend: Option<String>) -> Self {
+        Self {
+            name,
+            output,
+            parsed_output: None,
+            success: false,
+            elapsed_ms,
+            backend,
+            raw_output: None,
+            stderr: None,
+            exit_code: None,
+            validation: None,
+        }
+    }
+}
+
+/// Result of validating a step's output.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct ValidationResult {
+    pub passed: bool,
+    pub failure_type: Option<FailureType>,
+    pub failure_reason: Option<String>,
+    /// Identifier for which validator ran: "heuristic:not_empty", "heuristic:min_length", "llm:haiku"
+    pub validator: String,
+    pub elapsed_ms: u64,
+}
+
+/// Why a validation check failed. Scoped to validation-domain failures only.
+/// Execution failures (timeout, backend error) are represented by StepResult.success = false.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum FailureType {
+    /// Output failed a heuristic or LLM validation check
+    ValidationFailed,
+    /// Output was empty or whitespace-only
+    EmptyOutput,
 }
 
 /// Prepared step ready for execution
@@ -574,14 +628,12 @@ impl WorkflowRunner {
                         );
                         if workflow.step_continue_on_error(step) {
                             println!("{} {} ({})", "[skip]".yellow(), step.name.bold(), msg);
-                            let skip_result = StepResult {
-                                name: step.name.clone(),
-                                output: format!("Skipped: {}", msg),
-                                parsed_output: None,
-                                success: false,
-                                elapsed_ms: 0,
-                                backend: None,
-                            };
+                            let skip_result = StepResult::error(
+                                step.name.clone(),
+                                format!("Skipped: {}", msg),
+                                0,
+                                None,
+                            );
                             results.insert(step.name.clone(), skip_result.clone());
                             ordered_results.push(skip_result);
                             continue;
@@ -613,17 +665,15 @@ impl WorkflowRunner {
                             hard_failed_deps.join(", ")
                         );
                         // Record as skipped but not failed
-                        let skip_result = StepResult {
-                            name: step.name.clone(),
-                            output: format!(
+                        let skip_result = StepResult::error(
+                            step.name.clone(),
+                            format!(
                                 "Skipped: dependency failed ({})",
                                 hard_failed_deps.join(", ")
                             ),
-                            parsed_output: None,
-                            success: false,
-                            elapsed_ms: 0,
-                            backend: None,
-                        };
+                            0,
+                            None,
+                        );
                         results.insert(step.name.clone(), skip_result.clone());
                         ordered_results.push(skip_result);
                         continue;
@@ -750,8 +800,8 @@ impl WorkflowRunner {
                                 // Shell iteration
                                 if let Some(ref shell_cmd) = iter_shell {
                                     match tokio::time::timeout(timeout_duration, run_shell(shell_cmd, &cwd, self.config.defaults.command_wrapper.as_deref())).await {
-                                        Ok(Ok(output)) => {
-                                            iter_output = output;
+                                        Ok(Ok(shell_out)) => {
+                                            iter_output = shell_out.stdout;
                                             iter_success = true;
                                         }
                                         Ok(Err(e)) => {
@@ -846,6 +896,10 @@ impl WorkflowRunner {
                                 success: all_success,
                                 elapsed_ms,
                                 backend: if shell.is_none() { Some(backend_name) } else { None },
+                                raw_output: None,
+                                stderr: None,
+                                exit_code: None,
+                                validation: None,
                             };
                         }
 
@@ -869,7 +923,7 @@ impl WorkflowRunner {
                                 }
 
                                 match tokio::time::timeout(timeout_duration, run_shell(shell_cmd, &cwd, self.config.defaults.command_wrapper.as_deref())).await {
-                                    Ok(Ok(output)) => {
+                                    Ok(Ok(shell_output)) => {
                                         let elapsed_ms = start.elapsed().as_millis() as u64;
                                         // Record step complete (success)
                                         println!(
@@ -878,16 +932,20 @@ impl WorkflowRunner {
                                             elapsed_ms as f64 / 1000.0
                                         );
                                         let parsed = parse_step_output(
-                                            &output,
+                                            &shell_output.stdout,
                                             output_format.as_deref(),
                                         );
                                         return StepResult {
                                             name: step_name,
-                                            output,
+                                            output: shell_output.stdout,
                                             parsed_output: parsed,
                                             success: true,
                                             elapsed_ms,
                                             backend: None,
+                                            raw_output: None,
+                                            stderr: shell_output.stderr,
+                                            exit_code: shell_output.exit_code,
+                                            validation: None,
                                         };
                                     }
                                     Ok(Err(e)) => {
@@ -897,14 +955,7 @@ impl WorkflowRunner {
                                             // Record step complete (failure)
                                             let summary = summarize_backend_error("shell", &e.to_string());
                                             println!("  {} {}", "✗".red(), summary);
-                                            return StepResult {
-                                                name: step_name,
-                                                output: format!("Error: {}", e),
-                                                parsed_output: None,
-                                                success: false,
-                                                elapsed_ms,
-                                                backend: None,
-                                            };
+                                            return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, None);
                                         }
                                         let summary = summarize_backend_error("shell", &e.to_string());
                                         println!("  {} {} (will retry)", "⚠".yellow(), summary);
@@ -915,14 +966,7 @@ impl WorkflowRunner {
                                             let elapsed_ms = start.elapsed().as_millis() as u64;
                                             // Record step complete (failure - timeout)
                                             println!("  {} timed out after {}s", "✗".red(), timeout_duration.as_secs());
-                                            return StepResult {
-                                                name: step_name,
-                                                output: format!("Error: {}", last_error),
-                                                parsed_output: None,
-                                                success: false,
-                                                elapsed_ms,
-                                                backend: None,
-                                            };
+                                            return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, None);
                                         }
                                         println!("  {} timed out (will retry)", "⚠".yellow());
                                     }
@@ -932,14 +976,7 @@ impl WorkflowRunner {
                             // Should never reach here, but just in case
                             let elapsed_ms = start.elapsed().as_millis() as u64;
                             // Record step complete (failure - fallback)
-                            return StepResult {
-                                name: step_name,
-                                output: format!("Error: {}", last_error),
-                                parsed_output: None,
-                                success: false,
-                                elapsed_ms,
-                                backend: None,
-                            };
+                            return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, None);
                         }
 
                         // LLM step - query backend(s)
@@ -1000,14 +1037,7 @@ impl WorkflowRunner {
 
                             if responses.is_empty() {
                                 let elapsed_ms = start.elapsed().as_millis() as u64;
-                                return StepResult {
-                                    name: step_name,
-                                    output: format!("All backends failed: {}", errors.join("; ")),
-                                    parsed_output: None,
-                                    success: false,
-                                    elapsed_ms,
-                                    backend: None,
-                                };
+                                return StepResult::error(step_name, format!("All backends failed: {}", errors.join("; ")), elapsed_ms, None);
                             }
 
                             // Apply consensus strategy
@@ -1118,6 +1148,10 @@ impl WorkflowRunner {
                                 success: true,
                                 elapsed_ms,
                                 backend: used_backend,
+                                raw_output: None,
+                                stderr: None,
+                                exit_code: None,
+                                validation: None,
                             };
                         }
 
@@ -1126,14 +1160,7 @@ impl WorkflowRunner {
                             Some(cfg) => cfg,
                             None => {
                                 // Record step complete (failure - backend not found)
-                                return StepResult {
-                                    name: step_name,
-                                    output: format!("Backend not found: {}", backend_name),
-                                    parsed_output: None,
-                                    success: false,
-                                    elapsed_ms: 0,
-                                    backend: Some(backend_name),
-                                };
+                                return StepResult::error(step_name, format!("Backend not found: {}", backend_name), 0, Some(backend_name));
                             }
                         };
 
@@ -1141,33 +1168,21 @@ impl WorkflowRunner {
                             Ok(b) => b,
                             Err(e) => {
                                 // Record step complete (failure - failed to create backend)
-                                return StepResult {
-                                    name: step_name,
-                                    output: format!("Failed to create backend: {}", e),
-                                    parsed_output: None,
-                                    success: false,
-                                    elapsed_ms: 0,
-                                    backend: Some(backend_name),
-                                };
+                                return StepResult::error(step_name, format!("Failed to create backend: {}", e), 0, Some(backend_name));
                             }
                         };
 
                         if !backend.is_available() {
                             // Record step complete (failure - backend not available)
                             println!("  {} Backend not available", "✗".red());
-                            return StepResult {
-                                name: step_name,
-                                output: format!("Backend {} not available", backend_name),
-                                parsed_output: None,
-                                success: false,
-                                elapsed_ms: 0,
-                                backend: Some(backend_name),
-                            };
+                            return StepResult::error(step_name, format!("Backend {} not available", backend_name), 0, Some(backend_name));
                         }
 
                         // Execute LLM query (with retry support)
                         let mut last_error = String::new();
                         let mut text = String::new();
+                        let mut step_stderr: Option<String> = None;
+                        let mut step_exit_code: Option<i32> = None;
                         let mut query_success = false;
 
                         for attempt in 0..=max_retries {
@@ -1189,6 +1204,8 @@ impl WorkflowRunner {
                             match tokio::time::timeout(timeout_duration, backend.query(&prompt, &cwd, model_override.as_deref())).await {
                                 Ok(Ok(qo)) => {
                                     text = qo.stdout;
+                                    step_stderr = qo.stderr;
+                                    step_exit_code = qo.exit_code;
                                     query_success = true;
                                     break;
                                 }
@@ -1199,14 +1216,7 @@ impl WorkflowRunner {
                                         let summary = summarize_backend_error(&backend_name, &e.to_string());
                                         println!("  {} {} {}", "✗".red(), backend_name.to_uppercase(), summary);
                                         // Record step complete (failure)
-                                        return StepResult {
-                                            name: step_name,
-                                            output: format!("Error: {}", e),
-                                            parsed_output: None,
-                                            success: false,
-                                            elapsed_ms,
-                                            backend: Some(backend_name),
-                                        };
+                                        return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, Some(backend_name));
                                     }
                                     let summary = summarize_backend_error(&backend_name, &e.to_string());
                                     println!("  {} {} {} (will retry)", "⚠".yellow(), backend_name.to_uppercase(), summary);
@@ -1217,14 +1227,7 @@ impl WorkflowRunner {
                                         let elapsed_ms = start.elapsed().as_millis() as u64;
                                         println!("  {} {} timed out after {}s", "✗".red(), backend_name.to_uppercase(), timeout_duration.as_secs());
                                         // Record step complete (failure)
-                                        return StepResult {
-                                            name: step_name,
-                                            output: format!("Error: {}", last_error),
-                                            parsed_output: None,
-                                            success: false,
-                                            elapsed_ms,
-                                            backend: Some(backend_name),
-                                        };
+                                        return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, Some(backend_name));
                                     }
                                     println!("  {} {} timed out (will retry)", "⚠".yellow(), backend_name.to_uppercase());
                                 }
@@ -1294,17 +1297,7 @@ impl WorkflowRunner {
                                                                 }
                                                             }
                                                             // Record step complete (failure)
-                                                            return StepResult {
-                                                                name: step_name,
-                                                                output: format!(
-                                                                    "Edit failed: {}\n\nOriginal output:\n{}",
-                                                                    e, current_text
-                                                                ),
-                                                                parsed_output: None,
-                                                                success: false,
-                                                                elapsed_ms,
-                                                                backend: Some(backend_name.clone()),
-                                                            };
+                                                            return StepResult::error(step_name, format!("Edit failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()));
                                                         }
                                                     }
                                                 }
@@ -1322,17 +1315,7 @@ impl WorkflowRunner {
                                                 e
                                             );
                                             // Record step complete (failure)
-                                            return StepResult {
-                                                name: step_name,
-                                                output: format!(
-                                                    "Parse failed: {}\n\nOriginal output:\n{}",
-                                                    e, current_text
-                                                ),
-                                                parsed_output: None,
-                                                success: false,
-                                                elapsed_ms,
-                                                backend: Some(backend_name.clone()),
-                                            };
+                                            return StepResult::error(step_name, format!("Parse failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()));
                                         }
                                     }
                                 }
@@ -1396,6 +1379,8 @@ impl WorkflowRunner {
                                                 match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd, model_override.as_deref())).await {
                                                     Ok(Ok(qo)) => {
                                                         current_text = qo.stdout;
+                                                        step_stderr = qo.stderr;
+                                                        step_exit_code = qo.exit_code;
                                                         continue 'fix_loop;
                                                     }
                                                     Ok(Err(e)) => {
@@ -1407,17 +1392,7 @@ impl WorkflowRunner {
                                                 }
                                             }
                                             // No retries left or re-query failed
-                                            return StepResult {
-                                                name: step_name,
-                                                output: format!(
-                                                    "Verification failed: {}\n\nOriginal output:\n{}",
-                                                    e, current_text
-                                                ),
-                                                parsed_output: None,
-                                                success: false,
-                                                elapsed_ms,
-                                                backend: Some(backend_name.clone()),
-                                            };
+                                            return StepResult::error(step_name, format!("Verification failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()));
                                         }
                                         Err(_) => {
                                             let error_msg = format!("Verification timed out after {}ms", timeout_ms);
@@ -1444,6 +1419,8 @@ impl WorkflowRunner {
                                                 match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd, model_override.as_deref())).await {
                                                     Ok(Ok(qo)) => {
                                                         current_text = qo.stdout;
+                                                        step_stderr = qo.stderr;
+                                                        step_exit_code = qo.exit_code;
                                                         continue 'fix_loop;
                                                     }
                                                     Ok(Err(e)) => {
@@ -1455,17 +1432,7 @@ impl WorkflowRunner {
                                                 }
                                             }
                                             // No retries left or re-query failed
-                                            return StepResult {
-                                                name: step_name,
-                                                output: format!(
-                                                    "{}\n\nOriginal output:\n{}",
-                                                    error_msg, current_text
-                                                ),
-                                                parsed_output: None,
-                                                success: false,
-                                                elapsed_ms,
-                                                backend: Some(backend_name.clone()),
-                                            };
+                                            return StepResult::error(step_name, format!("{}\n\nOriginal output:\n{}", error_msg, current_text), elapsed_ms, Some(backend_name.clone()));
                                         }
                                     }
                                 }
@@ -1489,18 +1456,15 @@ impl WorkflowRunner {
                                 success: true,
                                 elapsed_ms,
                                 backend: Some(backend_name),
+                                raw_output: None,
+                                stderr: step_stderr,
+                                exit_code: step_exit_code,
+                                validation: None,
                             }
                         } else {
                             // Record step complete (failure - should never reach here)
                             // Should never reach here given retry loop logic, but just in case
-                            StepResult {
-                                name: step_name,
-                                output: format!("Error: {}", last_error),
-                                parsed_output: None,
-                                success: false,
-                                elapsed_ms,
-                                backend: Some(backend_name),
-                            }
+                            StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, Some(backend_name))
                         }
                     }
                 })
@@ -2027,9 +1991,16 @@ fn parse_for_each_array(
     }
 }
 
-/// Run a shell command and return output
-/// If wrapper is provided (e.g., "nix-shell --run '{cmd}'"), the command will be wrapped
-async fn run_shell(cmd: &str, cwd: &Path, wrapper: Option<&str>) -> Result<String> {
+/// Structured output from a shell command.
+struct ShellOutput {
+    stdout: String,
+    stderr: Option<String>,
+    exit_code: Option<i32>,
+}
+
+/// Run a shell command and return structured output with separated stdout/stderr.
+/// If wrapper is provided (e.g., "nix-shell --run '{cmd}'"), the command will be wrapped.
+async fn run_shell(cmd: &str, cwd: &Path, wrapper: Option<&str>) -> Result<ShellOutput> {
     // Apply wrapper if provided
     let final_cmd = if let Some(w) = wrapper {
         // If wrapper uses single quotes around {cmd}, escape single quotes in the command
@@ -2060,14 +2031,18 @@ async fn run_shell(cmd: &str, cwd: &Path, wrapper: Option<&str>) -> Result<Strin
         .await
         .context("Failed to wait for shell command")?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
 
     if !output.status.success() {
-        anyhow::bail!("Shell command failed: {}\n{}", final_cmd, stderr);
+        anyhow::bail!("Shell command failed: {}\n{}", final_cmd, stderr_str);
     }
 
-    Ok(format!("{}{}", stdout, stderr).trim().to_string())
+    Ok(ShellOutput {
+        stdout,
+        stderr: Some(stderr_str).filter(|s| !s.is_empty()),
+        exit_code: output.status.code(),
+    })
 }
 
 /// Extract JSON array from text (similar to extract_json_from_text but for arrays)
@@ -2771,6 +2746,10 @@ mod tests {
                 success: true,
                 elapsed_ms: 1000,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
@@ -3023,6 +3002,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
         results.insert(
@@ -3034,6 +3017,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 50,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
         results
@@ -3122,6 +3109,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
         results.insert(
@@ -3133,6 +3124,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
@@ -3252,6 +3247,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
@@ -3275,6 +3274,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
@@ -3310,6 +3313,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
@@ -3333,6 +3340,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
@@ -3437,6 +3448,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
@@ -3460,6 +3475,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
@@ -3713,6 +3732,10 @@ line2"}"#;
                 success: true,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
@@ -3726,6 +3749,10 @@ line2"}"#;
                 success: false,
                 elapsed_ms: 100,
                 backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
             },
         );
 
