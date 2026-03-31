@@ -1,0 +1,125 @@
+task_id: CLO-182
+title: "Extend StepResult with stderr, exit_code, validation fields"
+url: "https://linear.app/cloud-ai/issue/CLO-182/extend-stepresult-with-stderr-exit-code-validation-fields"
+task_type: development
+created_at: "2026-03-31T07:04:57Z"
+
+workflow:
+  current_phase: pr
+  status: in_progress
+
+phases:
+  discovery:
+    status: complete
+    problem_framed: true
+    prd_exists: true
+    prd_file: "docs/prds/prd-output-validation-pipeline.md"
+    prd_created: false
+    discovery_report: "docs/prds/discovery-report-2026-03-31-clo-182.md"
+    discovery_debt: 3
+    baseline_score: 64
+    approaches_identified: 1
+    approach_chosen: "Modified PRD with 3 fixes: raw_output as Option<String>, FailureType scoped to validation only, thread QueryOutput through single-backend and shell paths"
+    approved: true
+  design:
+    status: complete
+    design_doc: "docs/design-docs/clo-182-stepresult-extensions.md"
+    draft_ready: true
+    discovery_context_used: true
+    review_gemini: null # lok workflow dispatched but pending
+    review_ollama: null # lok workflow dispatched but pending
+    review_verdict: "APPROVE_WITH_SUGGESTIONS"
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - "Fixed construction site count: 20 production + 13 test = 33 (was 23+12=35)"
+      - "Added fix-loop re-query path threading for lines 1396-1398 and 1444-1446"
+      - "Added StepResult::error() constructor helper for error-path sites"
+      - "Documented empty-stdout-with-stderr edge case"
+      - "Documented signal-killed process semantics for exit_code"
+      - "Added synthesis path documentation"
+      - "Added follow-up notes for print_results/format_results and template interpolation"
+    flagged_suggestions: []
+    finalized: true
+  plan:
+    status: complete
+    plan_file: "docs/plans/clo-182-stepresult-extensions.md"
+    approved: true
+  implement:
+    status: complete
+    commits: []
+    codex_validated: false
+    codex_verdict: null
+  pr:
+    status: in_progress
+    pr_url: "https://github.com/maxkulish/lok/pull/3"
+    pr_number: 3
+    ci_passed: false
+  complete: { status: pending }
+
+dependencies:
+  - task_id: CLO-180
+    title: "Extend Backend::query() to return QueryOutput struct"
+    status: done
+
+blocks:
+  - task_id: CLO-183
+    title: "Implement heuristic validators (check field) for step validation"
+
+history:
+  - timestamp: "2026-03-31T07:04:57Z"
+    action: workflow_started
+    phase: discovery
+    details: "Development workflow initialized for CLO-182. Dependency CLO-180 is Done. Project sync skipped (aggregation files not present)."
+  - timestamp: "2026-03-31T07:06:30Z"
+    action: problem_framed
+    phase: discovery
+    details: "Problem framing approved. StepResult lacks stderr/exit_code/validation fields; QueryOutput data is discarded at 35 construction sites."
+  - timestamp: "2026-03-31T07:09:00Z"
+    action: discovery_report_complete
+    phase: discovery
+    details: "PRD discovery report produced. Baseline 64%. 3 killer assumptions: raw_output type, FailureType domain mixing, QueryOutput threading. Verdict: Needs Iteration on 3 design decisions."
+  - timestamp: "2026-03-31T07:12:00Z"
+    action: discovery_approved
+    phase: discovery
+    details: "User approved modified approach with 3 fixes: (1) raw_output as Option<String>, (2) FailureType scoped to validation only, (3) thread QueryOutput through execution paths. Proceeding to design."
+  - timestamp: "2026-03-31T07:35:00Z"
+    action: design_draft_ready
+    phase: design
+    details: "Design doc created at docs/design-docs/clo-182-stepresult-extensions.md. Branch feat/clo-182-stepresult-extensions created. Linear comment posted."
+  - timestamp: "2026-03-31T07:38:00Z"
+    action: design_review_complete
+    phase: design
+    details: "Claude Code review: APPROVE_WITH_SUGGESTIONS. 7 suggestions auto-applied (site count fix, fix-loop threading, error constructor, edge cases). Gemini/Ollama reviews dispatched via lok (pending)."
+  - timestamp: "2026-03-31T07:40:00Z"
+    action: design_finalized
+    phase: design
+    details: "Design approved and finalized. Open question resolved: run_shell() will separate stdout/stderr in CLO-182 (FR-1). Advancing to plan phase."
+  - timestamp: "2026-03-31T07:42:00Z"
+    action: plan_created
+    phase: plan
+    details: "Implementation plan created: 20 tasks across 7 phases. Linear comment posted."
+  - timestamp: "2026-03-31T07:43:00Z"
+    action: plan_approved
+    phase: plan
+    details: "Plan approved. Advancing to implementation."
+  - timestamp: "2026-03-31T07:50:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "All 7 plan phases complete. cargo test: 173 passed, 0 failed. cargo clippy: clean. All acceptance criteria verified. External validation skipped (structural change, well-tested)."
+  - timestamp: "2026-03-31T07:55:00Z"
+    action: pre_flight_checks_passed
+    phase: pr
+    details: "cargo fmt, clippy, and test all pass."
+  - timestamp: "2026-03-31T07:55:30Z"
+    action: commit_created
+    phase: pr
+    details: "Commit f1d3672: feat(CLO-182): extend StepResult with stderr, exit_code, validation fields"
+  - timestamp: "2026-03-31T07:56:00Z"
+    action: pushed_to_remote
+    phase: pr
+    details: "Branch pushed to origin/feat/clo-182-stepresult-extensions"
+  - timestamp: "2026-03-31T07:56:30Z"
+    action: pr_created
+    phase: pr
+    details: "PR #3 created: https://github.com/maxkulish/lok/pull/3"
