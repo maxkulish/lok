@@ -53,9 +53,10 @@ phases:
       - "d582a9c"
     last_phase_completed: "Phase 4: Testing"
   pr:
-    status: pending
-    pr_url: null
-    pr_number: null
+    status: in_progress
+    pr_url: "https://github.com/maxkulish/lok/pull/6"
+    pr_number: 6
+    ci_passed: false
   complete:
     status: pending
 
@@ -112,3 +113,15 @@ history:
     action: implementation_complete
     phase: implement
     details: "All phases complete. 226 tests pass, clippy clean. Commit d582a9c."
+  - timestamp: "2026-04-03T00:13:00Z"
+    action: pre_flight_checks_passed
+    phase: pr
+    details: "cargo fmt, clippy, and test all pass."
+  - timestamp: "2026-04-03T00:14:00Z"
+    action: pushed_to_remote
+    phase: pr
+    details: "Branch pushed to origin/feat/clo-185-structured-failure-data"
+  - timestamp: "2026-04-03T00:15:00Z"
+    action: pr_created
+    phase: pr
+    details: "PR #6 created: https://github.com/maxkulish/lok/pull/6"
