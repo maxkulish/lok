@@ -6,7 +6,7 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-185](https://linear.app/cloud-ai/issue/CLO-185) | Implement structured failure data for step errors | In Progress | Phase 3 | - |
 
 ## Up Next (Prioritized Backlog)
 

@@ -1,0 +1,99 @@
+task_id: CLO-185
+title: "Implement structured failure data for step errors"
+task_type: development
+linear_url: "https://linear.app/cloud-ai/issue/CLO-185/implement-structured-failure-data-for-step-errors"
+branch: "feat/clo-185-structured-failure-data"
+
+workflow:
+  current_phase: plan
+  status: in_progress
+  started_at: "2026-04-03T00:00:00Z"
+
+phases:
+  discovery:
+    status: complete
+    approved: true
+    problem_framed: true
+    prd_exists: true
+    prd_file: "docs/prds/prd-structured-failure-data.md"
+    prd_created: true
+    discovery_report: "docs/prds/discovery-report-2026-04-03-clo-185.md"
+    discovery_debt: 3
+    baseline_score: 71
+    approaches_identified: 3
+    approach_chosen: "Separate StepFailure struct - add failure: Option<StepFailure> to StepResult with its own StepFailureKind enum, keeping ValidationResult/FailureType unchanged per CLO-182 contract"
+  design:
+    status: complete
+    design_doc: "docs/design-docs/clo-185-structured-failure-data.md"
+    draft_ready: true
+    discovery_context_used: true
+    review_gemini: null  # timed out
+    review_ollama: "docs/reviews/clo-185-review-ollama.md"
+    review_claude: "docs/reviews/clo-185-review-claude.md"
+    review_synthesis: "docs/reviews/clo-185-review-synthesis.md"
+    review_verdict: "APPROVE_WITH_SUGGESTIONS"
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - "Resolved for_each contract violation: aggregate failures populate StepFailure with BackendError kind"
+      - "Documented EmptyOutput as forward-looking placeholder with no current call site"
+      - "Added #[allow(dead_code)] to StepFailureKind, StepFailure, and failure field"
+      - "Clarified retry exhaustion mapping: non-verify -> BackendError, verify loop -> VerifyFailed"
+      - "Added Copy, Eq derives to StepFailureKind (all fieldless variants)"
+      - "Added Display impl to implementation plan for human-readable failure kind logging"
+    flagged_suggestions: []
+    finalized: true
+  plan:
+    status: pending
+    plan_file: null
+    approved: false
+  implement:
+    status: pending
+  pr:
+    status: pending
+    pr_url: null
+    pr_number: null
+  complete:
+    status: pending
+
+history:
+  - timestamp: "2026-04-03T00:00:00Z"
+    action: workflow_started
+    phase: discovery
+    details: "Initialized development workflow for CLO-185"
+  - timestamp: "2026-04-03T00:01:00Z"
+    action: project_sync_start
+    phase: discovery
+    details: "Added to Active Work in PROJECT.md, Phase 3 in ROADMAP.md, removed from Unblocked & Ready"
+  - timestamp: "2026-04-03T00:02:00Z"
+    action: problem_framed
+    phase: discovery
+    details: "Problem framed: step failures use unstructured strings, need structured FailureType in all ~15 failure paths"
+  - timestamp: "2026-04-03T00:03:00Z"
+    action: discovery_report_complete
+    phase: discovery
+    details: "PRD scored 71%. Discovery found critical CLO-182 design conflict - FailureType must stay validation-scoped. Recommended approach: separate StepFailure struct."
+  - timestamp: "2026-04-03T00:04:00Z"
+    action: discovery_approved
+    phase: discovery
+    details: "Discovery approved. Proceeding to design with Approach 1: separate StepFailure struct."
+  - timestamp: "2026-04-03T00:05:00Z"
+    action: design_started
+    phase: design
+    details: "Design doc created at docs/design-docs/clo-185-structured-failure-data.md. Branch: feat/clo-185-structured-failure-data. Comment posted to Linear."
+  - timestamp: "2026-04-03T00:06:00Z"
+    action: design_draft_ready
+    phase: design
+    details: "Design doc draft complete. Running AI review."
+  - timestamp: "2026-04-03T00:07:00Z"
+    action: design_review_complete
+    phase: design
+    details: "Gemini timed out. Ollama: APPROVE_WITH_SUGGESTIONS. Claude: APPROVE_WITH_SUGGESTIONS. Consensus: APPROVE_WITH_SUGGESTIONS."
+  - timestamp: "2026-04-03T00:08:00Z"
+    action: review_applied
+    phase: design
+    details: "Applied 6 suggestions: for_each contract fix, EmptyOutput docs, dead_code annotations, retry mapping clarification, Copy/Eq derives, Display impl. No conflicts."
+  - timestamp: "2026-04-03T00:09:00Z"
+    action: design_finalized
+    phase: design
+    details: "Design document approved and finalized. Comment posted to Linear. Advancing to plan phase."
