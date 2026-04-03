@@ -7,7 +7,7 @@
 | Phase | Tasks | Completed | Status |
 |-------|-------|-----------|--------|
 | Phase 2: Validation Pipeline | 3 | 3 | Complete |
-| Phase 3: Failure Classification | 1 | 0 | In Progress |
+| Phase 3: Failure Classification | 1 | 1 | Complete |
 
 ## Phase 2: Validation Pipeline
 
@@ -21,4 +21,4 @@
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-185](https://linear.app/cloud-ai/issue/CLO-185) | Implement structured failure data for step errors | In Progress | CLO-184 |
+| [CLO-185](https://linear.app/cloud-ai/issue/CLO-185) | Implement structured failure data for step errors | Done | CLO-184 |
