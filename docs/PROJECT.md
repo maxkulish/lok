@@ -6,7 +6,7 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-183](https://linear.app/cloud-ai/issue/CLO-183) | Implement heuristic validators (check field) for step validation | In Progress | Spec | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -18,6 +18,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-183](https://linear.app/cloud-ai/issue/CLO-183) | Implement heuristic validators (check field) for step validation | 2026-04-03 | Added not_empty, min_length, contains validators via [steps.validate] TOML config |
 | [CLO-182](https://linear.app/cloud-ai/issue/CLO-182) | Extend StepResult with stderr, exit_code, validation fields | 2026-03-31 | Added raw_output, stderr, exit_code, and ValidationResult fields to StepResult |
 | [CLO-181](https://linear.app/cloud-ai/issue/CLO-181) | - | - | - |
 | [CLO-180](https://linear.app/cloud-ai/issue/CLO-180) | - | - | - |
