@@ -975,7 +975,9 @@ pub enum StepFailureKind {
     Timeout,
     /// Backend returned error, non-zero exit, or could not be created
     BackendError,
-    /// Backend returned empty/whitespace output (no validate clause present)
+    /// Forward-looking placeholder for a future execution-level empty-output
+    /// classification. Today, empty output is only classified when a
+    /// `validate` clause is present, via `FailureType::EmptyOutput`.
     EmptyOutput,
     /// Step skipped due to unmet condition or failed dependency
     Skipped,
