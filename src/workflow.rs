@@ -578,7 +578,8 @@ fn interpolate_validation_prompt(
     };
 
     let stderr_val = stderr.unwrap_or("");
-    let mut result = String::with_capacity(prompt.len() + truncated_output.len() + stderr_val.len());
+    let mut result =
+        String::with_capacity(prompt.len() + truncated_output.len() + stderr_val.len());
     let mut remaining = prompt;
 
     while !remaining.is_empty() {
@@ -678,7 +679,10 @@ async fn run_llm_validation(
 
     // Helper: apply on_error policy to infrastructure failures
     let on_error = validate_config.on_error.as_deref().unwrap_or("fail");
-    let handle_infra_error = |reason: String, label: &str, start: std::time::Instant| -> (Option<ValidationResult>, Option<String>) {
+    let handle_infra_error = |reason: String,
+                              label: &str,
+                              start: std::time::Instant|
+     -> (Option<ValidationResult>, Option<String>) {
         match on_error {
             "pass" => (
                 Some(ValidationResult {
@@ -727,12 +731,9 @@ async fn run_llm_validation(
     };
 
     let prompt = match validate_config.prompt.as_deref() {
-        Some(p) => interpolate_validation_prompt(
-            p,
-            output,
-            stderr,
-            validate_config.max_input_length,
-        ),
+        Some(p) => {
+            interpolate_validation_prompt(p, output, stderr, validate_config.max_input_length)
+        }
         None => {
             // Missing prompt is a configuration error - always fail regardless of on_error policy
             return (
@@ -760,10 +761,7 @@ async fn run_llm_validation(
             .await
             {
                 Ok(result) => result,
-                Err(_) => Err(anyhow::anyhow!(
-                    "Validation timed out after {}ms",
-                    timeout
-                )),
+                Err(_) => Err(anyhow::anyhow!("Validation timed out after {}ms", timeout)),
             }
         }
         None => backend_instance.query(&prompt, cwd, model_override).await,
@@ -871,7 +869,8 @@ async fn run_step_validation(
 
     // Phase 2: LLM validation (if backend configured)
     if let Some(backend_name) = validate_config.backend.as_deref() {
-        return run_llm_validation(output, stderr, validate_config, backend_name, config, cwd).await;
+        return run_llm_validation(output, stderr, validate_config, backend_name, config, cwd)
+            .await;
     }
 
     // Heuristic-only path: return cached heuristic result (or None if no validation)
@@ -4912,12 +4911,8 @@ prompt = "Check this output"
 
     #[test]
     fn test_interpolate_validation_prompt_basic() {
-        let result = interpolate_validation_prompt(
-            "Validate: {{ output }}",
-            "hello world",
-            None,
-            None,
-        );
+        let result =
+            interpolate_validation_prompt("Validate: {{ output }}", "hello world", None, None);
         assert_eq!(result, "Validate: hello world");
     }
 
@@ -4946,12 +4941,8 @@ prompt = "Check this output"
     #[test]
     fn test_interpolate_validation_prompt_truncation() {
         let long_output = "a".repeat(100);
-        let result = interpolate_validation_prompt(
-            "Check: {{ output }}",
-            &long_output,
-            None,
-            Some(50),
-        );
+        let result =
+            interpolate_validation_prompt("Check: {{ output }}", &long_output, None, Some(50));
         assert!(result.contains(&"a".repeat(50)));
         assert!(result.contains("[TRUNCATED"));
         assert!(result.contains("original was 100 chars"));
@@ -4959,12 +4950,8 @@ prompt = "Check this output"
 
     #[test]
     fn test_interpolate_validation_prompt_no_truncation_when_under_limit() {
-        let result = interpolate_validation_prompt(
-            "Check: {{ output }}",
-            "short",
-            None,
-            Some(1000),
-        );
+        let result =
+            interpolate_validation_prompt("Check: {{ output }}", "short", None, Some(1000));
         assert_eq!(result, "Check: short");
         assert!(!result.contains("TRUNCATED"));
     }
@@ -5043,7 +5030,9 @@ prompt = "Check this output"
         let response = "I cannot fulfill this request.";
         let result = parse_validation_response(response);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unrecognized validation response format"));
+        assert!(result
+            .unwrap_err()
+            .contains("Unrecognized validation response format"));
     }
 
     #[test]
