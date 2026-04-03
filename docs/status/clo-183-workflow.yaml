@@ -38,9 +38,13 @@ phases:
     flagged_suggestions: []
   implement:
     status: complete
-    commits: []
+    commits:
+      - 1c536a6
+      - e5cd633
   pr:
-    status: pending
+    status: complete
+    pr_url: "https://github.com/maxkulish/lok/pull/4"
+    pr_number: 4
   complete:
     status: pending
 
@@ -79,3 +83,11 @@ history:
     action: implementation_complete
     phase: implement
     details: "All 5 sub-tasks implemented: ValidateConfig struct, heuristic check parser, step execution wiring, TOML parsing tests, integration test. 192 tests pass, clippy clean."
+  - timestamp: "2026-04-03T00:04:00Z"
+    action: pushed_to_remote
+    phase: implement
+    details: "Pushed 2 commits to origin/kmamemo/clo-183-implement-heuristic-validators-check-field-for-step"
+  - timestamp: "2026-04-03T00:04:01Z"
+    action: pr_created
+    phase: pr
+    details: "PR #4 created: https://github.com/maxkulish/lok/pull/4"
