@@ -1,0 +1,44 @@
+name = "test-validate"
+description = "Test heuristic validation checks"
+
+# Step 1: Produces non-empty output - should pass not_empty check
+[[steps]]
+name = "valid_output"
+shell = "echo 'This is a valid output with enough content'"
+
+[steps.validate]
+check = "not_empty"
+
+# Step 2: Produces empty output - should fail not_empty check (soft failure)
+[[steps]]
+name = "empty_output"
+shell = "printf ''"
+continue_on_error = true
+
+[steps.validate]
+check = "not_empty"
+
+# Step 3: Depends on step 1, checks min_length passes
+[[steps]]
+name = "length_check"
+shell = "echo 'This output has enough characters to pass the length check'"
+depends_on = ["valid_output"]
+
+[steps.validate]
+check = "min_length(10)"
+
+# Step 4: Checks contains with expected marker
+[[steps]]
+name = "contains_check"
+shell = "echo '## Summary\nThis is the summary section'"
+depends_on = ["valid_output"]
+
+[steps.validate]
+check = "contains('## Summary')"
+
+# Step 5: Final aggregation - depends on all, uses min_deps_success
+[[steps]]
+name = "final"
+shell = "echo 'All validation tests completed'"
+depends_on = ["valid_output", "empty_output", "length_check", "contains_check"]
+min_deps_success = 3

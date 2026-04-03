@@ -244,6 +244,21 @@ impl Workflow {
     }
 }
 
+/// Configuration for step output validation.
+/// The `check` field enables heuristic (string-based) validation.
+/// The `backend`, `model`, and `prompt` fields are reserved for LLM-based validation (CLO-184).
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct ValidateConfig {
+    #[serde(default)]
+    pub check: Option<String>,
+    #[serde(default)]
+    pub backend: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+}
+
 /// A single step in a workflow
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Step {
@@ -329,6 +344,11 @@ pub struct Step {
     /// - "weighted_vote": Weighted majority by backend tier
     #[serde(default)]
     pub consensus: Option<crate::consensus::ConsensusStrategy>,
+
+    // Validation
+    /// Output validation configuration. Parsed from `[steps.validate]` TOML section.
+    #[serde(default)]
+    pub validate: Option<ValidateConfig>,
 }
 
 impl Step {
@@ -397,6 +417,86 @@ fn parse_step_output(output: &str, format: Option<&str>) -> Option<serde_json::V
             Some(serde_json::Value::Array(lines))
         }
         _ => None, // "text" or unspecified - no parsing
+    }
+}
+
+/// Run a heuristic validation check against step output.
+/// Returns a `ValidationResult` indicating pass/fail with descriptive context.
+fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
+    let start = std::time::Instant::now();
+    let check_trimmed = check.trim();
+
+    if check_trimmed.is_empty() {
+        return ValidationResult {
+            passed: true,
+            failure_type: None,
+            failure_reason: None,
+            validator: "heuristic:noop".to_string(),
+            elapsed_ms: start.elapsed().as_millis() as u64,
+        };
+    }
+
+    if check_trimmed == "not_empty" {
+        let passed = !output.trim().is_empty();
+        return ValidationResult {
+            passed,
+            failure_type: if passed { None } else { Some(FailureType::EmptyOutput) },
+            failure_reason: if passed { None } else { Some("Output is empty or whitespace-only".to_string()) },
+            validator: "heuristic:not_empty".to_string(),
+            elapsed_ms: start.elapsed().as_millis() as u64,
+        };
+    }
+
+    if let Some(inner) = check_trimmed.strip_prefix("min_length(").and_then(|s| s.strip_suffix(')')) {
+        let n: usize = match inner.trim().parse() {
+            Ok(n) => n,
+            Err(_) => {
+                return ValidationResult {
+                    passed: false,
+                    failure_type: Some(FailureType::ValidationFailed),
+                    failure_reason: Some(format!("Invalid min_length argument: '{}'", inner.trim())),
+                    validator: "heuristic:min_length".to_string(),
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                };
+            }
+        };
+        let passed = output.len() >= n;
+        return ValidationResult {
+            passed,
+            failure_type: if passed { None } else { Some(FailureType::ValidationFailed) },
+            failure_reason: if passed { None } else { Some(format!("Output length {} is less than minimum {}", output.len(), n)) },
+            validator: "heuristic:min_length".to_string(),
+            elapsed_ms: start.elapsed().as_millis() as u64,
+        };
+    }
+
+    if let Some(inner) = check_trimmed.strip_prefix("contains(").and_then(|s| s.strip_suffix(')')) {
+        let inner = inner.trim();
+        // Support both single and double quoted arguments
+        let text = if (inner.starts_with('\'') && inner.ends_with('\''))
+            || (inner.starts_with('"') && inner.ends_with('"'))
+        {
+            &inner[1..inner.len() - 1]
+        } else {
+            inner
+        };
+        let passed = text.is_empty() || output.contains(text);
+        return ValidationResult {
+            passed,
+            failure_type: if passed { None } else { Some(FailureType::ValidationFailed) },
+            failure_reason: if passed { None } else { Some(format!("Output is missing expected string '{}'", text)) },
+            validator: "heuristic:contains".to_string(),
+            elapsed_ms: start.elapsed().as_millis() as u64,
+        };
+    }
+
+    // Unknown check
+    ValidationResult {
+        passed: false,
+        failure_type: Some(FailureType::ValidationFailed),
+        failure_reason: Some(format!("Unknown check: {}", check_trimmed)),
+        validator: format!("heuristic:{}", check_trimmed),
+        elapsed_ms: start.elapsed().as_millis() as u64,
     }
 }
 
@@ -760,6 +860,7 @@ impl WorkflowRunner {
                     let max_retries = step.retries;
                     let retry_delay = step.retry_delay;
                     let step_timeout = workflow.step_timeout(step);
+                    let validate_config = step.validate.clone();
 
                     async move {
                         println!("{} {}", "[step]".cyan(), step_name.bold());
@@ -927,12 +1028,31 @@ impl WorkflowRunner {
                                 match tokio::time::timeout(timeout_duration, run_shell(shell_cmd, &cwd, self.config.defaults.command_wrapper.as_deref())).await {
                                     Ok(Ok(shell_output)) => {
                                         let elapsed_ms = start.elapsed().as_millis() as u64;
-                                        // Record step complete (success)
                                         println!(
                                             "  {} ({:.1}s)",
                                             "✓".green(),
                                             elapsed_ms as f64 / 1000.0
                                         );
+
+                                        // Run heuristic validation if configured
+                                        let validation = validate_config
+                                            .as_ref()
+                                            .and_then(|vc| vc.check.as_deref())
+                                            .filter(|c| !c.trim().is_empty())
+                                            .map(|check| run_heuristic_check(check, &shell_output.stdout));
+
+                                        let validation_passed = validation
+                                            .as_ref()
+                                            .map(|v| v.passed)
+                                            .unwrap_or(true);
+
+                                        if !validation_passed {
+                                            if let Some(ref v) = validation {
+                                                let reason = v.failure_reason.as_deref().unwrap_or("validation failed");
+                                                println!("  {} Validation failed ({}): {}", "✗".red(), v.validator, reason);
+                                            }
+                                        }
+
                                         let parsed = parse_step_output(
                                             &shell_output.stdout,
                                             output_format.as_deref(),
@@ -941,13 +1061,13 @@ impl WorkflowRunner {
                                             name: step_name,
                                             output: shell_output.stdout,
                                             parsed_output: parsed,
-                                            success: true,
+                                            success: validation_passed,
                                             elapsed_ms,
                                             backend: None,
                                             raw_output: None,
                                             stderr: shell_output.stderr,
                                             exit_code: shell_output.exit_code,
-                                            validation: None,
+                                            validation,
                                         };
                                     }
                                     Ok(Err(e)) => {
@@ -1142,18 +1262,37 @@ impl WorkflowRunner {
                                 backends_list.len()
                             );
 
+                            // Run heuristic validation if configured
+                            let validation = validate_config
+                                .as_ref()
+                                .and_then(|vc| vc.check.as_deref())
+                                .filter(|c| !c.trim().is_empty())
+                                .map(|check| run_heuristic_check(check, &final_output));
+
+                            let validation_passed = validation
+                                .as_ref()
+                                .map(|v| v.passed)
+                                .unwrap_or(true);
+
+                            if !validation_passed {
+                                if let Some(ref v) = validation {
+                                    let reason = v.failure_reason.as_deref().unwrap_or("validation failed");
+                                    println!("  {} Validation failed ({}): {}", "✗".red(), v.validator, reason);
+                                }
+                            }
+
                             let parsed = parse_step_output(&final_output, output_format.as_deref());
                             return StepResult {
                                 name: step_name,
                                 output: final_output,
                                 parsed_output: parsed,
-                                success: true,
+                                success: validation_passed,
                                 elapsed_ms,
                                 backend: used_backend,
                                 raw_output: None,
                                 stderr: None,
                                 exit_code: None,
-                                validation: None,
+                                validation,
                             };
                         }
 
@@ -1443,7 +1582,26 @@ impl WorkflowRunner {
                                 break 'fix_loop;
                             } // end 'fix_loop
 
-                            // Record step complete (success)
+                            // Run heuristic validation if configured
+                            let validation = validate_config
+                                .as_ref()
+                                .and_then(|vc| vc.check.as_deref())
+                                .filter(|c| !c.trim().is_empty())
+                                .map(|check| run_heuristic_check(check, &current_text));
+
+                            let validation_passed = validation
+                                .as_ref()
+                                .map(|v| v.passed)
+                                .unwrap_or(true);
+
+                            if !validation_passed {
+                                if let Some(ref v) = validation {
+                                    let reason = v.failure_reason.as_deref().unwrap_or("validation failed");
+                                    println!("  {} Validation failed ({}): {}", "✗".red(), v.validator, reason);
+                                }
+                            }
+
+                            // Record step complete
                             // Recalculate elapsed time to include any fix retries
                             let elapsed_ms = start.elapsed().as_millis() as u64;
 
@@ -1455,13 +1613,13 @@ impl WorkflowRunner {
                                 name: step_name,
                                 output: current_text,
                                 parsed_output: parsed,
-                                success: true,
+                                success: validation_passed,
                                 elapsed_ms,
                                 backend: Some(backend_name),
                                 raw_output: None,
                                 stderr: step_stderr,
                                 exit_code: step_exit_code,
-                                validation: None,
+                                validation,
                             }
                         } else {
                             // Record step complete (failure - should never reach here)
@@ -2834,6 +2992,7 @@ line2"}"#;
                 min_deps_success: None,
                 timeout: None,
                 consensus: None,
+                validate: None,
             },
             Step {
                 name: "fetch".to_string(), // duplicate!
@@ -2855,6 +3014,7 @@ line2"}"#;
                 min_deps_success: None,
                 timeout: None,
                 consensus: None,
+                validate: None,
             },
         ];
 
@@ -2899,6 +3059,7 @@ line2"}"#;
             min_deps_success: Some(2), // Requires 2 deps but has none
             timeout: None,
             consensus: None,
+            validate: None,
         }];
 
         let config = crate::config::Config::default();
@@ -2946,6 +3107,7 @@ line2"}"#;
                 min_deps_success: None,
                 timeout: None,
                 consensus: None,
+                validate: None,
             },
             Step {
                 name: "late_step".to_string(),
@@ -2967,6 +3129,7 @@ line2"}"#;
                 min_deps_success: None,
                 timeout: None,
                 consensus: None,
+                validate: None,
             },
         ];
 
@@ -4026,5 +4189,195 @@ timeout = 5000
 
         let result = load_workflow(&workflow_path).await;
         assert!(result.is_ok());
+    }
+
+    // --- Heuristic validation tests ---
+
+    #[test]
+    fn test_heuristic_not_empty_pass() {
+        let result = run_heuristic_check("not_empty", "hello world");
+        assert!(result.passed);
+        assert!(result.failure_type.is_none());
+        assert_eq!(result.validator, "heuristic:not_empty");
+    }
+
+    #[test]
+    fn test_heuristic_not_empty_fail_empty() {
+        let result = run_heuristic_check("not_empty", "");
+        assert!(!result.passed);
+        assert!(matches!(result.failure_type, Some(FailureType::EmptyOutput)));
+        assert_eq!(result.validator, "heuristic:not_empty");
+        assert!(result.failure_reason.as_ref().unwrap().contains("empty"));
+    }
+
+    #[test]
+    fn test_heuristic_not_empty_fail_whitespace() {
+        let result = run_heuristic_check("not_empty", "   \n  \t  ");
+        assert!(!result.passed);
+        assert!(matches!(result.failure_type, Some(FailureType::EmptyOutput)));
+    }
+
+    #[test]
+    fn test_heuristic_min_length_pass() {
+        let result = run_heuristic_check("min_length(3)", "hello");
+        assert!(result.passed);
+        assert_eq!(result.validator, "heuristic:min_length");
+    }
+
+    #[test]
+    fn test_heuristic_min_length_fail() {
+        let result = run_heuristic_check("min_length(10)", "short");
+        assert!(!result.passed);
+        assert!(matches!(result.failure_type, Some(FailureType::ValidationFailed)));
+        assert_eq!(result.validator, "heuristic:min_length");
+        assert!(result.failure_reason.as_ref().unwrap().contains("5"));
+        assert!(result.failure_reason.as_ref().unwrap().contains("10"));
+    }
+
+    #[test]
+    fn test_heuristic_min_length_zero_always_passes() {
+        let result = run_heuristic_check("min_length(0)", "");
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_heuristic_min_length_whitespace_counts() {
+        let result = run_heuristic_check("min_length(5)", "     ");
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_heuristic_contains_pass() {
+        let result = run_heuristic_check("contains('## Summary')", "has ## Summary here");
+        assert!(result.passed);
+        assert_eq!(result.validator, "heuristic:contains");
+    }
+
+    #[test]
+    fn test_heuristic_contains_fail() {
+        let result = run_heuristic_check("contains('## Summary')", "no marker here");
+        assert!(!result.passed);
+        assert!(matches!(result.failure_type, Some(FailureType::ValidationFailed)));
+        assert!(result.failure_reason.as_ref().unwrap().contains("## Summary"));
+    }
+
+    #[test]
+    fn test_heuristic_contains_double_quotes() {
+        let result = run_heuristic_check("contains(\"## Summary\")", "has ## Summary here");
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_heuristic_contains_empty_string_always_passes() {
+        let result = run_heuristic_check("contains('')", "anything");
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_heuristic_contains_special_chars() {
+        let result = run_heuristic_check("contains('price: $10')", "the price: $10 is good");
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_heuristic_unknown_check() {
+        let result = run_heuristic_check("unknown_check", "some output");
+        assert!(!result.passed);
+        assert!(result.failure_reason.as_ref().unwrap().contains("Unknown check"));
+    }
+
+    #[test]
+    fn test_heuristic_empty_check_string() {
+        let result = run_heuristic_check("", "some output");
+        assert!(result.passed);
+        assert_eq!(result.validator, "heuristic:noop");
+    }
+
+    #[test]
+    fn test_heuristic_min_length_invalid_arg() {
+        let result = run_heuristic_check("min_length(abc)", "some output");
+        assert!(!result.passed);
+        assert!(result.failure_reason.as_ref().unwrap().contains("Invalid"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_validate_config_from_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-validate"
+
+[[steps]]
+name = "check_output"
+shell = "echo hello"
+
+[steps.validate]
+check = "not_empty"
+"#,
+        )
+        .unwrap();
+
+        let workflow = load_workflow(&workflow_path).await.unwrap();
+        let step = &workflow.steps[0];
+        assert!(step.validate.is_some());
+        let vc = step.validate.as_ref().unwrap();
+        assert_eq!(vc.check.as_deref(), Some("not_empty"));
+        assert!(vc.backend.is_none());
+        assert!(vc.model.is_none());
+        assert!(vc.prompt.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_parse_validate_config_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-no-validate"
+
+[[steps]]
+name = "plain_step"
+shell = "echo hello"
+"#,
+        )
+        .unwrap();
+
+        let workflow = load_workflow(&workflow_path).await.unwrap();
+        let step = &workflow.steps[0];
+        assert!(step.validate.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_parse_validate_config_mixed_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-mixed-validate"
+
+[[steps]]
+name = "mixed_step"
+shell = "echo hello"
+
+[steps.validate]
+check = "not_empty"
+backend = "claude"
+model = "haiku"
+prompt = "Check this output"
+"#,
+        )
+        .unwrap();
+
+        let workflow = load_workflow(&workflow_path).await.unwrap();
+        let step = &workflow.steps[0];
+        let vc = step.validate.as_ref().unwrap();
+        assert_eq!(vc.check.as_deref(), Some("not_empty"));
+        assert_eq!(vc.backend.as_deref(), Some("claude"));
+        assert_eq!(vc.model.as_deref(), Some("haiku"));
+        assert_eq!(vc.prompt.as_deref(), Some("Check this output"));
     }
 }
