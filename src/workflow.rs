@@ -246,17 +246,35 @@ impl Workflow {
 
 /// Configuration for step output validation.
 /// The `check` field enables heuristic (string-based) validation.
-/// The `backend`, `model`, and `prompt` fields are reserved for LLM-based validation (CLO-184).
+/// The `backend`, `model`, and `prompt` fields enable LLM-based validation.
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct ValidateConfig {
+    /// Heuristic check: "not_empty", "min_length(N)", "contains('text')"
     #[serde(default)]
     pub check: Option<String>,
+    /// LLM backend for semantic validation (e.g., "claude", "gemini")
     #[serde(default)]
     pub backend: Option<String>,
+    /// Model override for validation backend (e.g., "haiku" for cheap/fast validation)
     #[serde(default)]
     pub model: Option<String>,
+    /// Validation prompt template. Use {{ output }} for step output, {{ stderr }} for stderr.
     #[serde(default)]
     pub prompt: Option<String>,
+    /// Policy when validation backend itself fails: "fail" (default), "pass", "skip"
+    #[serde(default)]
+    pub on_error: Option<String>,
+    /// Maximum characters of step output to include in validation prompt.
+    /// Output exceeding this is truncated with a marker.
+    #[serde(default)]
+    pub max_input_length: Option<usize>,
+    /// When true, replace step output with validator's cleaned output on pass.
+    /// Default false (pass/fail only, no output mutation).
+    #[serde(default)]
+    pub replace_output: bool,
+    /// Validation-specific timeout in milliseconds. Overrides backend default.
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
 }
 
 /// A single step in a workflow
@@ -440,21 +458,35 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
         let passed = !output.trim().is_empty();
         return ValidationResult {
             passed,
-            failure_type: if passed { None } else { Some(FailureType::EmptyOutput) },
-            failure_reason: if passed { None } else { Some("Output is empty or whitespace-only".to_string()) },
+            failure_type: if passed {
+                None
+            } else {
+                Some(FailureType::EmptyOutput)
+            },
+            failure_reason: if passed {
+                None
+            } else {
+                Some("Output is empty or whitespace-only".to_string())
+            },
             validator: "heuristic:not_empty".to_string(),
             elapsed_ms: start.elapsed().as_millis() as u64,
         };
     }
 
-    if let Some(inner) = check_trimmed.strip_prefix("min_length(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = check_trimmed
+        .strip_prefix("min_length(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         let n: usize = match inner.trim().parse() {
             Ok(n) => n,
             Err(_) => {
                 return ValidationResult {
                     passed: false,
                     failure_type: Some(FailureType::ValidationFailed),
-                    failure_reason: Some(format!("Invalid min_length argument: '{}'", inner.trim())),
+                    failure_reason: Some(format!(
+                        "Invalid min_length argument: '{}'",
+                        inner.trim()
+                    )),
                     validator: "heuristic:min_length".to_string(),
                     elapsed_ms: start.elapsed().as_millis() as u64,
                 };
@@ -464,18 +496,33 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
         let passed = char_count >= n;
         return ValidationResult {
             passed,
-            failure_type: if passed { None } else { Some(FailureType::ValidationFailed) },
-            failure_reason: if passed { None } else { Some(format!("Output length {} is less than minimum {}", char_count, n)) },
+            failure_type: if passed {
+                None
+            } else {
+                Some(FailureType::ValidationFailed)
+            },
+            failure_reason: if passed {
+                None
+            } else {
+                Some(format!(
+                    "Output length {} is less than minimum {}",
+                    char_count, n
+                ))
+            },
             validator: "heuristic:min_length".to_string(),
             elapsed_ms: start.elapsed().as_millis() as u64,
         };
     }
 
-    if let Some(inner) = check_trimmed.strip_prefix("contains(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = check_trimmed
+        .strip_prefix("contains(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         let inner = inner.trim();
         // Support both single and double quoted arguments
-        let text = if inner.len() >= 2 && ((inner.starts_with('\'') && inner.ends_with('\''))
-            || (inner.starts_with('"') && inner.ends_with('"')))
+        let text = if inner.len() >= 2
+            && ((inner.starts_with('\'') && inner.ends_with('\''))
+                || (inner.starts_with('"') && inner.ends_with('"')))
         {
             &inner[1..inner.len() - 1]
         } else {
@@ -484,8 +531,16 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
         let passed = text.is_empty() || output.contains(text);
         return ValidationResult {
             passed,
-            failure_type: if passed { None } else { Some(FailureType::ValidationFailed) },
-            failure_reason: if passed { None } else { Some(format!("Output is missing expected string '{}'", text)) },
+            failure_type: if passed {
+                None
+            } else {
+                Some(FailureType::ValidationFailed)
+            },
+            failure_reason: if passed {
+                None
+            } else {
+                Some(format!("Output is missing expected string '{}'", text))
+            },
             validator: "heuristic:contains".to_string(),
             elapsed_ms: start.elapsed().as_millis() as u64,
         };
@@ -499,6 +554,321 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
         validator: format!("heuristic:{}", check_trimmed),
         elapsed_ms: start.elapsed().as_millis() as u64,
     }
+}
+
+/// Interpolate `{{ output }}` and `{{ stderr }}` in a validation prompt.
+/// Uses single-pass replacement to prevent injection: if step output contains
+/// `{{ stderr }}` literally, it will NOT be expanded.
+fn interpolate_validation_prompt(
+    prompt: &str,
+    output: &str,
+    stderr: Option<&str>,
+    max_input_length: Option<usize>,
+) -> String {
+    let truncated_output = match max_input_length {
+        Some(max) if output.len() > max => {
+            format!(
+                "{}\n\n[TRUNCATED - original was {} chars, showing first {}]",
+                &output[..max],
+                output.len(),
+                max
+            )
+        }
+        _ => output.to_string(),
+    };
+
+    let stderr_val = stderr.unwrap_or("");
+    let mut result = String::with_capacity(prompt.len() + truncated_output.len() + stderr_val.len());
+    let mut remaining = prompt;
+
+    while !remaining.is_empty() {
+        if let Some(pos) = remaining.find("{{") {
+            result.push_str(&remaining[..pos]);
+            let after = &remaining[pos..];
+            if let Some(rest) = after.strip_prefix("{{ output }}") {
+                result.push_str(&truncated_output);
+                remaining = rest;
+            } else if let Some(rest) = after.strip_prefix("{{ stderr }}") {
+                result.push_str(stderr_val);
+                remaining = rest;
+            } else {
+                result.push_str("{{");
+                remaining = &after[2..];
+            }
+        } else {
+            result.push_str(remaining);
+            break;
+        }
+    }
+
+    result
+}
+
+/// Strip markdown code fences that LLMs frequently wrap JSON in.
+fn strip_markdown_fences(response: &str) -> &str {
+    let trimmed = response.trim();
+    if let Some(after_fence) = trimmed.strip_prefix("```json") {
+        if let Some(content) = after_fence.strip_suffix("```") {
+            return content.trim();
+        }
+    }
+    if let Some(after_fence) = trimmed.strip_prefix("```") {
+        if let Some(content) = after_fence.strip_suffix("```") {
+            return content.trim();
+        }
+    }
+    trimmed
+}
+
+/// Parsed validation response from the validator LLM.
+#[derive(Debug, serde::Deserialize)]
+struct ValidationResponse {
+    status: String,
+    output: Option<String>,
+    reason: Option<String>,
+}
+
+/// Parse a validation LLM response. Tries JSON first (with markdown fence stripping),
+/// then REVIEW_FAILED: prefix, then returns error (fail-closed).
+fn parse_validation_response(response: &str) -> std::result::Result<ValidationResponse, String> {
+    let cleaned = strip_markdown_fences(response);
+
+    if let Ok(parsed) = serde_json::from_str::<ValidationResponse>(cleaned) {
+        if parsed.status == "pass" || parsed.status == "fail" {
+            return Ok(parsed);
+        }
+        return Err(format!(
+            "Invalid status value: '{}' (expected 'pass' or 'fail')",
+            parsed.status
+        ));
+    }
+
+    if cleaned.starts_with("REVIEW_FAILED:") {
+        let reason = cleaned
+            .strip_prefix("REVIEW_FAILED:")
+            .unwrap()
+            .trim()
+            .to_string();
+        return Ok(ValidationResponse {
+            status: "fail".to_string(),
+            output: None,
+            reason: Some(reason),
+        });
+    }
+
+    Err(format!(
+        "Unrecognized validation response format (expected JSON or REVIEW_FAILED: prefix). Got: {}",
+        &cleaned[..cleaned.len().min(200)]
+    ))
+}
+
+/// Run LLM-based validation on step output.
+/// Returns (ValidationResult, Option<cleaned_output>).
+async fn run_llm_validation(
+    output: &str,
+    stderr: Option<&str>,
+    validate_config: &ValidateConfig,
+    backend_name: &str,
+    config: &Config,
+    cwd: &std::path::Path,
+) -> (Option<ValidationResult>, Option<String>) {
+    let start = std::time::Instant::now();
+    let validator_label = format!("llm:{}", backend_name);
+
+    // Helper: apply on_error policy to infrastructure failures
+    let on_error = validate_config.on_error.as_deref().unwrap_or("fail");
+    let handle_infra_error = |reason: String, label: &str, start: std::time::Instant| -> (Option<ValidationResult>, Option<String>) {
+        match on_error {
+            "pass" => (
+                Some(ValidationResult {
+                    passed: true,
+                    failure_type: None,
+                    failure_reason: None,
+                    validator: format!("{}:error_passthrough", label),
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                }),
+                None,
+            ),
+            "skip" => (None, None),
+            _ => (
+                Some(ValidationResult {
+                    passed: false,
+                    failure_type: Some(FailureType::ValidatorError),
+                    failure_reason: Some(reason),
+                    validator: label.to_string(),
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                }),
+                None,
+            ),
+        }
+    };
+
+    let backend_config = match config.backends.get(backend_name) {
+        Some(cfg) => cfg,
+        None => {
+            return handle_infra_error(
+                format!("Validation backend not found: {}", backend_name),
+                &validator_label,
+                start,
+            );
+        }
+    };
+
+    let backend_instance = match backend::create_backend(backend_name, backend_config) {
+        Ok(b) => b,
+        Err(e) => {
+            return handle_infra_error(
+                format!("Failed to create validation backend: {}", e),
+                &validator_label,
+                start,
+            );
+        }
+    };
+
+    let prompt = match validate_config.prompt.as_deref() {
+        Some(p) => interpolate_validation_prompt(
+            p,
+            output,
+            stderr,
+            validate_config.max_input_length,
+        ),
+        None => {
+            return handle_infra_error(
+                "validate.prompt is required when validate.backend is set".to_string(),
+                &validator_label,
+                start,
+            );
+        }
+    };
+
+    let model_override = validate_config.model.as_deref();
+    let query_result = match validate_config.timeout_ms {
+        Some(timeout) => {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(timeout),
+                backend_instance.query(&prompt, cwd, model_override),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => Err(anyhow::anyhow!(
+                    "Validation timed out after {}ms",
+                    timeout
+                )),
+            }
+        }
+        None => backend_instance.query(&prompt, cwd, model_override).await,
+    };
+
+    match query_result {
+        Ok(query_output) => {
+            let elapsed_ms = start.elapsed().as_millis() as u64;
+            match parse_validation_response(&query_output.stdout) {
+                Ok(response) => {
+                    if response.status == "pass" {
+                        (
+                            Some(ValidationResult {
+                                passed: true,
+                                failure_type: None,
+                                failure_reason: None,
+                                validator: validator_label,
+                                elapsed_ms,
+                            }),
+                            response.output,
+                        )
+                    } else {
+                        let reason = response
+                            .reason
+                            .unwrap_or_else(|| "Validation failed".to_string());
+                        (
+                            Some(ValidationResult {
+                                passed: false,
+                                failure_type: Some(FailureType::ValidationFailed),
+                                failure_reason: Some(reason),
+                                validator: validator_label,
+                                elapsed_ms,
+                            }),
+                            None,
+                        )
+                    }
+                }
+                Err(parse_err) => (
+                    Some(ValidationResult {
+                        passed: false,
+                        failure_type: Some(FailureType::ValidatorError),
+                        failure_reason: Some(format!(
+                            "Failed to parse validation response: {}",
+                            parse_err
+                        )),
+                        validator: validator_label,
+                        elapsed_ms,
+                    }),
+                    None,
+                ),
+            }
+        }
+        Err(e) => {
+            let elapsed_ms = start.elapsed().as_millis() as u64;
+
+            match on_error {
+                "pass" => (
+                    Some(ValidationResult {
+                        passed: true,
+                        failure_type: None,
+                        failure_reason: None,
+                        validator: format!("{}:error_passthrough", validator_label),
+                        elapsed_ms,
+                    }),
+                    None,
+                ),
+                "skip" => (None, None),
+                _ => (
+                    Some(ValidationResult {
+                        passed: false,
+                        failure_type: Some(FailureType::ValidatorError),
+                        failure_reason: Some(format!("Validation backend error: {}", e)),
+                        validator: validator_label,
+                        elapsed_ms,
+                    }),
+                    None,
+                ),
+            }
+        }
+    }
+}
+
+/// Run the full validation pipeline on step output: heuristic check first, then LLM if configured.
+/// Returns (ValidationResult, Option<cleaned_output>).
+async fn run_step_validation(
+    output: &str,
+    stderr: Option<&str>,
+    validate_config: &ValidateConfig,
+    config: &Config,
+    cwd: &std::path::Path,
+) -> (Option<ValidationResult>, Option<String>) {
+    // Phase 1: Heuristic check (if configured)
+    if let Some(check) = validate_config.check.as_deref().filter(|c| !c.trim().is_empty()) {
+        let heuristic_result = run_heuristic_check(check, output);
+        if !heuristic_result.passed {
+            return (Some(heuristic_result), None);
+        }
+        // Heuristic passed - continue to LLM if configured
+    }
+
+    // Phase 2: LLM validation (if backend configured)
+    if let Some(backend_name) = validate_config.backend.as_deref() {
+        return run_llm_validation(output, stderr, validate_config, backend_name, config, cwd).await;
+    }
+
+    // Heuristic-only path: if we got here, heuristic passed (or no check configured)
+    if validate_config.check.as_deref().filter(|c| !c.trim().is_empty()).is_some() {
+        // Heuristic was configured and passed
+        let check = validate_config.check.as_deref().unwrap();
+        return (Some(run_heuristic_check(check, output)), None);
+    }
+
+    // No validation configured at all
+    (None, None)
 }
 
 /// Result of executing a step
@@ -558,8 +928,7 @@ pub struct ValidationResult {
     pub elapsed_ms: u64,
 }
 
-/// Why a validation check failed. Scoped to validation-domain failures only.
-/// Execution failures (timeout, backend error) are represented by StepResult.success = false.
+/// Why a validation check failed.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum FailureType {
@@ -567,6 +936,8 @@ pub enum FailureType {
     ValidationFailed,
     /// Output was empty or whitespace-only
     EmptyOutput,
+    /// Validation backend itself failed (timeout, API error, malformed response)
+    ValidatorError,
 }
 
 /// Prepared step ready for execution
@@ -1035,17 +1406,12 @@ impl WorkflowRunner {
                                             elapsed_ms as f64 / 1000.0
                                         );
 
-                                        // Run heuristic validation if configured
-                                        let validation = validate_config
-                                            .as_ref()
-                                            .and_then(|vc| vc.check.as_deref())
-                                            .filter(|c| !c.trim().is_empty())
-                                            .map(|check| run_heuristic_check(check, &shell_output.stdout));
-
-                                        let validation_passed = validation
-                                            .as_ref()
-                                            .map(|v| v.passed)
-                                            .unwrap_or(true);
+                                        // Run validation (heuristic + LLM) if configured
+                                        let (validation, cleaned_output) = match validate_config.as_ref() {
+                                            Some(vc) => run_step_validation(&shell_output.stdout, shell_output.stderr.as_deref(), vc, &config, &cwd).await,
+                                            None => (None, None),
+                                        };
+                                        let validation_passed = validation.as_ref().map(|v| v.passed).unwrap_or(true);
 
                                         if !validation_passed {
                                             if let Some(ref v) = validation {
@@ -1054,18 +1420,28 @@ impl WorkflowRunner {
                                             }
                                         }
 
+                                        let (final_output, raw_output) = if let Some(cleaned) = cleaned_output {
+                                            if validate_config.as_ref().map(|vc| vc.replace_output).unwrap_or(false) {
+                                                (cleaned, Some(shell_output.stdout))
+                                            } else {
+                                                (shell_output.stdout, None)
+                                            }
+                                        } else {
+                                            (shell_output.stdout, None)
+                                        };
+
                                         let parsed = parse_step_output(
-                                            &shell_output.stdout,
+                                            &final_output,
                                             output_format.as_deref(),
                                         );
                                         return StepResult {
                                             name: step_name,
-                                            output: shell_output.stdout,
+                                            output: final_output,
                                             parsed_output: parsed,
                                             success: validation_passed,
                                             elapsed_ms,
                                             backend: None,
-                                            raw_output: None,
+                                            raw_output,
                                             stderr: shell_output.stderr,
                                             exit_code: shell_output.exit_code,
                                             validation,
@@ -1263,17 +1639,12 @@ impl WorkflowRunner {
                                 backends_list.len()
                             );
 
-                            // Run heuristic validation if configured
-                            let validation = validate_config
-                                .as_ref()
-                                .and_then(|vc| vc.check.as_deref())
-                                .filter(|c| !c.trim().is_empty())
-                                .map(|check| run_heuristic_check(check, &final_output));
-
-                            let validation_passed = validation
-                                .as_ref()
-                                .map(|v| v.passed)
-                                .unwrap_or(true);
+                            // Run validation (heuristic + LLM) if configured
+                            let (validation, cleaned_output) = match validate_config.as_ref() {
+                                Some(vc) => run_step_validation(&final_output, None, vc, &config, &cwd).await,
+                                None => (None, None),
+                            };
+                            let validation_passed = validation.as_ref().map(|v| v.passed).unwrap_or(true);
 
                             if !validation_passed {
                                 if let Some(ref v) = validation {
@@ -1282,15 +1653,25 @@ impl WorkflowRunner {
                                 }
                             }
 
-                            let parsed = parse_step_output(&final_output, output_format.as_deref());
+                            let (validated_output, raw_output) = if let Some(cleaned) = cleaned_output {
+                                if validate_config.as_ref().map(|vc| vc.replace_output).unwrap_or(false) {
+                                    (cleaned, Some(final_output))
+                                } else {
+                                    (final_output, None)
+                                }
+                            } else {
+                                (final_output, None)
+                            };
+
+                            let parsed = parse_step_output(&validated_output, output_format.as_deref());
                             return StepResult {
                                 name: step_name,
-                                output: final_output,
+                                output: validated_output,
                                 parsed_output: parsed,
                                 success: validation_passed,
                                 elapsed_ms,
                                 backend: used_backend,
-                                raw_output: None,
+                                raw_output,
                                 stderr: None,
                                 exit_code: None,
                                 validation,
@@ -1583,17 +1964,12 @@ impl WorkflowRunner {
                                 break 'fix_loop;
                             } // end 'fix_loop
 
-                            // Run heuristic validation if configured
-                            let validation = validate_config
-                                .as_ref()
-                                .and_then(|vc| vc.check.as_deref())
-                                .filter(|c| !c.trim().is_empty())
-                                .map(|check| run_heuristic_check(check, &current_text));
-
-                            let validation_passed = validation
-                                .as_ref()
-                                .map(|v| v.passed)
-                                .unwrap_or(true);
+                            // Run validation (heuristic + LLM) if configured
+                            let (validation, cleaned_output) = match validate_config.as_ref() {
+                                Some(vc) => run_step_validation(&current_text, step_stderr.as_deref(), vc, &config, &cwd).await,
+                                None => (None, None),
+                            };
+                            let validation_passed = validation.as_ref().map(|v| v.passed).unwrap_or(true);
 
                             if !validation_passed {
                                 if let Some(ref v) = validation {
@@ -1602,22 +1978,32 @@ impl WorkflowRunner {
                                 }
                             }
 
+                            let (final_output, raw_output) = if let Some(cleaned) = cleaned_output {
+                                if validate_config.as_ref().map(|vc| vc.replace_output).unwrap_or(false) {
+                                    (cleaned, Some(current_text))
+                                } else {
+                                    (current_text, None)
+                                }
+                            } else {
+                                (current_text, None)
+                            };
+
                             // Record step complete
                             // Recalculate elapsed time to include any fix retries
                             let elapsed_ms = start.elapsed().as_millis() as u64;
 
                             let parsed = parse_step_output(
-                                &current_text,
+                                &final_output,
                                 output_format.as_deref(),
                             );
                             StepResult {
                                 name: step_name,
-                                output: current_text,
+                                output: final_output,
                                 parsed_output: parsed,
                                 success: validation_passed,
                                 elapsed_ms,
                                 backend: Some(backend_name),
-                                raw_output: None,
+                                raw_output,
                                 stderr: step_stderr,
                                 exit_code: step_exit_code,
                                 validation,
@@ -4206,7 +4592,10 @@ timeout = 5000
     fn test_heuristic_not_empty_fail_empty() {
         let result = run_heuristic_check("not_empty", "");
         assert!(!result.passed);
-        assert!(matches!(result.failure_type, Some(FailureType::EmptyOutput)));
+        assert!(matches!(
+            result.failure_type,
+            Some(FailureType::EmptyOutput)
+        ));
         assert_eq!(result.validator, "heuristic:not_empty");
         assert!(result.failure_reason.as_ref().unwrap().contains("empty"));
     }
@@ -4215,7 +4604,10 @@ timeout = 5000
     fn test_heuristic_not_empty_fail_whitespace() {
         let result = run_heuristic_check("not_empty", "   \n  \t  ");
         assert!(!result.passed);
-        assert!(matches!(result.failure_type, Some(FailureType::EmptyOutput)));
+        assert!(matches!(
+            result.failure_type,
+            Some(FailureType::EmptyOutput)
+        ));
     }
 
     #[test]
@@ -4229,7 +4621,10 @@ timeout = 5000
     fn test_heuristic_min_length_fail() {
         let result = run_heuristic_check("min_length(10)", "short");
         assert!(!result.passed);
-        assert!(matches!(result.failure_type, Some(FailureType::ValidationFailed)));
+        assert!(matches!(
+            result.failure_type,
+            Some(FailureType::ValidationFailed)
+        ));
         assert_eq!(result.validator, "heuristic:min_length");
         assert!(result.failure_reason.as_ref().unwrap().contains("5"));
         assert!(result.failure_reason.as_ref().unwrap().contains("10"));
@@ -4258,8 +4653,15 @@ timeout = 5000
     fn test_heuristic_contains_fail() {
         let result = run_heuristic_check("contains('## Summary')", "no marker here");
         assert!(!result.passed);
-        assert!(matches!(result.failure_type, Some(FailureType::ValidationFailed)));
-        assert!(result.failure_reason.as_ref().unwrap().contains("## Summary"));
+        assert!(matches!(
+            result.failure_type,
+            Some(FailureType::ValidationFailed)
+        ));
+        assert!(result
+            .failure_reason
+            .as_ref()
+            .unwrap()
+            .contains("## Summary"));
     }
 
     #[test]
@@ -4284,7 +4686,11 @@ timeout = 5000
     fn test_heuristic_unknown_check() {
         let result = run_heuristic_check("unknown_check", "some output");
         assert!(!result.passed);
-        assert!(result.failure_reason.as_ref().unwrap().contains("Unknown check"));
+        assert!(result
+            .failure_reason
+            .as_ref()
+            .unwrap()
+            .contains("Unknown check"));
     }
 
     #[test]
@@ -4297,7 +4703,8 @@ timeout = 5000
     #[test]
     fn test_heuristic_min_length_unicode() {
         // "hello" in Japanese is 5 chars but 15 bytes in UTF-8
-        let result = run_heuristic_check("min_length(5)", "\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}");
+        let result =
+            run_heuristic_check("min_length(5)", "\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}");
         assert!(result.passed);
     }
 
@@ -4394,5 +4801,235 @@ prompt = "Check this output"
         assert_eq!(vc.backend.as_deref(), Some("claude"));
         assert_eq!(vc.model.as_deref(), Some("haiku"));
         assert_eq!(vc.prompt.as_deref(), Some("Check this output"));
+    }
+
+    // ==================== LLM Validation Tests (CLO-184) ====================
+
+    #[test]
+    fn test_interpolate_validation_prompt_basic() {
+        let result = interpolate_validation_prompt(
+            "Validate: {{ output }}",
+            "hello world",
+            None,
+            None,
+        );
+        assert_eq!(result, "Validate: hello world");
+    }
+
+    #[test]
+    fn test_interpolate_validation_prompt_with_stderr() {
+        let result = interpolate_validation_prompt(
+            "Output: {{ output }}\nStderr: {{ stderr }}",
+            "some output",
+            Some("error msg"),
+            None,
+        );
+        assert_eq!(result, "Output: some output\nStderr: error msg");
+    }
+
+    #[test]
+    fn test_interpolate_validation_prompt_no_stderr() {
+        let result = interpolate_validation_prompt(
+            "Output: {{ output }}, Stderr: {{ stderr }}",
+            "some output",
+            None,
+            None,
+        );
+        assert_eq!(result, "Output: some output, Stderr: ");
+    }
+
+    #[test]
+    fn test_interpolate_validation_prompt_truncation() {
+        let long_output = "a".repeat(100);
+        let result = interpolate_validation_prompt(
+            "Check: {{ output }}",
+            &long_output,
+            None,
+            Some(50),
+        );
+        assert!(result.contains(&"a".repeat(50)));
+        assert!(result.contains("[TRUNCATED"));
+        assert!(result.contains("original was 100 chars"));
+    }
+
+    #[test]
+    fn test_interpolate_validation_prompt_no_truncation_when_under_limit() {
+        let result = interpolate_validation_prompt(
+            "Check: {{ output }}",
+            "short",
+            None,
+            Some(1000),
+        );
+        assert_eq!(result, "Check: short");
+        assert!(!result.contains("TRUNCATED"));
+    }
+
+    #[test]
+    fn test_interpolate_validation_prompt_injection_safety() {
+        // Output contains {{ stderr }} literal - should NOT be expanded
+        let result = interpolate_validation_prompt(
+            "Validate: {{ output }}",
+            "my output has {{ stderr }} in it",
+            Some("real stderr"),
+            None,
+        );
+        assert_eq!(result, "Validate: my output has {{ stderr }} in it");
+        assert!(!result.contains("real stderr"));
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_json() {
+        let input = "```json\n{\"status\": \"pass\"}\n```";
+        assert_eq!(strip_markdown_fences(input), "{\"status\": \"pass\"}");
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_plain() {
+        let input = "```\n{\"status\": \"pass\"}\n```";
+        assert_eq!(strip_markdown_fences(input), "{\"status\": \"pass\"}");
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_none() {
+        let input = "{\"status\": \"pass\"}";
+        assert_eq!(strip_markdown_fences(input), "{\"status\": \"pass\"}");
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_with_whitespace() {
+        let input = "  ```json\n  {\"status\": \"pass\"}\n  ```  ";
+        assert_eq!(strip_markdown_fences(input), "{\"status\": \"pass\"}");
+    }
+
+    #[test]
+    fn test_parse_validation_response_json_pass() {
+        let response = r#"{"status": "pass", "output": "cleaned content"}"#;
+        let parsed = parse_validation_response(response).unwrap();
+        assert_eq!(parsed.status, "pass");
+        assert_eq!(parsed.output.as_deref(), Some("cleaned content"));
+    }
+
+    #[test]
+    fn test_parse_validation_response_json_fail() {
+        let response = r#"{"status": "fail", "reason": "no valid content found"}"#;
+        let parsed = parse_validation_response(response).unwrap();
+        assert_eq!(parsed.status, "fail");
+        assert_eq!(parsed.reason.as_deref(), Some("no valid content found"));
+    }
+
+    #[test]
+    fn test_parse_validation_response_json_in_fences() {
+        let response = "```json\n{\"status\": \"pass\", \"output\": \"clean\"}\n```";
+        let parsed = parse_validation_response(response).unwrap();
+        assert_eq!(parsed.status, "pass");
+        assert_eq!(parsed.output.as_deref(), Some("clean"));
+    }
+
+    #[test]
+    fn test_parse_validation_response_review_failed() {
+        let response = "REVIEW_FAILED: output is empty noise";
+        let parsed = parse_validation_response(response).unwrap();
+        assert_eq!(parsed.status, "fail");
+        assert_eq!(parsed.reason.as_deref(), Some("output is empty noise"));
+    }
+
+    #[test]
+    fn test_parse_validation_response_unrecognized_is_error() {
+        let response = "I cannot fulfill this request.";
+        let result = parse_validation_response(response);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unrecognized validation response format"));
+    }
+
+    #[test]
+    fn test_parse_validation_response_invalid_status() {
+        let response = r#"{"status": "maybe", "output": "something"}"#;
+        let result = parse_validation_response(response);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid status value"));
+    }
+
+    #[test]
+    fn test_parse_validation_response_empty_string_is_error() {
+        let result = parse_validation_response("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_validation_response_json_pass_no_output() {
+        let response = r#"{"status": "pass"}"#;
+        let parsed = parse_validation_response(response).unwrap();
+        assert_eq!(parsed.status, "pass");
+        assert!(parsed.output.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_validate_config_new_fields_parsing() {
+        let dir = tempfile::tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-validate-new-fields"
+
+[[steps]]
+name = "validated_step"
+shell = "echo hello"
+
+[steps.validate]
+check = "not_empty"
+backend = "claude"
+model = "haiku"
+prompt = "Validate: {{ output }}"
+on_error = "pass"
+max_input_length = 50000
+replace_output = true
+timeout_ms = 10000
+"#,
+        )
+        .unwrap();
+
+        let workflow = load_workflow(&workflow_path).await.unwrap();
+        let step = &workflow.steps[0];
+        let vc = step.validate.as_ref().unwrap();
+        assert_eq!(vc.check.as_deref(), Some("not_empty"));
+        assert_eq!(vc.backend.as_deref(), Some("claude"));
+        assert_eq!(vc.model.as_deref(), Some("haiku"));
+        assert_eq!(vc.prompt.as_deref(), Some("Validate: {{ output }}"));
+        assert_eq!(vc.on_error.as_deref(), Some("pass"));
+        assert_eq!(vc.max_input_length, Some(50000));
+        assert!(vc.replace_output);
+        assert_eq!(vc.timeout_ms, Some(10000));
+    }
+
+    #[tokio::test]
+    async fn test_validate_config_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-validate-defaults"
+
+[[steps]]
+name = "minimal_step"
+shell = "echo hello"
+
+[steps.validate]
+backend = "claude"
+prompt = "Validate: {{ output }}"
+"#,
+        )
+        .unwrap();
+
+        let workflow = load_workflow(&workflow_path).await.unwrap();
+        let step = &workflow.steps[0];
+        let vc = step.validate.as_ref().unwrap();
+        assert!(vc.on_error.is_none());
+        assert!(vc.max_input_length.is_none());
+        assert!(!vc.replace_output);
+        assert!(vc.timeout_ms.is_none());
     }
 }

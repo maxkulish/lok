@@ -1,0 +1,67 @@
+name = "test-llm-validation"
+continue_on_error = true
+
+# Test 1: Heuristic fails -> LLM validation skipped (cost optimization)
+# The heuristic check will fail (output is empty), so LLM is never invoked.
+# Even though backend "nonexistent" doesn't exist, this should not error
+# because the heuristic gate prevents the LLM call.
+[[steps]]
+name = "heuristic_gates_llm"
+shell = "echo ''"
+continue_on_error = true
+
+[steps.validate]
+check = "not_empty"
+backend = "nonexistent"
+prompt = "This should never be called"
+
+# Test 2: Validation backend not found + on_error = "fail" (default)
+# Heuristic passes but backend doesn't exist -> ValidatorError -> step fails
+[[steps]]
+name = "backend_not_found_fail"
+shell = "echo 'valid output here'"
+continue_on_error = true
+
+[steps.validate]
+backend = "nonexistent_backend"
+prompt = "Validate: {{ output }}"
+
+# Test 3: Validation backend not found + on_error = "pass"
+# Backend doesn't exist but on_error = "pass" -> step succeeds
+[[steps]]
+name = "backend_not_found_pass"
+shell = "echo 'valid output here too'"
+continue_on_error = true
+
+[steps.validate]
+backend = "nonexistent_backend"
+prompt = "Validate: {{ output }}"
+on_error = "pass"
+
+# Test 4: Validation backend not found + on_error = "skip"
+# Backend doesn't exist but on_error = "skip" -> validation skipped, step succeeds
+[[steps]]
+name = "backend_not_found_skip"
+shell = "echo 'valid output as well'"
+continue_on_error = true
+
+[steps.validate]
+backend = "nonexistent_backend"
+prompt = "Validate: {{ output }}"
+on_error = "skip"
+
+# Test 5: Missing prompt when backend is set -> ValidatorError
+[[steps]]
+name = "missing_prompt"
+shell = "echo 'output without prompt'"
+continue_on_error = true
+
+[steps.validate]
+backend = "nonexistent_backend"
+
+# Test 6: Summary step - depends on all, uses min_deps_success
+[[steps]]
+name = "summary"
+shell = "echo 'LLM validation tests completed'"
+depends_on = ["heuristic_gates_llm", "backend_not_found_fail", "backend_not_found_pass", "backend_not_found_skip", "missing_prompt"]
+min_deps_success = 2
