@@ -578,7 +578,8 @@ fn interpolate_validation_prompt(
     };
 
     let stderr_val = stderr.unwrap_or("");
-    let mut result = String::with_capacity(prompt.len() + truncated_output.len() + stderr_val.len());
+    let mut result =
+        String::with_capacity(prompt.len() + truncated_output.len() + stderr_val.len());
     let mut remaining = prompt;
 
     while !remaining.is_empty() {
@@ -678,7 +679,10 @@ async fn run_llm_validation(
 
     // Helper: apply on_error policy to infrastructure failures
     let on_error = validate_config.on_error.as_deref().unwrap_or("fail");
-    let handle_infra_error = |reason: String, label: &str, start: std::time::Instant| -> (Option<ValidationResult>, Option<String>) {
+    let handle_infra_error = |reason: String,
+                              label: &str,
+                              start: std::time::Instant|
+     -> (Option<ValidationResult>, Option<String>) {
         match on_error {
             "pass" => (
                 Some(ValidationResult {
@@ -727,12 +731,9 @@ async fn run_llm_validation(
     };
 
     let prompt = match validate_config.prompt.as_deref() {
-        Some(p) => interpolate_validation_prompt(
-            p,
-            output,
-            stderr,
-            validate_config.max_input_length,
-        ),
+        Some(p) => {
+            interpolate_validation_prompt(p, output, stderr, validate_config.max_input_length)
+        }
         None => {
             // Missing prompt is a configuration error - always fail regardless of on_error policy
             return (
@@ -760,10 +761,7 @@ async fn run_llm_validation(
             .await
             {
                 Ok(result) => result,
-                Err(_) => Err(anyhow::anyhow!(
-                    "Validation timed out after {}ms",
-                    timeout
-                )),
+                Err(_) => Err(anyhow::anyhow!("Validation timed out after {}ms", timeout)),
             }
         }
         None => backend_instance.query(&prompt, cwd, model_override).await,
@@ -871,7 +869,8 @@ async fn run_step_validation(
 
     // Phase 2: LLM validation (if backend configured)
     if let Some(backend_name) = validate_config.backend.as_deref() {
-        return run_llm_validation(output, stderr, validate_config, backend_name, config, cwd).await;
+        return run_llm_validation(output, stderr, validate_config, backend_name, config, cwd)
+            .await;
     }
 
     // Heuristic-only path: return cached heuristic result (or None if no validation)
@@ -903,11 +902,29 @@ pub struct StepResult {
     /// Validation result. None when step has no `validate` clause.
     #[allow(dead_code)]
     pub validation: Option<ValidationResult>,
+    /// Structured failure data. Populated for every failed step (success=false).
+    /// None when step succeeds. Separate from `validation` which is scoped
+    /// to validation-clause outcomes only.
+    #[allow(dead_code)]
+    pub failure: Option<StepFailure>,
 }
 
 impl StepResult {
-    /// Create an error result with all extension fields set to None.
-    fn error(name: String, output: String, elapsed_ms: u64, backend: Option<String>) -> Self {
+    /// Create an error result with structured failure data.
+    fn error(
+        name: String,
+        output: String,
+        elapsed_ms: u64,
+        backend: Option<String>,
+        failure_kind: StepFailureKind,
+    ) -> Self {
+        let failure = StepFailure {
+            kind: failure_kind,
+            message: output.clone(),
+            backend: backend.clone(),
+            exit_code: None,
+            elapsed_ms,
+        };
         Self {
             name,
             output,
@@ -919,6 +936,7 @@ impl StepResult {
             stderr: None,
             exit_code: None,
             validation: None,
+            failure: Some(failure),
         }
     }
 }
@@ -945,6 +963,57 @@ pub enum FailureType {
     EmptyOutput,
     /// Validation backend itself failed (timeout, API error, malformed response)
     ValidatorError,
+}
+
+/// Why a step failed at the execution level (not validation).
+/// Scoped to execution-domain failures only. Validation failures
+/// are represented by ValidationResult.failure_type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum StepFailureKind {
+    /// Step or backend timed out
+    Timeout,
+    /// Backend returned error, non-zero exit, or could not be created
+    BackendError,
+    /// Forward-looking placeholder for a future execution-level empty-output
+    /// classification. Today, empty output is only classified when a
+    /// `validate` clause is present, via `FailureType::EmptyOutput`.
+    EmptyOutput,
+    /// Step skipped due to unmet condition or failed dependency
+    Skipped,
+    /// Edit parse or apply failed
+    EditFailed,
+    /// Verify/fix loop exhausted all retries
+    VerifyFailed,
+}
+
+impl std::fmt::Display for StepFailureKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StepFailureKind::Timeout => write!(f, "timeout"),
+            StepFailureKind::BackendError => write!(f, "backend_error"),
+            StepFailureKind::EmptyOutput => write!(f, "empty_output"),
+            StepFailureKind::Skipped => write!(f, "skipped"),
+            StepFailureKind::EditFailed => write!(f, "edit_failed"),
+            StepFailureKind::VerifyFailed => write!(f, "verify_failed"),
+        }
+    }
+}
+
+/// Structured failure metadata for a failed step.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct StepFailure {
+    /// Classification of the failure
+    pub kind: StepFailureKind,
+    /// Human-readable error message
+    pub message: String,
+    /// Backend that failed, if applicable
+    pub backend: Option<String>,
+    /// Process exit code, if applicable (CLI backends only)
+    pub exit_code: Option<i32>,
+    /// Time elapsed before failure (milliseconds)
+    pub elapsed_ms: u64,
 }
 
 /// Prepared step ready for execution
@@ -1114,6 +1183,7 @@ impl WorkflowRunner {
                                 format!("Skipped: {}", msg),
                                 0,
                                 None,
+                                StepFailureKind::Skipped,
                             );
                             results.insert(step.name.clone(), skip_result.clone());
                             ordered_results.push(skip_result);
@@ -1154,6 +1224,7 @@ impl WorkflowRunner {
                             ),
                             0,
                             None,
+                            StepFailureKind::Skipped,
                         );
                         results.insert(step.name.clone(), skip_result.clone());
                         ordered_results.push(skip_result);
@@ -1371,6 +1442,17 @@ impl WorkflowRunner {
                                 items.len()
                             );
 
+                            let failure = if all_success {
+                                None
+                            } else {
+                                Some(StepFailure {
+                                    kind: StepFailureKind::BackendError,
+                                    message: "for_each: some iterations failed".to_string(),
+                                    backend: if shell.is_none() { Some(backend_name.clone()) } else { None },
+                                    exit_code: None,
+                                    elapsed_ms,
+                                })
+                            };
                             return StepResult {
                                 name: step_name,
                                 output: output_json,
@@ -1382,6 +1464,7 @@ impl WorkflowRunner {
                                 stderr: None,
                                 exit_code: None,
                                 validation: None,
+                                failure,
                             };
                         }
 
@@ -1452,6 +1535,7 @@ impl WorkflowRunner {
                                             stderr: shell_output.stderr,
                                             exit_code: shell_output.exit_code,
                                             validation,
+                                            failure: None,
                                         };
                                     }
                                     Ok(Err(e)) => {
@@ -1461,7 +1545,7 @@ impl WorkflowRunner {
                                             // Record step complete (failure)
                                             let summary = summarize_backend_error("shell", &e.to_string());
                                             println!("  {} {}", "✗".red(), summary);
-                                            return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, None);
+                                            return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, None, StepFailureKind::BackendError);
                                         }
                                         let summary = summarize_backend_error("shell", &e.to_string());
                                         println!("  {} {} (will retry)", "⚠".yellow(), summary);
@@ -1472,7 +1556,7 @@ impl WorkflowRunner {
                                             let elapsed_ms = start.elapsed().as_millis() as u64;
                                             // Record step complete (failure - timeout)
                                             println!("  {} timed out after {}s", "✗".red(), timeout_duration.as_secs());
-                                            return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, None);
+                                            return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, None, StepFailureKind::Timeout);
                                         }
                                         println!("  {} timed out (will retry)", "⚠".yellow());
                                     }
@@ -1482,7 +1566,7 @@ impl WorkflowRunner {
                             // Should never reach here, but just in case
                             let elapsed_ms = start.elapsed().as_millis() as u64;
                             // Record step complete (failure - fallback)
-                            return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, None);
+                            return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, None, StepFailureKind::BackendError);
                         }
 
                         // LLM step - query backend(s)
@@ -1543,7 +1627,7 @@ impl WorkflowRunner {
 
                             if responses.is_empty() {
                                 let elapsed_ms = start.elapsed().as_millis() as u64;
-                                return StepResult::error(step_name, format!("All backends failed: {}", errors.join("; ")), elapsed_ms, None);
+                                return StepResult::error(step_name, format!("All backends failed: {}", errors.join("; ")), elapsed_ms, None, StepFailureKind::BackendError);
                             }
 
                             // Apply consensus strategy
@@ -1682,6 +1766,7 @@ impl WorkflowRunner {
                                 stderr: None,
                                 exit_code: None,
                                 validation,
+                                failure: None,
                             };
                         }
 
@@ -1690,7 +1775,7 @@ impl WorkflowRunner {
                             Some(cfg) => cfg,
                             None => {
                                 // Record step complete (failure - backend not found)
-                                return StepResult::error(step_name, format!("Backend not found: {}", backend_name), 0, Some(backend_name));
+                                return StepResult::error(step_name, format!("Backend not found: {}", backend_name), 0, Some(backend_name), StepFailureKind::BackendError);
                             }
                         };
 
@@ -1698,14 +1783,14 @@ impl WorkflowRunner {
                             Ok(b) => b,
                             Err(e) => {
                                 // Record step complete (failure - failed to create backend)
-                                return StepResult::error(step_name, format!("Failed to create backend: {}", e), 0, Some(backend_name));
+                                return StepResult::error(step_name, format!("Failed to create backend: {}", e), 0, Some(backend_name), StepFailureKind::BackendError);
                             }
                         };
 
                         if !backend.is_available() {
                             // Record step complete (failure - backend not available)
                             println!("  {} Backend not available", "✗".red());
-                            return StepResult::error(step_name, format!("Backend {} not available", backend_name), 0, Some(backend_name));
+                            return StepResult::error(step_name, format!("Backend {} not available", backend_name), 0, Some(backend_name), StepFailureKind::BackendError);
                         }
 
                         // Execute LLM query (with retry support)
@@ -1746,7 +1831,7 @@ impl WorkflowRunner {
                                         let summary = summarize_backend_error(&backend_name, &e.to_string());
                                         println!("  {} {} {}", "✗".red(), backend_name.to_uppercase(), summary);
                                         // Record step complete (failure)
-                                        return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, Some(backend_name));
+                                        return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, Some(backend_name), StepFailureKind::BackendError);
                                     }
                                     let summary = summarize_backend_error(&backend_name, &e.to_string());
                                     println!("  {} {} {} (will retry)", "⚠".yellow(), backend_name.to_uppercase(), summary);
@@ -1757,7 +1842,7 @@ impl WorkflowRunner {
                                         let elapsed_ms = start.elapsed().as_millis() as u64;
                                         println!("  {} {} timed out after {}s", "✗".red(), backend_name.to_uppercase(), timeout_duration.as_secs());
                                         // Record step complete (failure)
-                                        return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, Some(backend_name));
+                                        return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, Some(backend_name), StepFailureKind::Timeout);
                                     }
                                     println!("  {} {} timed out (will retry)", "⚠".yellow(), backend_name.to_uppercase());
                                 }
@@ -1827,7 +1912,7 @@ impl WorkflowRunner {
                                                                 }
                                                             }
                                                             // Record step complete (failure)
-                                                            return StepResult::error(step_name, format!("Edit failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()));
+                                                            return StepResult::error(step_name, format!("Edit failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()), StepFailureKind::EditFailed);
                                                         }
                                                     }
                                                 }
@@ -1845,7 +1930,7 @@ impl WorkflowRunner {
                                                 e
                                             );
                                             // Record step complete (failure)
-                                            return StepResult::error(step_name, format!("Parse failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()));
+                                            return StepResult::error(step_name, format!("Parse failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()), StepFailureKind::EditFailed);
                                         }
                                     }
                                 }
@@ -1922,7 +2007,7 @@ impl WorkflowRunner {
                                                 }
                                             }
                                             // No retries left or re-query failed
-                                            return StepResult::error(step_name, format!("Verification failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()));
+                                            return StepResult::error(step_name, format!("Verification failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()), StepFailureKind::VerifyFailed);
                                         }
                                         Err(_) => {
                                             let error_msg = format!("Verification timed out after {}ms", timeout_ms);
@@ -1962,7 +2047,7 @@ impl WorkflowRunner {
                                                 }
                                             }
                                             // No retries left or re-query failed
-                                            return StepResult::error(step_name, format!("{}\n\nOriginal output:\n{}", error_msg, current_text), elapsed_ms, Some(backend_name.clone()));
+                                            return StepResult::error(step_name, format!("{}\n\nOriginal output:\n{}", error_msg, current_text), elapsed_ms, Some(backend_name.clone()), StepFailureKind::VerifyFailed);
                                         }
                                     }
                                 }
@@ -2014,11 +2099,12 @@ impl WorkflowRunner {
                                 stderr: step_stderr,
                                 exit_code: step_exit_code,
                                 validation,
+                                failure: None,
                             }
                         } else {
                             // Record step complete (failure - should never reach here)
                             // Should never reach here given retry loop logic, but just in case
-                            StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, Some(backend_name))
+                            StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, Some(backend_name), StepFailureKind::BackendError)
                         }
                     }
                 })
@@ -3305,6 +3391,7 @@ mod tests {
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -3566,6 +3653,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
         results.insert(
@@ -3581,6 +3669,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
         results
@@ -3673,6 +3762,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
         results.insert(
@@ -3688,6 +3778,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -3811,6 +3902,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -3838,6 +3930,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -3877,6 +3970,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -3904,6 +3998,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -4012,6 +4107,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -4039,6 +4135,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -4296,6 +4393,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -4313,6 +4411,7 @@ line2"}"#;
                 stderr: None,
                 exit_code: None,
                 validation: None,
+                failure: None,
             },
         );
 
@@ -4814,12 +4913,8 @@ prompt = "Check this output"
 
     #[test]
     fn test_interpolate_validation_prompt_basic() {
-        let result = interpolate_validation_prompt(
-            "Validate: {{ output }}",
-            "hello world",
-            None,
-            None,
-        );
+        let result =
+            interpolate_validation_prompt("Validate: {{ output }}", "hello world", None, None);
         assert_eq!(result, "Validate: hello world");
     }
 
@@ -4848,12 +4943,8 @@ prompt = "Check this output"
     #[test]
     fn test_interpolate_validation_prompt_truncation() {
         let long_output = "a".repeat(100);
-        let result = interpolate_validation_prompt(
-            "Check: {{ output }}",
-            &long_output,
-            None,
-            Some(50),
-        );
+        let result =
+            interpolate_validation_prompt("Check: {{ output }}", &long_output, None, Some(50));
         assert!(result.contains(&"a".repeat(50)));
         assert!(result.contains("[TRUNCATED"));
         assert!(result.contains("original was 100 chars"));
@@ -4861,12 +4952,8 @@ prompt = "Check this output"
 
     #[test]
     fn test_interpolate_validation_prompt_no_truncation_when_under_limit() {
-        let result = interpolate_validation_prompt(
-            "Check: {{ output }}",
-            "short",
-            None,
-            Some(1000),
-        );
+        let result =
+            interpolate_validation_prompt("Check: {{ output }}", "short", None, Some(1000));
         assert_eq!(result, "Check: short");
         assert!(!result.contains("TRUNCATED"));
     }
@@ -4945,7 +5032,9 @@ prompt = "Check this output"
         let response = "I cannot fulfill this request.";
         let result = parse_validation_response(response);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unrecognized validation response format"));
+        assert!(result
+            .unwrap_err()
+            .contains("Unrecognized validation response format"));
     }
 
     #[test]
@@ -5038,5 +5127,172 @@ prompt = "Validate: {{ output }}"
         assert!(vc.max_input_length.is_none());
         assert!(!vc.replace_output);
         assert!(vc.timeout_ms.is_none());
+    }
+
+    // ==================== StepFailure Tests (CLO-185) ====================
+
+    #[test]
+    fn test_step_failure_kind_display() {
+        assert_eq!(StepFailureKind::Timeout.to_string(), "timeout");
+        assert_eq!(StepFailureKind::BackendError.to_string(), "backend_error");
+        assert_eq!(StepFailureKind::EmptyOutput.to_string(), "empty_output");
+        assert_eq!(StepFailureKind::Skipped.to_string(), "skipped");
+        assert_eq!(StepFailureKind::EditFailed.to_string(), "edit_failed");
+        assert_eq!(StepFailureKind::VerifyFailed.to_string(), "verify_failed");
+    }
+
+    #[test]
+    fn test_step_failure_kind_copy_eq() {
+        let kind = StepFailureKind::Timeout;
+        let copy = kind; // Copy
+        assert_eq!(kind, copy); // Eq
+        assert_eq!(kind, StepFailureKind::Timeout);
+        assert_ne!(kind, StepFailureKind::BackendError);
+    }
+
+    #[test]
+    fn test_step_result_error_produces_failure() {
+        let result = StepResult::error(
+            "test_step".to_string(),
+            "Error: timed out".to_string(),
+            5000,
+            Some("claude".to_string()),
+            StepFailureKind::Timeout,
+        );
+        assert!(!result.success);
+        assert!(result.failure.is_some());
+        let failure = result.failure.unwrap();
+        assert_eq!(failure.kind, StepFailureKind::Timeout);
+        assert_eq!(failure.message, "Error: timed out");
+        assert_eq!(failure.backend.as_deref(), Some("claude"));
+        assert_eq!(failure.exit_code, None);
+        assert_eq!(failure.elapsed_ms, 5000);
+    }
+
+    #[test]
+    fn test_step_result_error_backend_error() {
+        let result = StepResult::error(
+            "test_step".to_string(),
+            "Backend not found: gpt".to_string(),
+            0,
+            Some("gpt".to_string()),
+            StepFailureKind::BackendError,
+        );
+        assert!(result.failure.is_some());
+        assert_eq!(result.failure.unwrap().kind, StepFailureKind::BackendError);
+    }
+
+    #[test]
+    fn test_step_result_error_skipped() {
+        let result = StepResult::error(
+            "test_step".to_string(),
+            "Skipped: dependency failed (dep1)".to_string(),
+            0,
+            None,
+            StepFailureKind::Skipped,
+        );
+        assert!(result.failure.is_some());
+        let failure = result.failure.unwrap();
+        assert_eq!(failure.kind, StepFailureKind::Skipped);
+        assert_eq!(failure.backend, None);
+        assert_eq!(failure.elapsed_ms, 0);
+    }
+
+    #[test]
+    fn test_step_result_error_edit_failed() {
+        let result = StepResult::error(
+            "test_step".to_string(),
+            "Edit failed: invalid JSON".to_string(),
+            1000,
+            Some("claude".to_string()),
+            StepFailureKind::EditFailed,
+        );
+        assert!(result.failure.is_some());
+        assert_eq!(result.failure.unwrap().kind, StepFailureKind::EditFailed);
+    }
+
+    #[test]
+    fn test_step_result_error_verify_failed() {
+        let result = StepResult::error(
+            "test_step".to_string(),
+            "Verification failed: tests did not pass".to_string(),
+            3000,
+            Some("claude".to_string()),
+            StepFailureKind::VerifyFailed,
+        );
+        assert!(result.failure.is_some());
+        assert_eq!(result.failure.unwrap().kind, StepFailureKind::VerifyFailed);
+    }
+
+    #[test]
+    fn test_step_result_error_output_matches_failure_message() {
+        let result = StepResult::error(
+            "test_step".to_string(),
+            "Error: connection refused".to_string(),
+            100,
+            None,
+            StepFailureKind::BackendError,
+        );
+        let failure = result.failure.as_ref().unwrap();
+        assert_eq!(result.output, failure.message);
+    }
+
+    #[test]
+    fn test_step_result_error_has_no_validation() {
+        let result = StepResult::error(
+            "test_step".to_string(),
+            "Error: timed out".to_string(),
+            5000,
+            None,
+            StepFailureKind::Timeout,
+        );
+        assert!(result.validation.is_none());
+        assert!(result.failure.is_some());
+    }
+
+    #[test]
+    fn test_success_step_has_no_failure() {
+        let result = StepResult {
+            name: "test_step".to_string(),
+            output: "success output".to_string(),
+            parsed_output: None,
+            success: true,
+            elapsed_ms: 100,
+            backend: Some("claude".to_string()),
+            raw_output: None,
+            stderr: None,
+            exit_code: None,
+            validation: None,
+            failure: None,
+        };
+        assert!(result.success);
+        assert!(result.failure.is_none());
+    }
+
+    #[test]
+    fn test_validation_failure_has_no_step_failure() {
+        let result = StepResult {
+            name: "test_step".to_string(),
+            output: "bad output".to_string(),
+            parsed_output: None,
+            success: false,
+            elapsed_ms: 100,
+            backend: Some("claude".to_string()),
+            raw_output: None,
+            stderr: None,
+            exit_code: None,
+            validation: Some(ValidationResult {
+                passed: false,
+                failure_type: Some(FailureType::ValidationFailed),
+                failure_reason: Some("Output not valid".to_string()),
+                validator: "heuristic:contains".to_string(),
+                elapsed_ms: 10,
+            }),
+            failure: None,
+        };
+        assert!(!result.success);
+        assert!(result.validation.is_some());
+        assert!(!result.validation.as_ref().unwrap().passed);
+        assert!(result.failure.is_none());
     }
 }
