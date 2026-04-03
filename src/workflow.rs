@@ -460,11 +460,12 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
                 };
             }
         };
-        let passed = output.len() >= n;
+        let char_count = output.chars().count();
+        let passed = char_count >= n;
         return ValidationResult {
             passed,
             failure_type: if passed { None } else { Some(FailureType::ValidationFailed) },
-            failure_reason: if passed { None } else { Some(format!("Output length {} is less than minimum {}", output.len(), n)) },
+            failure_reason: if passed { None } else { Some(format!("Output length {} is less than minimum {}", char_count, n)) },
             validator: "heuristic:min_length".to_string(),
             elapsed_ms: start.elapsed().as_millis() as u64,
         };
@@ -473,8 +474,8 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
     if let Some(inner) = check_trimmed.strip_prefix("contains(").and_then(|s| s.strip_suffix(')')) {
         let inner = inner.trim();
         // Support both single and double quoted arguments
-        let text = if (inner.starts_with('\'') && inner.ends_with('\''))
-            || (inner.starts_with('"') && inner.ends_with('"'))
+        let text = if inner.len() >= 2 && ((inner.starts_with('\'') && inner.ends_with('\''))
+            || (inner.starts_with('"') && inner.ends_with('"')))
         {
             &inner[1..inner.len() - 1]
         } else {
@@ -4294,10 +4295,24 @@ timeout = 5000
     }
 
     #[test]
+    fn test_heuristic_min_length_unicode() {
+        // "hello" in Japanese is 5 chars but 15 bytes in UTF-8
+        let result = run_heuristic_check("min_length(5)", "\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}");
+        assert!(result.passed);
+    }
+
+    #[test]
     fn test_heuristic_min_length_invalid_arg() {
         let result = run_heuristic_check("min_length(abc)", "some output");
         assert!(!result.passed);
         assert!(result.failure_reason.as_ref().unwrap().contains("Invalid"));
+    }
+
+    #[test]
+    fn test_heuristic_contains_single_quote_char() {
+        // Edge case: single quote character as the entire argument should not panic
+        let result = run_heuristic_check("contains(')", "some output with '");
+        assert!(result.passed || !result.passed); // Just verify no panic
     }
 
     #[tokio::test]
