@@ -12,4 +12,4 @@
 
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
-| - | - | - |
+| CLO-185 | CLO-184 complete | 2026-04-03 |
