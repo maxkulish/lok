@@ -565,13 +565,13 @@ fn interpolate_validation_prompt(
     stderr: Option<&str>,
     max_input_length: Option<usize>,
 ) -> String {
+    let char_count = output.chars().count();
     let truncated_output = match max_input_length {
-        Some(max) if output.len() > max => {
+        Some(max) if char_count > max => {
+            let truncated: String = output.chars().take(max).collect();
             format!(
                 "{}\n\n[TRUNCATED - original was {} chars, showing first {}]",
-                &output[..max],
-                output.len(),
-                max
+                truncated, char_count, max
             )
         }
         _ => output.to_string(),
@@ -656,9 +656,10 @@ fn parse_validation_response(response: &str) -> std::result::Result<ValidationRe
         });
     }
 
+    let preview: String = cleaned.chars().take(200).collect();
     Err(format!(
         "Unrecognized validation response format (expected JSON or REVIEW_FAILED: prefix). Got: {}",
-        &cleaned[..cleaned.len().min(200)]
+        preview
     ))
 }
 
@@ -733,10 +734,18 @@ async fn run_llm_validation(
             validate_config.max_input_length,
         ),
         None => {
-            return handle_infra_error(
-                "validate.prompt is required when validate.backend is set".to_string(),
-                &validator_label,
-                start,
+            // Missing prompt is a configuration error - always fail regardless of on_error policy
+            return (
+                Some(ValidationResult {
+                    passed: false,
+                    failure_type: Some(FailureType::ValidatorError),
+                    failure_reason: Some(
+                        "validate.prompt is required when validate.backend is set".to_string(),
+                    ),
+                    validator: validator_label,
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                }),
+                None,
             );
         }
     };
@@ -774,7 +783,7 @@ async fn run_llm_validation(
                                 validator: validator_label,
                                 elapsed_ms,
                             }),
-                            response.output,
+                            response.output.filter(|s| !s.is_empty()),
                         )
                     } else {
                         let reason = response
@@ -847,12 +856,17 @@ async fn run_step_validation(
     cwd: &std::path::Path,
 ) -> (Option<ValidationResult>, Option<String>) {
     // Phase 1: Heuristic check (if configured)
-    if let Some(check) = validate_config.check.as_deref().filter(|c| !c.trim().is_empty()) {
-        let heuristic_result = run_heuristic_check(check, output);
-        if !heuristic_result.passed {
-            return (Some(heuristic_result), None);
+    let heuristic_result = validate_config
+        .check
+        .as_deref()
+        .filter(|c| !c.trim().is_empty())
+        .map(|check| run_heuristic_check(check, output));
+
+    if let Some(ref result) = heuristic_result {
+        if !result.passed {
+            // Heuristic failed - skip LLM validation (cost optimization)
+            return (heuristic_result, None);
         }
-        // Heuristic passed - continue to LLM if configured
     }
 
     // Phase 2: LLM validation (if backend configured)
@@ -860,15 +874,8 @@ async fn run_step_validation(
         return run_llm_validation(output, stderr, validate_config, backend_name, config, cwd).await;
     }
 
-    // Heuristic-only path: if we got here, heuristic passed (or no check configured)
-    if validate_config.check.as_deref().filter(|c| !c.trim().is_empty()).is_some() {
-        // Heuristic was configured and passed
-        let check = validate_config.check.as_deref().unwrap();
-        return (Some(run_heuristic_check(check, output)), None);
-    }
-
-    // No validation configured at all
-    (None, None)
+    // Heuristic-only path: return cached heuristic result (or None if no validation)
+    (heuristic_result, None)
 }
 
 /// Result of executing a step
