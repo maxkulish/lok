@@ -115,7 +115,11 @@ fn test_parallel_workflow() {
 fn test_validate_workflow() {
     let (success, output) = run_workflow("tests/workflows/test_validate.toml");
 
-    assert!(success, "Workflow should succeed (soft failures only): {}", output);
+    assert!(
+        success,
+        "Workflow should succeed (soft failures only): {}",
+        output
+    );
 
     // empty_output step should fail validation
     assert!(
@@ -129,6 +133,40 @@ fn test_validate_workflow() {
     assert!(
         output.contains("All validation tests completed"),
         "Final step should run: {}",
+        output
+    );
+}
+
+#[test]
+fn test_llm_validate_workflow() {
+    let (success, output) = run_workflow("tests/workflows/test_llm_validate.toml");
+
+    assert!(
+        success,
+        "Workflow should succeed (soft failures + min_deps_success): {}",
+        output
+    );
+
+    // Test 1: heuristic_gates_llm - heuristic fails so LLM is never called
+    // Even though backend "nonexistent" doesn't exist, this should fail from heuristic, not backend error
+    assert!(
+        output.contains("Validation failed") && output.contains("heuristic:not_empty"),
+        "Heuristic should fail before LLM is invoked: {}",
+        output
+    );
+
+    // Test 2: backend_not_found_fail - should show validator error
+    assert!(
+        output.contains("Validation backend not found"),
+        "Should show backend not found error: {}",
+        output
+    );
+
+    // Test 3 & 4: on_error = "pass" and "skip" - steps should succeed
+    // Test 6: summary step should run (at least 2 deps succeed: pass + skip)
+    assert!(
+        output.contains("LLM validation tests completed"),
+        "Summary step should run (min_deps_success met): {}",
         output
     );
 }

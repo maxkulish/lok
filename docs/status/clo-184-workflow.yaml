@@ -1,0 +1,136 @@
+task_id: CLO-184
+title: "Implement LLM-based step validation (validate.backend + prompt)"
+linear_url: "https://linear.app/cloud-ai/issue/CLO-184/implement-llm-based-step-validation-validatebackend-prompt"
+task_type: development
+branch: feat/clo-184-llm-step-validation
+
+workflow:
+  current_phase: pr
+  status: in_progress
+  started_at: "2026-04-03T09:00:00Z"
+
+phases:
+  discovery:
+    status: complete
+    problem_framed: true
+    prd_exists: true
+    prd_file: docs/prds/prd-output-validation-pipeline.md
+    prd_created: false
+    discovery_report: docs/prds/discovery-report-2026-04-03-clo-184.md
+    discovery_debt: 4
+    baseline_score: 73
+    approaches_identified: 1
+    approach_chosen: "JSON structured output, validate.on_error, max_input_length, unified run_validation(), pass/fail default with opt-in cleaning"
+    approved: true
+  design:
+    status: complete
+    design_doc: docs/design-docs/clo-184-llm-step-validation.md
+    draft_ready: true
+    discovery_context_used: true
+    finalized: true
+    review_gemini: docs/reviews/clo-184-review-gemini.md
+    review_ollama: docs/reviews/clo-184-review-ollama.md
+    review_synthesis: docs/reviews/clo-184-review-synthesis.md
+    review_verdict: NEEDS_REVISION
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - "Fixed fail-open parsing fallback to fail-closed (unrecognized format -> ValidatorError)"
+      - "Added strip_markdown_fences() for JSON wrapped in ```json fences"
+      - "Replaced sequential .replace() with single-pass interpolation to prevent {{ stderr }} injection"
+      - "Added timeout_ms field to ValidateConfig for validation-specific timeout"
+      - "Resolved open question: {{ steps.X.raw_output }} deferred to follow-up"
+      - "Documented truncation + replace_output interaction risk"
+      - "Added concurrency safety note (no shared mutable state)"
+      - "Added cleaned field trust model documentation"
+      - "Clarified empty cleaned field semantics"
+      - "Updated for_each validation to run on aggregated output (not per-iteration)"
+    flagged_suggestions: []
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-184-llm-step-validation.md
+    approved: true
+  implement:
+    status: complete
+    commits:
+      - 5e66536
+  pr:
+    status: pending
+  complete:
+    status: pending
+
+dependencies:
+  - id: CLO-181
+    title: "Add per-step model override for Backend::query()"
+    status: done
+    completed_at: "2026-03-30T21:43:00Z"
+  - id: CLO-183
+    title: "Implement heuristic validators (check field) for step validation"
+    status: done
+    completed_at: "2026-04-03T08:26:00Z"
+
+blocks:
+  - id: CLO-185
+    title: "Implement structured failure data for step errors"
+
+history:
+  - timestamp: "2026-04-03T09:00:00Z"
+    action: workflow_started
+    phase: init
+    details: "Development workflow initialized for CLO-184. Both blockers (CLO-181, CLO-183) are Done. Dependencies unblocked."
+  - timestamp: "2026-04-03T09:00:01Z"
+    action: project_sync_start
+    phase: discovery
+    details: "Added to Active Work in PROJECT.md (1/3 WIP). Removed from Up Next and Unblocked & Ready. ROADMAP.md status -> In Progress."
+  - timestamp: "2026-04-03T09:01:00Z"
+    action: problem_framed
+    phase: discovery
+    details: "Problem framed: LLM-based semantic validation and output cleaning after heuristic checks pass. Uses existing Backend trait, ValidateConfig fields, and REVIEW_FAILED protocol."
+  - timestamp: "2026-04-03T09:02:00Z"
+    action: prd_found
+    phase: discovery
+    details: "Existing PRD found: docs/prds/prd-output-validation-pipeline.md. Covers FR-13 through FR-18, FR-23. No new PRD needed."
+  - timestamp: "2026-04-03T09:10:00Z"
+    action: discovery_report_complete
+    phase: discovery
+    details: "Discovery report produced at docs/prds/discovery-report-2026-04-03-clo-184.md. Baseline score: 73%. Discovery debt: 4 killer assumptions (2 mitigated by design changes). Verdict: Needs Iteration."
+  - timestamp: "2026-04-03T09:15:00Z"
+    action: discovery_approved
+    phase: discovery
+    details: "Discovery approved. Approach: JSON structured output, validate.on_error, max_input_length, unified run_validation(), pass/fail default with opt-in cleaning. Proceeding to design."
+  - timestamp: "2026-04-03T09:20:00Z"
+    action: design_started
+    phase: design
+    details: "Design doc created at docs/design-docs/clo-184-llm-step-validation.md. Branch: feat/clo-184-llm-step-validation. Linear comment posted."
+  - timestamp: "2026-04-03T09:25:00Z"
+    action: design_draft_ready
+    phase: design
+    details: "Design doc draft complete with discovery context integrated. Key sections: architecture flow, unified run_step_validation(), JSON response parsing with fallbacks, feature interaction rules."
+  - timestamp: "2026-04-03T09:30:00Z"
+    action: design_review_started
+    phase: design
+    details: "AI review launched: Gemini 3.1 Pro + Codex/Ollama (glm-5:cloud) in parallel."
+  - timestamp: "2026-04-03T09:32:00Z"
+    action: design_review_complete
+    phase: design
+    details: "Gemini: NEEDS_REVISION (3 critical: fail-open parsing, interpolation injection, markdown fences). Ollama: APPROVE_WITH_SUGGESTIONS (2 P1: timeout, raw_output scope). Consensus: NEEDS_REVISION."
+  - timestamp: "2026-04-03T09:35:00Z"
+    action: review_applied
+    phase: design
+    details: "Applied 10 suggestions: fail-closed parsing, markdown fence stripping, single-pass interpolation, timeout_ms field, deferred raw_output, truncation constraint, concurrency note, trust model, empty field semantics, for_each aggregated validation."
+  - timestamp: "2026-04-03T09:40:00Z"
+    action: design_finalized
+    phase: design
+    details: "Design document approved and finalized. Status updated, Linear comment posted. Advancing to plan phase."
+  - timestamp: "2026-04-03T09:42:00Z"
+    action: plan_created
+    phase: plan
+    details: "Implementation plan created at docs/plans/clo-184-llm-step-validation.md. 20 tasks across 6 phases. Linear comment posted."
+  - timestamp: "2026-04-03T09:42:01Z"
+    action: plan_approved
+    phase: plan
+    details: "Plan approved. Advancing to implementation phase."
+  - timestamp: "2026-04-03T10:00:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "All 20 tasks complete across 6 phases. 215 tests pass, clippy clean. Commit 5e66536."
