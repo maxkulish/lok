@@ -1,0 +1,29 @@
+# Project Dashboard - Lok
+
+**Last Updated**: 2026-04-03
+
+## Active Work (WIP Limit: 3)
+
+| Task | Title | Status | Phase | Blocked By |
+|------|-------|--------|-------|------------|
+| [CLO-183](https://linear.app/cloud-ai/issue/CLO-183) | Implement heuristic validators (check field) for step validation | In Progress | Spec | - |
+
+## Up Next (Prioritized Backlog)
+
+| Priority | Task | Title | Dependencies |
+|----------|------|-------|--------------|
+| 1 | [CLO-184](https://linear.app/cloud-ai/issue/CLO-184) | Implement LLM-based step validation (validate.backend + prompt) | CLO-183 |
+
+## Recently Completed
+
+| Task | Title | Completed | Summary |
+|------|-------|-----------|---------|
+| [CLO-182](https://linear.app/cloud-ai/issue/CLO-182) | Extend StepResult with stderr, exit_code, validation fields | 2026-03-31 | Added raw_output, stderr, exit_code, and ValidationResult fields to StepResult |
+| [CLO-181](https://linear.app/cloud-ai/issue/CLO-181) | - | - | - |
+| [CLO-180](https://linear.app/cloud-ai/issue/CLO-180) | - | - | - |
+
+## Blocked
+
+| Task | Title | Blocked By | Notes |
+|------|-------|------------|-------|
+| - | - | - | - |

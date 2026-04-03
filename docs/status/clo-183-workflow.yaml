@@ -1,0 +1,93 @@
+task_id: CLO-183
+title: "Implement heuristic validators (check field) for step validation"
+task_type: specification
+linear_url: "https://linear.app/cloud-ai/issue/CLO-183/implement-heuristic-validators-check-field-for-step-validation"
+branch: "kmamemo/clo-183-implement-heuristic-validators-check-field-for-step"
+
+workflow:
+  current_phase: pr
+  status: in_progress
+  started_at: "2026-04-03T00:00:00Z"
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: specs/2026-04-03-clo-183-heuristic-validators.md
+    approved: true
+    review_completed: true
+    review_gemini: docs/reviews/clo-183-spec-review-gemini.md
+    review_ollama: null
+    review_synthesis: docs/reviews/clo-183-spec-review-synthesis.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_applied: true
+    applied_suggestions:
+      - "Removed raw_output assignment on heuristic failure (struct contract violation)"
+      - "Added validator field format spec (heuristic:<check_name>)"
+      - "Added failure_reason format guidance"
+      - "Clarified fix_retries interaction (intentionally outside fix loop)"
+      - "Clarified StepResult.output retained on failure"
+      - "Added test for mixed check+backend config"
+      - "Added test for fix_retries+validation edge case"
+    flagged_suggestions: []
+  implement:
+    status: complete
+    commits:
+      - 1c536a6
+      - e5cd633
+  pr:
+    status: complete
+    pr_url: "https://github.com/maxkulish/lok/pull/4"
+    pr_number: 4
+  complete:
+    status: pending
+
+dependencies:
+  - id: CLO-182
+    title: "Extend StepResult with stderr, exit_code, validation fields"
+    status: done
+    completed_at: "2026-03-31T10:46:24Z"
+
+blocks:
+  - id: CLO-184
+    title: "Implement LLM-based step validation (validate.backend + prompt)"
+
+history:
+  - timestamp: "2026-04-03T00:00:00Z"
+    action: workflow_started
+    phase: spec
+    details: "Initialized specification workflow for CLO-183"
+  - timestamp: "2026-04-03T00:00:01Z"
+    action: project_sync_start
+    phase: spec
+    details: "Added to Active Work in PROJECT.md, created aggregation files"
+  - timestamp: "2026-04-03T00:01:00Z"
+    action: spec_review_complete
+    phase: spec
+    details: "Gemini: APPROVE_WITH_SUGGESTIONS, Ollama: timed out. Consensus: APPROVE_WITH_SUGGESTIONS"
+  - timestamp: "2026-04-03T00:01:01Z"
+    action: spec_review_applied
+    phase: spec
+    details: "Applied 7 suggestions from Gemini review (raw_output fix, validator format, failure_reason, fix_retries clarification, output retention, mixed config test, edge case test)"
+  - timestamp: "2026-04-03T00:02:00Z"
+    action: spec_approved
+    phase: spec
+    details: "Spec approved by user, transitioning to implement phase"
+  - timestamp: "2026-04-03T00:03:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "All 5 sub-tasks implemented: ValidateConfig struct, heuristic check parser, step execution wiring, TOML parsing tests, integration test. 192 tests pass, clippy clean."
+  - timestamp: "2026-04-03T00:04:00Z"
+    action: pushed_to_remote
+    phase: implement
+    details: "Pushed 2 commits to origin/kmamemo/clo-183-implement-heuristic-validators-check-field-for-step"
+  - timestamp: "2026-04-03T00:04:01Z"
+    action: pr_created
+    phase: pr
+    details: "PR #4 created: https://github.com/maxkulish/lok/pull/4"

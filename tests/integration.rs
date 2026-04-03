@@ -110,3 +110,25 @@ fn test_parallel_workflow() {
         output
     );
 }
+
+#[test]
+fn test_validate_workflow() {
+    let (success, output) = run_workflow("tests/workflows/test_validate.toml");
+
+    assert!(success, "Workflow should succeed (soft failures only): {}", output);
+
+    // empty_output step should fail validation
+    assert!(
+        output.contains("Validation failed") && output.contains("not_empty"),
+        "Should show validation failure for empty output: {}",
+        output
+    );
+
+    // valid_output, length_check, contains_check should pass
+    // final step should succeed (min_deps_success = 3, and 3+ deps succeed)
+    assert!(
+        output.contains("All validation tests completed"),
+        "Final step should run: {}",
+        output
+    );
+}
