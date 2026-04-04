@@ -19,6 +19,81 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Typed backend errors replacing opaque `anyhow::Error` from `Backend::query()`.
+/// Each variant represents a distinct failure mode that callers can match on
+/// for retry decisions, user-facing messages, and error classification.
+#[derive(Debug, Clone, thiserror::Error)]
+#[allow(dead_code)]
+pub enum BackendError {
+    #[error("timeout: {message}")]
+    Timeout { message: String, elapsed_ms: u64 },
+
+    #[error("rate limited: {message}")]
+    RateLimit {
+        message: String,
+        retry_after_ms: Option<u64>,
+    },
+
+    #[error("auth: {message}")]
+    Auth { message: String },
+
+    #[error("network: {message}")]
+    Network { message: String },
+
+    #[error("parse: {message}")]
+    Parse { message: String },
+
+    #[error("execution failed: {message}")]
+    ExecutionFailed {
+        message: String,
+        exit_code: Option<i32>,
+    },
+
+    #[error("unavailable: {message}")]
+    Unavailable { message: String },
+
+    #[error("config: {message}")]
+    Config { message: String },
+}
+
+impl BackendError {
+    /// Returns true if this error is transient and the operation should be retried.
+    /// Only `Timeout`, `RateLimit`, and `Network` are retryable.
+    #[allow(dead_code)]
+    pub fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            BackendError::Timeout { .. }
+                | BackendError::RateLimit { .. }
+                | BackendError::Network { .. }
+        )
+    }
+}
+
+// TODO: remove once all backends return typed errors directly
+impl From<anyhow::Error> for BackendError {
+    fn from(err: anyhow::Error) -> Self {
+        use crate::utils::classify_backend_error;
+        use crate::utils::BackendErrorKind;
+
+        let msg = err.to_string();
+        match classify_backend_error(&msg) {
+            BackendErrorKind::RateLimited => BackendError::RateLimit {
+                message: msg,
+                retry_after_ms: None,
+            },
+            BackendErrorKind::CapacityExhausted => BackendError::Unavailable { message: msg },
+            BackendErrorKind::AuthError => BackendError::Auth { message: msg },
+            BackendErrorKind::NetworkError => BackendError::Network { message: msg },
+            BackendErrorKind::NotInstalled => BackendError::Unavailable { message: msg },
+            BackendErrorKind::Unknown => BackendError::ExecutionFailed {
+                message: msg,
+                exit_code: None,
+            },
+        }
+    }
+}
+
 /// Structured output from a backend query, capturing stdout, stderr, and exit code.
 #[derive(Debug, Clone)]
 pub struct QueryOutput {
@@ -50,7 +125,12 @@ impl QueryOutput {
 #[async_trait]
 pub trait Backend: Send + Sync {
     fn name(&self) -> &str;
-    async fn query(&self, prompt: &str, cwd: &Path, model: Option<&str>) -> Result<QueryOutput>;
+    async fn query(
+        &self,
+        prompt: &str,
+        cwd: &Path,
+        model: Option<&str>,
+    ) -> std::result::Result<QueryOutput, BackendError>;
     fn is_available(&self) -> bool;
 }
 
@@ -59,6 +139,7 @@ pub struct QueryResult {
     pub output: String,
     pub success: bool,
     pub elapsed_ms: u64,
+    pub error: Option<BackendError>,
 }
 
 pub fn create_backend(name: &str, config: &BackendConfig) -> Result<Arc<dyn Backend>> {
@@ -182,19 +263,28 @@ pub async fn run_query_with_config(
                 output: query_output.stdout,
                 success: true,
                 elapsed_ms,
+                error: None,
             },
             Ok(Err(e)) => QueryResult {
                 backend: backend.name().to_string(),
                 output: format!("Error: {}", e),
                 success: false,
                 elapsed_ms,
+                error: Some(e),
             },
-            Err(_) => QueryResult {
-                backend: backend.name().to_string(),
-                output: format!("Error: Timeout ({}s)", timeout),
-                success: false,
-                elapsed_ms,
-            },
+            Err(_) => {
+                let timeout_err = BackendError::Timeout {
+                    message: format!("Timeout ({}s)", timeout),
+                    elapsed_ms,
+                };
+                QueryResult {
+                    backend: backend.name().to_string(),
+                    output: format!("Error: {}", timeout_err),
+                    success: false,
+                    elapsed_ms,
+                    error: Some(timeout_err),
+                }
+            }
         }
     };
 
@@ -368,5 +458,84 @@ mod tests {
         assert_eq!(output.stdout, "");
         assert!(output.stderr.is_none());
         assert_eq!(output.exit_code, Some(0));
+    }
+
+    #[test]
+    fn test_backend_error_retryable() {
+        assert!(BackendError::Timeout {
+            message: "timed out".into(),
+            elapsed_ms: 5000
+        }
+        .is_retryable());
+        assert!(BackendError::RateLimit {
+            message: "429".into(),
+            retry_after_ms: None
+        }
+        .is_retryable());
+        assert!(BackendError::Network {
+            message: "refused".into()
+        }
+        .is_retryable());
+    }
+
+    #[test]
+    fn test_backend_error_not_retryable() {
+        assert!(!BackendError::Auth {
+            message: "bad key".into()
+        }
+        .is_retryable());
+        assert!(!BackendError::Parse {
+            message: "invalid json".into()
+        }
+        .is_retryable());
+        assert!(!BackendError::ExecutionFailed {
+            message: "failed".into(),
+            exit_code: Some(1)
+        }
+        .is_retryable());
+        assert!(!BackendError::Unavailable {
+            message: "gone".into()
+        }
+        .is_retryable());
+        assert!(!BackendError::Config {
+            message: "bad config".into()
+        }
+        .is_retryable());
+    }
+
+    #[test]
+    fn test_backend_error_display() {
+        let err = BackendError::Timeout {
+            message: "request took too long".into(),
+            elapsed_ms: 30000,
+        };
+        assert_eq!(err.to_string(), "timeout: request took too long");
+
+        let err = BackendError::RateLimit {
+            message: "429 Too Many Requests".into(),
+            retry_after_ms: Some(5000),
+        };
+        assert_eq!(err.to_string(), "rate limited: 429 Too Many Requests");
+
+        let err = BackendError::ExecutionFailed {
+            message: "process exited".into(),
+            exit_code: Some(1),
+        };
+        assert_eq!(err.to_string(), "execution failed: process exited");
+    }
+
+    #[test]
+    fn test_backend_error_from_anyhow() {
+        let anyhow_err = anyhow::anyhow!("Error 429: Too Many Requests");
+        let backend_err = BackendError::from(anyhow_err);
+        assert!(matches!(backend_err, BackendError::RateLimit { .. }));
+
+        let anyhow_err = anyhow::anyhow!("ECONNREFUSED: Connection refused");
+        let backend_err = BackendError::from(anyhow_err);
+        assert!(matches!(backend_err, BackendError::Network { .. }));
+
+        let anyhow_err = anyhow::anyhow!("Something unknown happened");
+        let backend_err = BackendError::from(anyhow_err);
+        assert!(matches!(backend_err, BackendError::ExecutionFailed { .. }));
     }
 }

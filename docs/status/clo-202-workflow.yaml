@@ -1,0 +1,69 @@
+task_id: CLO-202
+title: "Add BackendError enum with typed variants and is_retryable()"
+task_type: specification
+linear_url: "https://linear.app/cloud-ai/issue/CLO-202/add-backenderror-enum-with-typed-variants-and-is-retryable"
+branch: "feat/clo-202-typed-backend-errors"
+
+workflow:
+  current_phase: implement
+  status: in_progress
+  started_at: "2026-04-04T00:00:00Z"
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: "specs/2026-04-04-clo-202-typed-backend-errors.md"
+    approved: true
+    review_completed: true
+    review_gemini: "docs/reviews/clo-202-spec-review-gemini.md"
+    review_ollama: "docs/reviews/clo-202-spec-review-ollama.md"
+    review_synthesis: "docs/reviews/clo-202-spec-review-synthesis.md"
+    review_verdict: "NEEDS_REVISION"
+    review_applied: true
+    applied_suggestions:
+      - "Added QueryResult.error: Option<BackendError> field and sub-task for run_query_with_config"
+      - "Defined timeout ownership: run_query_with_config constructs BackendError::Timeout for external timeouts"
+      - "Split summarize_backend_error into typed and string variants"
+      - "Added BackendError -> BackendErrorKind mapping table"
+      - "Scoped From<anyhow::Error> as transitional with TODO comment"
+      - "Added source() via thiserror #[source] attribute"
+      - "Fixed timeout mapping: BackendError::Timeout -> StepFailureKind::Timeout explicitly"
+      - "Added integration test for typed error propagation"
+      - "Noted flag-day compilation strategy (accept breakage in single branch)"
+      - "Use pattern matching (not PartialEq) in tests"
+    flagged_suggestions: []
+  implement:
+    status: in_progress
+  pr:
+    status: pending
+  complete:
+    status: pending
+
+history:
+  - timestamp: "2026-04-04T00:00:00Z"
+    action: workflow_started
+    phase: spec
+    details: "Initialized specification workflow for CLO-202"
+  - timestamp: "2026-04-04T00:01:00Z"
+    action: spec_drafted
+    phase: spec
+    details: "Spec written: specs/2026-04-04-clo-202-typed-backend-errors.md. 8 sub-tasks, M scope."
+  - timestamp: "2026-04-04T00:02:00Z"
+    action: spec_review_complete
+    phase: spec
+    details: "Gemini: APPROVE_WITH_SUGGESTIONS, Ollama: NEEDS_REVISION. Consensus: NEEDS_REVISION. Key gaps: QueryResult type erasure, timeout ownership, mapping table."
+  - timestamp: "2026-04-04T00:03:00Z"
+    action: spec_review_applied
+    phase: spec
+    details: "Applied 10 suggestions: QueryResult update, timeout ownership, split summarize functions, mapping table, source() impl, From<anyhow> scoping, flag-day note, integration test, pattern matching in tests."
+  - timestamp: "2026-04-04T00:04:00Z"
+    action: spec_approved
+    phase: spec
+    details: "Spec approved. Proceeding to implementation."

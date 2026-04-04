@@ -1,5 +1,5 @@
 use crate::config::BackendConfig;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
 use std::process::Stdio;
@@ -64,7 +64,7 @@ impl super::Backend for CodexBackend {
         prompt: &str,
         cwd: &Path,
         model: Option<&str>,
-    ) -> Result<super::QueryOutput> {
+    ) -> std::result::Result<super::QueryOutput, super::BackendError> {
         let mut cmd = Command::new(&self.command);
         cmd.args(&self.args);
 
@@ -82,13 +82,26 @@ impl super::Backend for CodexBackend {
         let output = cmd
             .output()
             .await
-            .context("Failed to execute codex command")?;
+            .map_err(|e| super::BackendError::Unavailable {
+                message: format!("Failed to execute codex command: {}", e),
+            })?;
 
         let exit_code = output.status.code().unwrap_or(-1);
         let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            anyhow::bail!("Codex failed: {}", stderr_str);
+            let msg = format!("Codex failed: {}", stderr_str);
+            let err = super::BackendError::from(anyhow::anyhow!("{}", msg));
+            // Preserve exit_code that From<anyhow::Error> would discard
+            let err = if let super::BackendError::ExecutionFailed { message, .. } = err {
+                super::BackendError::ExecutionFailed {
+                    message,
+                    exit_code: Some(exit_code),
+                }
+            } else {
+                err
+            };
+            return Err(err);
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);

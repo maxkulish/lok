@@ -13,7 +13,7 @@ use crate::backend;
 use crate::config::Config;
 use crate::context::{resolve_format_command, resolve_verify_command, CodebaseContext};
 use crate::git_agent;
-use crate::utils::summarize_backend_error;
+use crate::utils::{summarize_backend_error, summarize_shell_error};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use thiserror::Error;
@@ -761,7 +761,10 @@ async fn run_llm_validation(
             .await
             {
                 Ok(result) => result,
-                Err(_) => Err(anyhow::anyhow!("Validation timed out after {}ms", timeout)),
+                Err(_) => Err(backend::BackendError::Timeout {
+                    message: format!("Validation timed out after {}ms", timeout),
+                    elapsed_ms: timeout,
+                }),
             }
         }
         None => backend_instance.query(&prompt, cwd, model_override).await,
@@ -1543,11 +1546,11 @@ impl WorkflowRunner {
                                         if attempt == max_retries {
                                             let elapsed_ms = start.elapsed().as_millis() as u64;
                                             // Record step complete (failure)
-                                            let summary = summarize_backend_error("shell", &e.to_string());
+                                            let summary = summarize_shell_error("shell", &e.to_string());
                                             println!("  {} {}", "✗".red(), summary);
                                             return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, None, StepFailureKind::BackendError);
                                         }
-                                        let summary = summarize_backend_error("shell", &e.to_string());
+                                        let summary = summarize_shell_error("shell", &e.to_string());
                                         println!("  {} {} (will retry)", "⚠".yellow(), summary);
                                     }
                                     Err(_) => {
@@ -1826,14 +1829,19 @@ impl WorkflowRunner {
                                 }
                                 Ok(Err(e)) => {
                                     last_error = e.to_string();
+                                    let failure_kind = if matches!(e, backend::BackendError::Timeout { .. }) {
+                                        StepFailureKind::Timeout
+                                    } else {
+                                        StepFailureKind::BackendError
+                                    };
                                     if attempt == max_retries {
                                         let elapsed_ms = start.elapsed().as_millis() as u64;
-                                        let summary = summarize_backend_error(&backend_name, &e.to_string());
+                                        let summary = summarize_backend_error(&e);
                                         println!("  {} {} {}", "✗".red(), backend_name.to_uppercase(), summary);
                                         // Record step complete (failure)
-                                        return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, Some(backend_name), StepFailureKind::BackendError);
+                                        return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, Some(backend_name), failure_kind);
                                     }
-                                    let summary = summarize_backend_error(&backend_name, &e.to_string());
+                                    let summary = summarize_backend_error(&e);
                                     println!("  {} {} {} (will retry)", "⚠".yellow(), backend_name.to_uppercase(), summary);
                                 }
                                 Err(_) => {

@@ -8,6 +8,8 @@ use std::path::Path;
 use std::process::Stdio;
 use tokio::process::Command;
 
+use super::BackendError;
+
 /// Claude backend mode - API or CLI
 #[derive(Clone)]
 pub enum ClaudeMode {
@@ -94,14 +96,18 @@ impl ClaudeBackend {
         system: &str,
         prompt: &str,
         model_override: Option<&str>,
-    ) -> Result<String> {
+    ) -> std::result::Result<String, BackendError> {
         let (api_key, default_model, client) = match &self.mode {
             ClaudeMode::Api {
                 api_key,
                 model,
                 client,
             } => (api_key, model, client),
-            ClaudeMode::Cli { .. } => anyhow::bail!("API mode required for this operation"),
+            ClaudeMode::Cli { .. } => {
+                return Err(BackendError::Config {
+                    message: "API mode required for this operation".to_string(),
+                })
+            }
         };
 
         let effective_model = model_override
@@ -128,18 +134,32 @@ impl ClaudeBackend {
             .json(&request)
             .send()
             .await
-            .context("Failed to send request to Claude API")?;
+            .map_err(|e| {
+                if e.is_timeout() {
+                    BackendError::Timeout {
+                        message: format!("Claude API request timed out: {}", e),
+                        elapsed_ms: 0,
+                    }
+                } else if e.is_connect() {
+                    BackendError::Network {
+                        message: format!("Claude API connection failed: {}", e),
+                    }
+                } else {
+                    BackendError::Network {
+                        message: format!("Failed to send request to Claude API: {}", e),
+                    }
+                }
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Claude API error {}: {}", status, body);
+            return Err(classify_http_error(status, &body));
         }
 
-        let response: ClaudeResponse = response
-            .json()
-            .await
-            .context("Failed to parse Claude response")?;
+        let response: ClaudeResponse = response.json().await.map_err(|e| BackendError::Parse {
+            message: format!("Failed to parse Claude response: {}", e),
+        })?;
 
         let text = response
             .content
@@ -203,6 +223,29 @@ impl ClaudeBackend {
     }
 }
 
+fn classify_http_error(status: reqwest::StatusCode, body: &str) -> BackendError {
+    let msg = format!("Claude API error {}: {}", status, body);
+    match status.as_u16() {
+        401 | 403 => BackendError::Auth { message: msg },
+        429 => BackendError::RateLimit {
+            message: msg,
+            retry_after_ms: None,
+        },
+        529 => BackendError::RateLimit {
+            message: msg,
+            retry_after_ms: None,
+        },
+        500..=599 => BackendError::ExecutionFailed {
+            message: msg,
+            exit_code: None,
+        },
+        _ => BackendError::ExecutionFailed {
+            message: msg,
+            exit_code: None,
+        },
+    }
+}
+
 #[async_trait]
 impl super::Backend for ClaudeBackend {
     fn name(&self) -> &str {
@@ -214,7 +257,7 @@ impl super::Backend for ClaudeBackend {
         prompt: &str,
         cwd: &Path,
         model: Option<&str>,
-    ) -> Result<super::QueryOutput> {
+    ) -> std::result::Result<super::QueryOutput, BackendError> {
         match &self.mode {
             ClaudeMode::Api { .. } => {
                 let text = self
@@ -222,7 +265,10 @@ impl super::Backend for ClaudeBackend {
                     .await?;
                 Ok(super::QueryOutput::from_text(text))
             }
-            ClaudeMode::Cli { .. } => self.query_cli(prompt, cwd, model).await,
+            ClaudeMode::Cli { .. } => self
+                .query_cli(prompt, cwd, model)
+                .await
+                .map_err(BackendError::from),
         }
     }
 
