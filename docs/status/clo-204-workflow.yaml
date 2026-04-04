@@ -1,0 +1,69 @@
+task_id: CLO-204
+task_title: "Add MiniJinja integration with TemplateContext and custom filters"
+task_url: "https://linear.app/cloud-ai/issue/CLO-204"
+task_type: specification
+created_at: "2026-04-04T00:00:00Z"
+
+workflow:
+  current_phase: implement
+  status: in_progress
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: "specs/2026-04-04-clo-204-minijinja-integration.md"
+    approved: true
+    review_completed: true
+    review_gemini: null
+    review_ollama: "docs/reviews/clo-204-spec-review-ollama.md"
+    review_synthesis: "docs/reviews/clo-204-spec-review-synthesis.md"
+    review_verdict: "APPROVE_WITH_SUGGESTIONS"
+    review_applied: true
+    applied_suggestions:
+      - "Added acceptance criterion + test for steps.{name}.success"
+      - "Specified TemplateError variants (UndefinedVariable, ParseError, RenderError)"
+      - "Added success field to Sub-task 4 description"
+      - "Clarified context escaping strategy - MiniJinja does not re-expand substituted values"
+      - "Defined with_loop_item(item, index) interface in Sub-task 4"
+      - "Added test for parsed_output: None fallback path"
+      - "Clarified arg key representation as string keys in MiniJinja map"
+    flagged_suggestions: []
+  implement:
+    status: in_progress
+  pr:
+    status: pending
+  complete:
+    status: pending
+
+history:
+  - timestamp: "2026-04-04T00:00:00Z"
+    action: workflow_started
+    phase: spec
+    details: "Initialized specification workflow for CLO-204"
+  - timestamp: "2026-04-04T00:00:01Z"
+    action: project_sync_start
+    phase: spec
+    details: "Added to Active Work in PROJECT.md, ROADMAP.md status -> In Progress, removed from Unblocked & Ready"
+  - timestamp: "2026-04-04T00:01:00Z"
+    action: spec_draft_complete
+    phase: spec
+    details: "Spec written to specs/2026-04-04-clo-204-minijinja-integration.md"
+  - timestamp: "2026-04-04T00:02:00Z"
+    action: spec_review_complete
+    phase: spec
+    details: "Ollama: APPROVE_WITH_SUGGESTIONS (7 items). Gemini: REVIEW_FAILED."
+  - timestamp: "2026-04-04T00:03:00Z"
+    action: spec_review_applied
+    phase: spec
+    details: "Auto-applied 7 suggestions (3 P0, 4 P1). No contradictions found."
+  - timestamp: "2026-04-04T00:04:00Z"
+    action: spec_approved
+    phase: spec
+    details: "User approved spec. Transitioning to implement phase."
