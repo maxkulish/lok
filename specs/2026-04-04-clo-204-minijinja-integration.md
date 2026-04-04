@@ -46,7 +46,7 @@ This task adds MiniJinja 2.0 as a template engine alongside the existing regex s
 - Name custom filters to avoid colliding with MiniJinja builtins: use `json_encode` (not `json` - MiniJinja has a builtin `tojson`), `default_val` (not `default` - MiniJinja has a builtin `default`)
 - `shell_escape` must handle: single quotes, double quotes, backticks, `$()`, newlines, null bytes
 - `LazyEnv` Object implementation must not eagerly read all env vars - only resolve on attribute access
-- Context must produce the same variable paths as current regex patterns: `steps.{name}.output`, `steps.{name}.{field}`, `env.{VAR}`, `arg.{N}` (1-indexed, stored as string keys `"1"`, `"2"` in a MiniJinja map), `workflow.backends`, `item`, `item.{field}`, `index`
+- Context must produce the same variable paths as current regex patterns: `steps.{name}.output`, `steps.{name}.{field}`, `env.{VAR}`, `arg.{N}` (1-indexed sequence with `UNDEFINED` at index 0, so `arg.1`, `arg.2` resolve via sequence indexing), `workflow.backends`, `item`, `item.{field}`, `index`
 - Expose `StepResult.success` as `steps.{name}.success` (bool) in the context - needed by condition evaluation
 - Step output values containing `{{ }}` must NOT be re-expanded by MiniJinja - context stores values as `minijinja::Value::from()` strings (MiniJinja does not re-parse substituted values, unlike the regex system which needed explicit brace escaping)
 - Return error for undefined variables - configure MiniJinja with `set_undefined_behavior(UndefinedBehavior::Strict)` rather than defaulting to empty string

@@ -56,7 +56,9 @@ fn last(value: Value) -> Result<Value, minijinja::Error> {
     Ok(value.try_iter()?.last().unwrap_or(Value::UNDEFINED))
 }
 
-/// Return the value if it is defined and truthy, otherwise return the fallback.
+/// Return the value if it is defined, non-none, and non-empty-string;
+/// otherwise return the fallback. Does not treat `false`, `0`, or empty
+/// collections as needing fallback.
 fn default_val(value: Value, fallback: Value) -> Value {
     if value.is_undefined() || value.is_none() {
         return fallback;

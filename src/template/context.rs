@@ -38,7 +38,9 @@ impl TemplateContext {
     /// Build a template context from workflow state.
     ///
     /// - `steps`: completed step results keyed by step name
-    /// - `args`: positional arguments (stored as string keys "1", "2", ...)
+    /// - `args`: positional arguments stored as a 1-indexed sequence with
+    ///   `UNDEFINED` at index 0, so `{{ arg.1 }}`, `{{ arg.2 }}` resolve via
+    ///   sequence indexing
     /// - `backends`: backend names used (will be capitalized, deduplicated, joined)
     pub fn new(steps: &HashMap<String, StepResult>, args: &[String], backends: &[String]) -> Self {
         let mut root = std::collections::BTreeMap::new();
@@ -336,5 +338,16 @@ mod tests {
         assert_eq!(render_template("{{ item.name }}", &ctx), "test");
         assert_eq!(render_template("{{ item.value }}", &ctx), "42");
         assert_eq!(render_template("{{ index }}", &ctx), "3");
+    }
+
+    #[test]
+    fn test_loop_vars_preserve_existing_namespaces() {
+        let mut steps = HashMap::new();
+        steps.insert("s".to_string(), make_step("s", "out", true));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        let ctx = ctx.with_loop_item(Value::from("hello"), 0);
+        assert_eq!(render_template("{{ item }}", &ctx), "hello");
+        assert_eq!(render_template("{{ index }}", &ctx), "0");
+        assert_eq!(render_template("{{ steps.s.output }}", &ctx), "out");
     }
 }

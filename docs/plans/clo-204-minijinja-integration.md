@@ -80,7 +80,7 @@ Add MiniJinja 2.0 as template engine infrastructure alongside the existing regex
 
 - [ ] 3.4: Build `env`, `arg`, and `workflow` namespaces
   - [ ] `env`: `Value::from_object(LazyEnv)`
-  - [ ] `arg`: Map with string keys `"1"`, `"2"`, ... from args slice
+  - [ ] `arg`: 1-indexed sequence with `UNDEFINED` at index 0, so `arg.1`, `arg.2` resolve via sequence indexing
   - [ ] `workflow.backends`: capitalized (first letter), deduplicated, " + "-joined string
 
 - [ ] 3.5: Implement `with_loop_item(self, item: Value, index: usize) -> Self`
