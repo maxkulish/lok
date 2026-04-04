@@ -11,6 +11,7 @@ mod output;
 mod spawn;
 mod tasks;
 mod team;
+mod template;
 mod utils;
 mod workflow;
 mod workflows;
