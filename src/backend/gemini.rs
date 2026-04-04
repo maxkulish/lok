@@ -1,5 +1,5 @@
 use crate::config::BackendConfig;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
 use std::process::Stdio;
@@ -48,7 +48,7 @@ impl super::Backend for GeminiBackend {
         prompt: &str,
         cwd: &Path,
         model: Option<&str>,
-    ) -> Result<super::QueryOutput> {
+    ) -> std::result::Result<super::QueryOutput, super::BackendError> {
         // Gemini CLI requires stdin to be a pipe (not null/tty), so we use shell
         // to pipe empty input: echo '' | npx @google/gemini-cli 'prompt'
         let escaped_prompt = prompt.replace("'", "'\\''");
@@ -75,14 +75,17 @@ impl super::Backend for GeminiBackend {
         let output = cmd
             .output()
             .await
-            .context("Failed to execute gemini command")?;
+            .map_err(|e| super::BackendError::Unavailable {
+                message: format!("Failed to execute gemini command: {}", e),
+            })?;
 
         let exit_code = output.status.code().unwrap_or(-1);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            anyhow::bail!("Gemini failed: {}", stderr_str);
+            let err: anyhow::Error = anyhow::anyhow!("Gemini failed: {}", stderr_str);
+            return Err(super::BackendError::from(err));
         }
 
         let parsed_stdout = self.parse_output(&stdout);

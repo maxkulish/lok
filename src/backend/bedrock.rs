@@ -141,7 +141,7 @@ impl super::Backend for BedrockBackend {
         prompt: &str,
         _cwd: &Path,
         model: Option<&str>,
-    ) -> Result<super::QueryOutput> {
+    ) -> std::result::Result<super::QueryOutput, super::BackendError> {
         let messages = vec![Message {
             role: "user".to_string(),
             content: MessageContent::Text(prompt.to_string()),
@@ -151,7 +151,8 @@ impl super::Backend for BedrockBackend {
 
         let response = self
             .invoke_with_messages_model(effective_model_id, None, messages, None)
-            .await?;
+            .await
+            .map_err(super::BackendError::from)?;
 
         let text = response
             .content

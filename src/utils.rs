@@ -3,6 +3,8 @@
 use colored::Colorize;
 use std::path::{Path, PathBuf};
 
+use crate::backend::BackendError;
+
 /// Classification of backend errors for user-friendly messaging
 #[derive(Debug, Clone, PartialEq)]
 pub enum BackendErrorKind {
@@ -46,7 +48,60 @@ impl BackendErrorKind {
     }
 }
 
-/// Classify a backend error message into a known category
+impl From<&BackendError> for BackendErrorKind {
+    fn from(err: &BackendError) -> Self {
+        match err {
+            BackendError::Timeout { .. } => BackendErrorKind::NetworkError,
+            BackendError::RateLimit { .. } => BackendErrorKind::RateLimited,
+            BackendError::Auth { .. } => BackendErrorKind::AuthError,
+            BackendError::Network { .. } => BackendErrorKind::NetworkError,
+            BackendError::Parse { .. } => BackendErrorKind::Unknown,
+            BackendError::ExecutionFailed { .. } => BackendErrorKind::Unknown,
+            BackendError::Unavailable { .. } => BackendErrorKind::CapacityExhausted,
+            BackendError::Config { .. } => BackendErrorKind::Unknown,
+        }
+    }
+}
+
+/// Generate a user-friendly one-line error summary from a typed BackendError
+pub fn summarize_backend_error(err: &BackendError) -> String {
+    let kind = BackendErrorKind::from(err);
+    match kind {
+        BackendErrorKind::Unknown => {
+            let first_line = err.to_string();
+            let clean = first_line.lines().next().unwrap_or(&first_line).trim();
+            truncate(clean, 80)
+        }
+        _ => match kind.hint() {
+            Some(hint) => format!("{} ({})", kind.description(), hint),
+            None => kind.description().to_string(),
+        },
+    }
+}
+
+/// Generate a user-friendly one-line error summary from a shell error string.
+/// Legacy: for non-backend errors (shell commands). Prefer `summarize_backend_error` for typed errors.
+pub fn summarize_shell_error(backend_name: &str, error: &str) -> String {
+    let kind = classify_backend_error(error);
+    match kind {
+        BackendErrorKind::Unknown => {
+            let first_line = error.lines().next().unwrap_or(error);
+            let clean = first_line
+                .trim()
+                .trim_start_matches(&format!("{} failed:", backend_name))
+                .trim_start_matches(&format!("{} failed:", backend_name.to_uppercase()))
+                .trim();
+            truncate(clean, 80)
+        }
+        _ => match kind.hint() {
+            Some(hint) => format!("{} ({})", kind.description(), hint),
+            None => kind.description().to_string(),
+        },
+    }
+}
+
+/// Legacy: Classify a backend error message string into a known category.
+/// Prefer `From<&BackendError> for BackendErrorKind` for typed errors.
 pub fn classify_backend_error(error: &str) -> BackendErrorKind {
     let error_lower = error.to_lowercase();
 
@@ -101,31 +156,6 @@ pub fn classify_backend_error(error: &str) -> BackendErrorKind {
     }
 
     BackendErrorKind::Unknown
-}
-
-/// Generate a user-friendly one-line error summary
-pub fn summarize_backend_error(backend_name: &str, error: &str) -> String {
-    let kind = classify_backend_error(error);
-
-    match kind {
-        BackendErrorKind::Unknown => {
-            // For unknown errors, show a truncated version
-            let first_line = error.lines().next().unwrap_or(error);
-            let clean = first_line
-                .trim()
-                .trim_start_matches(&format!("{} failed:", backend_name))
-                .trim_start_matches(&format!("{} failed:", backend_name.to_uppercase()))
-                .trim();
-            truncate(clean, 80)
-        }
-        _ => {
-            // For known errors, show the classification with optional hint
-            match kind.hint() {
-                Some(hint) => format!("{} ({})", kind.description(), hint),
-                None => kind.description().to_string(),
-            }
-        }
-    }
 }
 
 /// Attempts to canonicalize a path, logging a warning and returning the original path on failure.
@@ -299,7 +329,7 @@ mod tests {
 
     #[test]
     fn test_summarize_rate_limit() {
-        let summary = summarize_backend_error("gemini", "Error 429: Too Many Requests");
+        let summary = summarize_shell_error("gemini", "Error 429: Too Many Requests");
         assert_eq!(
             summary,
             "rate limited (try again later or use fewer backends)"
@@ -308,15 +338,69 @@ mod tests {
 
     #[test]
     fn test_summarize_capacity() {
-        let summary = summarize_backend_error("gemini", "No capacity available");
+        let summary = summarize_shell_error("gemini", "No capacity available");
         assert_eq!(summary, "no capacity available (try again later)");
     }
 
     #[test]
     fn test_summarize_unknown_truncates() {
         let long_error = "Gemini failed: ".to_string() + &"x".repeat(200);
-        let summary = summarize_backend_error("gemini", &long_error);
+        let summary = summarize_shell_error("gemini", &long_error);
         assert!(summary.len() <= 83); // 80 chars + "..."
         assert!(summary.ends_with("..."));
+    }
+
+    #[test]
+    fn test_backend_error_kind_from_typed() {
+        assert_eq!(
+            BackendErrorKind::from(&BackendError::RateLimit {
+                message: "429".to_string(),
+                retry_after_ms: None
+            }),
+            BackendErrorKind::RateLimited
+        );
+        assert_eq!(
+            BackendErrorKind::from(&BackendError::Auth {
+                message: "unauthorized".to_string()
+            }),
+            BackendErrorKind::AuthError
+        );
+        assert_eq!(
+            BackendErrorKind::from(&BackendError::Network {
+                message: "refused".to_string()
+            }),
+            BackendErrorKind::NetworkError
+        );
+        assert_eq!(
+            BackendErrorKind::from(&BackendError::Timeout {
+                message: "timed out".to_string(),
+                elapsed_ms: 5000
+            }),
+            BackendErrorKind::NetworkError
+        );
+        assert_eq!(
+            BackendErrorKind::from(&BackendError::Unavailable {
+                message: "overloaded".to_string()
+            }),
+            BackendErrorKind::CapacityExhausted
+        );
+        assert_eq!(
+            BackendErrorKind::from(&BackendError::Config {
+                message: "bad config".to_string()
+            }),
+            BackendErrorKind::Unknown
+        );
+    }
+
+    #[test]
+    fn test_summarize_typed_backend_error() {
+        let err = BackendError::RateLimit {
+            message: "429 Too Many Requests".to_string(),
+            retry_after_ms: None,
+        };
+        assert_eq!(
+            summarize_backend_error(&err),
+            "rate limited (try again later or use fewer backends)"
+        );
     }
 }

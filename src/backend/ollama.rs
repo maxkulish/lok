@@ -62,7 +62,11 @@ impl OllamaBackend {
         })
     }
 
-    async fn chat(&self, prompt: &str, model_override: Option<&str>) -> Result<String> {
+    async fn chat(
+        &self,
+        prompt: &str,
+        model_override: Option<&str>,
+    ) -> std::result::Result<String, super::BackendError> {
         let effective_model = model_override
             .filter(|m| !m.is_empty())
             .unwrap_or(&self.model);
@@ -80,14 +84,47 @@ impl OllamaBackend {
             .post(format!("{}/api/chat", self.base_url))
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    super::BackendError::Timeout {
+                        message: format!("Ollama request timed out: {}", e),
+                        elapsed_ms: 0,
+                    }
+                } else if e.is_connect() {
+                    super::BackendError::Network {
+                        message: format!("Ollama connection failed: {}", e),
+                    }
+                } else {
+                    super::BackendError::Network {
+                        message: format!("Ollama request failed: {}", e),
+                    }
+                }
+            })?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await?;
-            anyhow::bail!("Ollama error: {}", error_text);
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            let msg = format!("Ollama error {}: {}", status, error_text);
+            return Err(match status.as_u16() {
+                429 => super::BackendError::RateLimit {
+                    message: msg,
+                    retry_after_ms: None,
+                },
+                _ => super::BackendError::ExecutionFailed {
+                    message: msg,
+                    exit_code: None,
+                },
+            });
         }
 
-        let chat_response: ChatResponse = response.json().await?;
+        let chat_response: ChatResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| super::BackendError::Parse {
+                    message: format!("Failed to parse Ollama response: {}", e),
+                })?;
 
         match chat_response.message {
             Some(msg) => Ok(msg.content),
@@ -107,7 +144,7 @@ impl Backend for OllamaBackend {
         prompt: &str,
         _cwd: &Path,
         model: Option<&str>,
-    ) -> Result<super::QueryOutput> {
+    ) -> std::result::Result<super::QueryOutput, super::BackendError> {
         let text = self.chat(prompt, model).await?;
         Ok(super::QueryOutput::from_text(text))
     }

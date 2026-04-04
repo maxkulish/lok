@@ -8,6 +8,8 @@ use std::path::Path;
 use std::process::Stdio;
 use tokio::process::Command;
 
+use super::BackendError;
+
 /// Claude backend mode - API or CLI
 #[derive(Clone)]
 pub enum ClaudeMode {
@@ -203,6 +205,30 @@ impl ClaudeBackend {
     }
 }
 
+#[allow(dead_code)]
+fn classify_http_error(status: reqwest::StatusCode, body: &str) -> BackendError {
+    let msg = format!("Claude API error {}: {}", status, body);
+    match status.as_u16() {
+        401 | 403 => BackendError::Auth { message: msg },
+        429 => BackendError::RateLimit {
+            message: msg,
+            retry_after_ms: None,
+        },
+        529 => BackendError::RateLimit {
+            message: msg,
+            retry_after_ms: None,
+        },
+        500..=599 => BackendError::ExecutionFailed {
+            message: msg,
+            exit_code: None,
+        },
+        _ => BackendError::ExecutionFailed {
+            message: msg,
+            exit_code: None,
+        },
+    }
+}
+
 #[async_trait]
 impl super::Backend for ClaudeBackend {
     fn name(&self) -> &str {
@@ -214,15 +240,19 @@ impl super::Backend for ClaudeBackend {
         prompt: &str,
         cwd: &Path,
         model: Option<&str>,
-    ) -> Result<super::QueryOutput> {
+    ) -> std::result::Result<super::QueryOutput, BackendError> {
         match &self.mode {
             ClaudeMode::Api { .. } => {
                 let text = self
                     .query_api("You are a helpful assistant.", prompt, model)
-                    .await?;
+                    .await
+                    .map_err(BackendError::from)?;
                 Ok(super::QueryOutput::from_text(text))
             }
-            ClaudeMode::Cli { .. } => self.query_cli(prompt, cwd, model).await,
+            ClaudeMode::Cli { .. } => self
+                .query_cli(prompt, cwd, model)
+                .await
+                .map_err(BackendError::from),
         }
     }
 

@@ -120,6 +120,7 @@ impl From<CachedResult> for QueryResult {
             output: r.output,
             success: r.success,
             elapsed_ms: r.elapsed_ms,
+            error: None,
         }
     }
 }
@@ -350,6 +351,7 @@ mod tests {
             output: "output".to_string(),
             success: true,
             elapsed_ms: 100,
+            error: None,
         }];
 
         // Should not cache when disabled

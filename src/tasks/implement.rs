@@ -351,7 +351,10 @@ pub async fn run(
                 let mut should_retry = false;
                 for r in &results {
                     if !r.success {
-                        let kind = classify_backend_error(&r.output);
+                        let kind = match &r.error {
+                            Some(err) => BackendErrorKind::from(err),
+                            None => classify_backend_error(&r.output),
+                        };
                         last_errors.push(format!(
                             "{}: {} ({})",
                             r.backend,
