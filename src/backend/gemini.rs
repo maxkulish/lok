@@ -84,8 +84,18 @@ impl super::Backend for GeminiBackend {
         let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            let err: anyhow::Error = anyhow::anyhow!("Gemini failed: {}", stderr_str);
-            return Err(super::BackendError::from(err));
+            let msg = format!("Gemini failed: {}", stderr_str);
+            let err = super::BackendError::from(anyhow::anyhow!("{}", msg));
+            // Preserve exit_code that From<anyhow::Error> would discard
+            let err = if let super::BackendError::ExecutionFailed { message, .. } = err {
+                super::BackendError::ExecutionFailed {
+                    message,
+                    exit_code: Some(exit_code),
+                }
+            } else {
+                err
+            };
+            return Err(err);
         }
 
         let parsed_stdout = self.parse_output(&stdout);

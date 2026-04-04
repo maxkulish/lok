@@ -79,6 +79,7 @@ impl OllamaBackend {
             stream: false,
         };
 
+        let start = std::time::Instant::now();
         let response = self
             .client
             .post(format!("{}/api/chat", self.base_url))
@@ -86,10 +87,11 @@ impl OllamaBackend {
             .send()
             .await
             .map_err(|e| {
+                let elapsed_ms = start.elapsed().as_millis() as u64;
                 if e.is_timeout() {
                     super::BackendError::Timeout {
                         message: format!("Ollama request timed out: {}", e),
-                        elapsed_ms: 0,
+                        elapsed_ms,
                     }
                 } else if e.is_connect() {
                     super::BackendError::Network {
