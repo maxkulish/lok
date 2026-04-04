@@ -248,12 +248,18 @@ fn deep_merge(base: &mut toml::Value, overlay: toml::Value) {
 }
 
 /// Merge a TOML file into a base value. Returns Ok(()) if file doesn't exist.
+/// Validates the file against Config struct first to catch unknown fields with
+/// file-specific error context before merging.
 fn merge_toml_file(base: &mut toml::Value, path: &Path) -> Result<()> {
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(anyhow::anyhow!("Error reading {}: {}", path.display(), e)),
     };
+
+    // Validate against Config struct first to catch unknown fields with file context
+    let _: Config =
+        toml::from_str(&content).with_context(|| format!("Error parsing {}", path.display()))?;
 
     let overlay: toml::Value =
         toml::from_str(&content).with_context(|| format!("Error parsing {}", path.display()))?;
@@ -268,18 +274,18 @@ pub fn load_config_from_paths(
     home_dir: Option<&Path>,
     explicit_path: Option<&Path>,
 ) -> Result<Config> {
-    // Explicit path: load only that file, no merge
-    if let Some(p) = explicit_path {
-        let content = fs::read_to_string(p)
-            .with_context(|| format!("Failed to read config file: {}", p.display()))?;
-        return toml::from_str::<Config>(&content)
-            .with_context(|| format!("Error parsing {}", p.display()));
-    }
-
     // Start with serialized defaults as base TOML value
     let default_config = Config::default();
     let mut base: toml::Value =
         toml::Value::try_from(&default_config).context("Failed to serialize default config")?;
+
+    // Explicit path: merge with defaults (not hollow)
+    if let Some(p) = explicit_path {
+        merge_toml_file(&mut base, p)?;
+        return base
+            .try_into::<Config>()
+            .with_context(|| format!("Error parsing {}", p.display()));
+    }
 
     // Layer 2: user config (~/.config/lok/lok.toml)
     if let Some(home) = home_dir {
@@ -758,8 +764,9 @@ timeout = 999
         let config = load_config_from_paths(tmp.path(), None, Some(&explicit)).unwrap();
 
         assert_eq!(config.defaults.timeout, 999);
-        // No defaults merged - explicit mode loads only that file
-        assert!(config.backends.is_empty());
+        // Explicit path still merges with defaults - not hollow
+        assert_eq!(config.backends.len(), 4);
+        assert!(config.defaults.parallel);
     }
 
     #[test]
