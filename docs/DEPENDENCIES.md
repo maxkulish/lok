@@ -10,14 +10,12 @@
 | CLO-209 | CLO-204 | Backlog | Regex replacement needs MiniJinja infra |
 | CLO-210 | CLO-205 | Backlog | DiffApplier/Rollback needs EditParser |
 | CLO-211 | CLO-205, CLO-210 | Backlog | Pipeline wiring needs all apply-verify components |
-| CLO-212 | CLO-203 | Backlog | Role routing needs config merge |
-
 ## Unblocked & Ready
 
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
-| CLO-203 | None | 2026-04-03 |
 | CLO-204 | None | 2026-04-03 |
 | CLO-205 | None | 2026-04-03 |
 | CLO-206 | CLO-202 complete | 2026-04-04 |
 | CLO-207 | CLO-202 complete | 2026-04-04 |
+| CLO-212 | CLO-203 complete | 2026-04-04 |

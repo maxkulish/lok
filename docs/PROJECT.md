@@ -6,7 +6,7 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-203](https://linear.app/cloud-ai/issue/CLO-203) | Implement three-layer config merge with deny_unknown_fields | In Progress | Spec | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -18,6 +18,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-203](https://linear.app/cloud-ai/issue/CLO-203) | Implement three-layer config merge with deny_unknown_fields | 2026-04-04 | Three-layer config merge (defaults -> user -> project), toml::Value deep merge, deny_unknown_fields on all structs |
 | [CLO-202](https://linear.app/cloud-ai/issue/CLO-202) | Add BackendError enum with typed variants and is_retryable() | 2026-04-04 | Added BackendError enum (8 variants), is_retryable(), typed errors on Backend::query(), QueryResult.error field |
 | [CLO-185](https://linear.app/cloud-ai/issue/CLO-185) | Implement structured failure data for step errors | 2026-04-03 | Added StepFailure struct with StepFailureKind enum (6 variants) for execution-level failure classification |
 | [CLO-184](https://linear.app/cloud-ai/issue/CLO-184) | Implement LLM-based step validation (validate.backend + prompt) | 2026-04-03 | Added LLM validation via validate.backend + validate.prompt with JSON structured output, fail-closed parsing, on_error policy |

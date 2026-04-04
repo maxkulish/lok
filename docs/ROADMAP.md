@@ -10,7 +10,7 @@
 | Phase 3: Failure Classification | 1 | 1 | Complete |
 | Phase 4: Backend Error Types & Retry | 3 | 1 | In Progress |
 | Phase 5: Enrich QueryOutput | 1 | 0 | Planned |
-| Phase 6: Config Merging | 1 | 0 | Planned |
+| Phase 6: Config Merging | 1 | 1 | Complete |
 | Phase 7: MiniJinja Templates | 2 | 0 | Planned |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 0 | Planned |
 | Phase 9: Configurable Role Routing | 1 | 0 | Planned |
@@ -47,7 +47,7 @@
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-203](https://linear.app/cloud-ai/issue/CLO-203) | Implement three-layer config merge with deny_unknown_fields | In Progress | - |
+| [CLO-203](https://linear.app/cloud-ai/issue/CLO-203) | Implement three-layer config merge with deny_unknown_fields | Done | - |
 
 ## Phase 7: MiniJinja Templates
 
