@@ -47,7 +47,7 @@
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-203](https://linear.app/cloud-ai/issue/CLO-203) | Implement three-layer config merge with deny_unknown_fields | Backlog | - |
+| [CLO-203](https://linear.app/cloud-ai/issue/CLO-203) | Implement three-layer config merge with deny_unknown_fields | In Progress | - |
 
 ## Phase 7: MiniJinja Templates
 

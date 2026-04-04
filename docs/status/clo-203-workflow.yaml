@@ -1,0 +1,66 @@
+task_id: CLO-203
+title: "Implement three-layer config merge with deny_unknown_fields"
+task_type: specification
+linear_url: "https://linear.app/cloud-ai/issue/CLO-203/implement-three-layer-config-merge-with-deny-unknown-fields"
+branch: "feat/clo-203-config-merge"
+
+workflow:
+  current_phase: implement
+  status: in_progress
+  started_at: "2026-04-04T00:00:00Z"
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: "specs/2026-04-04-clo-203-config-merge.md"
+    approved: true
+    review_completed: true
+    review_gemini: "docs/reviews/clo-203-spec-review-gemini.md"
+    review_ollama: "docs/reviews/clo-203-spec-review-ollama.md"
+    review_synthesis: "docs/reviews/clo-203-spec-review-synthesis.md"
+    review_verdict: "NEEDS_REVISION"
+    review_applied: true
+    applied_suggestions:
+      - "Replaced merge algorithm with toml::Value deep merge to handle omitted-vs-default"
+      - "Added CacheConfig to deny_unknown_fields list"
+      - "Defined Vec/HashMap merge semantics as Must constraints (replace, not append)"
+      - "Refactored load_config for testability with injected paths"
+      - "Added tests: boolean override, Vec replacement, parse failure, three-layer precedence"
+      - "Documented #[serde(flatten)] incompatibility"
+      - "Specified error message format with file path"
+    flagged_suggestions: []
+  implement:
+    status: in_progress
+  pr:
+    status: pending
+  complete:
+    status: pending
+
+history:
+  - timestamp: "2026-04-04T00:00:00Z"
+    action: workflow_started
+    phase: spec
+    details: "Initialized specification workflow for CLO-203"
+  - timestamp: "2026-04-04T00:01:00Z"
+    action: spec_drafted
+    phase: spec
+    details: "Spec written: specs/2026-04-04-clo-203-config-merge.md. 6 sub-tasks, S scope."
+  - timestamp: "2026-04-04T00:02:00Z"
+    action: spec_review_complete
+    phase: spec
+    details: "Gemini: NEEDS_REVISION, Ollama: APPROVE_WITH_SUGGESTIONS. Consensus: NEEDS_REVISION. Key: merge algorithm unsound, missing CacheConfig."
+  - timestamp: "2026-04-04T00:03:00Z"
+    action: spec_review_applied
+    phase: spec
+    details: "Applied 7 suggestions: toml::Value deep merge, CacheConfig, Vec semantics, testable load_config, expanded tests."
+  - timestamp: "2026-04-04T00:04:00Z"
+    action: spec_approved
+    phase: spec
+    details: "Spec approved. Proceeding to implementation."

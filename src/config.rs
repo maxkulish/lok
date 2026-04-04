@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default)]
     pub defaults: Defaults,
@@ -19,6 +20,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Defaults {
     #[serde(default = "default_parallel")]
     pub parallel: bool,
@@ -49,6 +51,7 @@ impl Default for Defaults {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct ConductorConfig {
     #[serde(default = "default_max_rounds")]
     pub max_rounds: usize,
@@ -74,6 +77,7 @@ impl Default for ConductorConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct BackendConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
@@ -93,6 +97,7 @@ fn default_enabled() -> bool {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct TaskConfig {
     pub description: Option<String>,
     #[serde(default)]
@@ -102,6 +107,7 @@ pub struct TaskConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct TaskPrompt {
     pub name: String,
     pub prompt: String,
@@ -224,29 +230,76 @@ impl Default for Config {
     }
 }
 
-pub fn load_config(path: Option<&Path>) -> Result<Config> {
-    // Try explicit path first
-    if let Some(p) = path {
+/// Recursively deep-merge two TOML values. Tables recurse; scalars/arrays replace.
+fn deep_merge(base: &mut toml::Value, overlay: toml::Value) {
+    match (base, overlay) {
+        (toml::Value::Table(base_table), toml::Value::Table(overlay_table)) => {
+            for (key, value) in overlay_table {
+                match base_table.get_mut(&key) {
+                    Some(existing) => deep_merge(existing, value),
+                    None => {
+                        base_table.insert(key, value);
+                    }
+                }
+            }
+        }
+        (base, overlay) => *base = overlay,
+    }
+}
+
+/// Merge a TOML file into a base value. Returns Ok(()) if file doesn't exist.
+fn merge_toml_file(base: &mut toml::Value, path: &Path) -> Result<()> {
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(anyhow::anyhow!("Error reading {}: {}", path.display(), e)),
+    };
+
+    let overlay: toml::Value =
+        toml::from_str(&content).with_context(|| format!("Error parsing {}", path.display()))?;
+
+    deep_merge(base, overlay);
+    Ok(())
+}
+
+/// Core config loading with injectable paths for testability.
+pub fn load_config_from_paths(
+    cwd: &Path,
+    home_dir: Option<&Path>,
+    explicit_path: Option<&Path>,
+) -> Result<Config> {
+    // Explicit path: load only that file, no merge
+    if let Some(p) = explicit_path {
         let content = fs::read_to_string(p)
             .with_context(|| format!("Failed to read config file: {}", p.display()))?;
-        return toml::from_str(&content).context("Failed to parse config file");
+        return toml::from_str::<Config>(&content)
+            .with_context(|| format!("Error parsing {}", p.display()));
     }
 
-    // Try current directory
-    if let Ok(content) = fs::read_to_string("lok.toml") {
-        return toml::from_str(&content).context("Failed to parse lok.toml");
+    // Start with serialized defaults as base TOML value
+    let default_config = Config::default();
+    let mut base: toml::Value =
+        toml::Value::try_from(&default_config).context("Failed to serialize default config")?;
+
+    // Layer 2: user config (~/.config/lok/lok.toml)
+    if let Some(home) = home_dir {
+        let user_config_path = home.join(".config/lok/lok.toml");
+        merge_toml_file(&mut base, &user_config_path)?;
     }
 
-    // Try home directory
-    if let Some(home) = dirs::home_dir() {
-        let home_config = home.join(".config/lok/lok.toml");
-        if let Ok(content) = fs::read_to_string(&home_config) {
-            return toml::from_str(&content).context("Failed to parse config file");
-        }
-    }
+    // Layer 3: project config (./lok.toml)
+    let project_config_path = cwd.join("lok.toml");
+    merge_toml_file(&mut base, &project_config_path)?;
 
-    // Return default config
-    Ok(Config::default())
+    // Deserialize merged TOML into Config (deny_unknown_fields applied here)
+    base.try_into::<Config>()
+        .context("Failed to deserialize merged config")
+}
+
+pub fn load_config(path: Option<&Path>) -> Result<Config> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let home = dirs::home_dir();
+    load_config_from_paths(&cwd, home.as_deref(), path)
 }
 
 pub fn init_config() -> Result<()> {
@@ -459,6 +512,272 @@ command_wrapper = "docker exec dev sh -c '{cmd}'"
         assert_eq!(
             config.defaults.command_wrapper,
             Some("docker exec dev sh -c '{cmd}'".to_string())
+        );
+    }
+
+    #[test]
+    fn test_deny_unknown_fields() {
+        let toml_str = r#"
+[defaults]
+parallel = true
+typo_field = "oops"
+"#;
+        let result = toml::from_str::<Config>(toml_str);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unknown field"),
+            "Error should mention unknown field: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_deep_merge_scalar_override() {
+        let mut base: toml::Value = toml::from_str(
+            r#"
+[defaults]
+timeout = 300
+parallel = true
+"#,
+        )
+        .unwrap();
+        let overlay: toml::Value = toml::from_str(
+            r#"
+[defaults]
+timeout = 60
+"#,
+        )
+        .unwrap();
+        deep_merge(&mut base, overlay);
+        let config: Config = base.try_into().unwrap();
+        assert_eq!(config.defaults.timeout, 60);
+        assert!(config.defaults.parallel); // not overridden, stays true
+    }
+
+    #[test]
+    fn test_deep_merge_boolean_override() {
+        let mut base: toml::Value = toml::from_str(
+            r#"
+[defaults]
+parallel = true
+timeout = 300
+"#,
+        )
+        .unwrap();
+        let overlay: toml::Value = toml::from_str(
+            r#"
+[defaults]
+parallel = false
+"#,
+        )
+        .unwrap();
+        deep_merge(&mut base, overlay);
+        let config: Config = base.try_into().unwrap();
+        assert!(!config.defaults.parallel); // false overrides true
+        assert_eq!(config.defaults.timeout, 300); // unchanged
+    }
+
+    #[test]
+    fn test_deep_merge_hashmap_add() {
+        let mut base: toml::Value = toml::Value::try_from(&Config::default()).unwrap();
+        let overlay: toml::Value = toml::from_str(
+            r#"
+[backends.custom]
+enabled = true
+command = "my-llm"
+"#,
+        )
+        .unwrap();
+        deep_merge(&mut base, overlay);
+        let config: Config = base.try_into().unwrap();
+        // New backend added
+        assert!(config.backends.contains_key("custom"));
+        // Existing backends preserved
+        assert!(config.backends.contains_key("codex"));
+        assert!(config.backends.contains_key("claude"));
+        assert!(config.backends.contains_key("gemini"));
+        assert!(config.backends.contains_key("ollama"));
+    }
+
+    #[test]
+    fn test_deep_merge_hashmap_override() {
+        let mut base: toml::Value = toml::Value::try_from(&Config::default()).unwrap();
+        let overlay: toml::Value = toml::from_str(
+            r#"
+[backends.ollama]
+enabled = false
+command = "http://remote:11434"
+model = "mistral"
+"#,
+        )
+        .unwrap();
+        deep_merge(&mut base, overlay);
+        let config: Config = base.try_into().unwrap();
+        let ollama = config.backends.get("ollama").unwrap();
+        assert!(!ollama.enabled);
+        assert_eq!(ollama.command, Some("http://remote:11434".to_string()));
+        assert_eq!(ollama.model, Some("mistral".to_string()));
+        // Other backends untouched
+        assert!(config.backends.get("codex").unwrap().enabled);
+    }
+
+    #[test]
+    fn test_deep_merge_partial_config() {
+        let mut base: toml::Value = toml::Value::try_from(&Config::default()).unwrap();
+        let overlay: toml::Value = toml::from_str(
+            r#"
+[defaults]
+timeout = 60
+"#,
+        )
+        .unwrap();
+        deep_merge(&mut base, overlay);
+        let config: Config = base.try_into().unwrap();
+        assert_eq!(config.defaults.timeout, 60);
+        // Everything else from defaults preserved
+        assert!(config.defaults.parallel);
+        assert!(!config.backends.is_empty());
+        assert!(!config.tasks.is_empty());
+    }
+
+    #[test]
+    fn test_deep_merge_vec_replace() {
+        let mut base: toml::Value = toml::Value::try_from(&Config::default()).unwrap();
+        let overlay: toml::Value = toml::from_str(
+            r#"
+[backends.codex]
+args = ["exec", "--json", "-s", "full-auto"]
+"#,
+        )
+        .unwrap();
+        deep_merge(&mut base, overlay);
+        let config: Config = base.try_into().unwrap();
+        let codex = config.backends.get("codex").unwrap();
+        // Args replaced entirely, not appended
+        assert_eq!(codex.args, vec!["exec", "--json", "-s", "full-auto"]);
+    }
+
+    #[test]
+    fn test_deep_merge_empty_overlay() {
+        let mut base: toml::Value = toml::Value::try_from(&Config::default()).unwrap();
+        let overlay: toml::Value = toml::from_str("").unwrap();
+        deep_merge(&mut base, overlay);
+        let config: Config = base.try_into().unwrap();
+        // Nothing changes
+        assert!(config.defaults.parallel);
+        assert_eq!(config.defaults.timeout, 300);
+        assert_eq!(config.backends.len(), 4);
+    }
+
+    #[test]
+    fn test_load_config_from_paths_no_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = load_config_from_paths(tmp.path(), None, None).unwrap();
+        // Should return defaults when no config files exist
+        assert!(config.defaults.parallel);
+        assert_eq!(config.defaults.timeout, 300);
+        assert_eq!(config.backends.len(), 4);
+    }
+
+    #[test]
+    fn test_load_config_from_paths_project_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("lok.toml"),
+            r#"
+[defaults]
+timeout = 60
+"#,
+        )
+        .unwrap();
+        let config = load_config_from_paths(tmp.path(), None, None).unwrap();
+        assert_eq!(config.defaults.timeout, 60);
+        // Defaults for everything else
+        assert!(config.defaults.parallel);
+        assert_eq!(config.backends.len(), 4);
+    }
+
+    #[test]
+    fn test_load_config_from_paths_three_layers() {
+        let home = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+
+        // User config: set timeout
+        let user_dir = home.path().join(".config/lok");
+        fs::create_dir_all(&user_dir).unwrap();
+        fs::write(
+            user_dir.join("lok.toml"),
+            r#"
+[defaults]
+timeout = 120
+
+[backends.custom]
+enabled = true
+command = "user-backend"
+"#,
+        )
+        .unwrap();
+
+        // Project config: override timeout, add parallel=false
+        fs::write(
+            cwd.path().join("lok.toml"),
+            r#"
+[defaults]
+timeout = 30
+parallel = false
+"#,
+        )
+        .unwrap();
+
+        let config = load_config_from_paths(cwd.path(), Some(home.path()), None).unwrap();
+
+        // Project wins for timeout
+        assert_eq!(config.defaults.timeout, 30);
+        // Project wins for parallel
+        assert!(!config.defaults.parallel);
+        // User's custom backend preserved
+        assert!(config.backends.contains_key("custom"));
+        // Default backends still there
+        assert!(config.backends.contains_key("codex"));
+    }
+
+    #[test]
+    fn test_load_config_from_paths_explicit_bypasses() {
+        let tmp = tempfile::tempdir().unwrap();
+        let explicit = tmp.path().join("custom.toml");
+        fs::write(
+            &explicit,
+            r#"
+[defaults]
+timeout = 999
+"#,
+        )
+        .unwrap();
+
+        let config = load_config_from_paths(tmp.path(), None, Some(&explicit)).unwrap();
+
+        assert_eq!(config.defaults.timeout, 999);
+        // No defaults merged - explicit mode loads only that file
+        assert!(config.backends.is_empty());
+    }
+
+    #[test]
+    fn test_load_config_from_paths_user_parse_error() {
+        let home = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+
+        let user_dir = home.path().join(".config/lok");
+        fs::create_dir_all(&user_dir).unwrap();
+        fs::write(user_dir.join("lok.toml"), "invalid [[ toml {{").unwrap();
+
+        let result = load_config_from_paths(cwd.path(), Some(home.path()), None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Error parsing"),
+            "Error should mention file: {}",
+            err
         );
     }
 }
