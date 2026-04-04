@@ -8,7 +8,7 @@
 |-------|-------|-----------|--------|
 | Phase 2: Validation Pipeline | 3 | 3 | Complete |
 | Phase 3: Failure Classification | 1 | 1 | Complete |
-| Phase 4: Backend Error Types & Retry | 3 | 0 | Planned |
+| Phase 4: Backend Error Types & Retry | 3 | 1 | In Progress |
 | Phase 5: Enrich QueryOutput | 1 | 0 | Planned |
 | Phase 6: Config Merging | 1 | 0 | Planned |
 | Phase 7: MiniJinja Templates | 2 | 0 | Planned |
@@ -33,7 +33,7 @@
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-202](https://linear.app/cloud-ai/issue/CLO-202) | Add BackendError enum with typed variants and is_retryable() | In Progress | - |
+| [CLO-202](https://linear.app/cloud-ai/issue/CLO-202) | Add BackendError enum with typed variants and is_retryable() | Done | - |
 | [CLO-206](https://linear.app/cloud-ai/issue/CLO-206) | Add RetryPolicy with exponential backoff, jitter, retry_after | Backlog | CLO-202 |
 | [CLO-208](https://linear.app/cloud-ai/issue/CLO-208) | Add RetryExecutor decorator wrapping Backend trait | Backlog | CLO-202, CLO-206 |
 
