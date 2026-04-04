@@ -1,0 +1,148 @@
+mod context;
+mod filters;
+
+pub use context::TemplateContext;
+
+use minijinja::UndefinedBehavior;
+
+/// Errors that can occur during template rendering.
+#[derive(Debug, thiserror::Error)]
+pub enum TemplateError {
+    /// A referenced variable was not found in the template context.
+    #[error("undefined variable: {0}")]
+    UndefinedVariable(#[source] minijinja::Error),
+
+    /// The template string could not be parsed.
+    #[error("template parse error: {0}")]
+    ParseError(#[source] minijinja::Error),
+
+    /// An error occurred while rendering the template.
+    #[error("render error: {0}")]
+    RenderError(#[source] minijinja::Error),
+}
+
+impl TemplateError {
+    fn from_minijinja(err: minijinja::Error) -> Self {
+        match err.kind() {
+            minijinja::ErrorKind::UndefinedError => TemplateError::UndefinedVariable(err),
+            minijinja::ErrorKind::SyntaxError
+            | minijinja::ErrorKind::InvalidOperation
+                if err.line().is_some() =>
+            {
+                TemplateError::ParseError(err)
+            }
+            _ => TemplateError::RenderError(err),
+        }
+    }
+}
+
+/// Template engine backed by MiniJinja 2.
+///
+/// Stateless after construction - create once and reuse across calls.
+/// Registers custom filters on construction and uses strict undefined behavior.
+#[allow(dead_code)]
+pub struct TemplateEngine {
+    env: minijinja::Environment<'static>,
+}
+
+#[allow(dead_code)]
+impl TemplateEngine {
+    /// Create a new template engine with custom filters registered
+    /// and strict undefined behavior.
+    pub fn new() -> Self {
+        let mut env = minijinja::Environment::new();
+        env.set_undefined_behavior(UndefinedBehavior::Strict);
+        filters::register_filters(&mut env);
+        Self { env }
+    }
+
+    /// Render a template string with the given context.
+    pub fn render(&self, template: &str, ctx: &TemplateContext) -> Result<String, TemplateError> {
+        let tmpl = self
+            .env
+            .template_from_str(template)
+            .map_err(TemplateError::from_minijinja)?;
+        tmpl.render(ctx.as_value())
+            .map_err(TemplateError::from_minijinja)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workflow::StepResult;
+    use std::collections::HashMap;
+
+    fn make_step(name: &str, output: &str, success: bool) -> StepResult {
+        StepResult {
+            name: name.to_string(),
+            output: output.to_string(),
+            parsed_output: None,
+            success,
+            elapsed_ms: 100,
+            backend: Some("test".to_string()),
+            raw_output: None,
+            stderr: None,
+            exit_code: None,
+            validation: None,
+            failure: None,
+        }
+    }
+
+    #[test]
+    fn test_render_mixed() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("x".to_string(), make_step("x", "  hello world  ", true));
+        let ctx = TemplateContext::new(&steps, &[], &["claude".to_string()]);
+        let result = engine
+            .render(r#"{{ steps.x.output | trim | default_val("none") }}"#, &ctx)
+            .unwrap();
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_no_reexpansion_of_braces_in_output() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert(
+            "x".to_string(),
+            make_step("x", "value is {{ secret }}", true),
+        );
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        let result = engine.render("{{ steps.x.output }}", &ctx).unwrap();
+        assert_eq!(result, "value is {{ secret }}");
+    }
+
+    #[test]
+    fn test_combined_env_arg_step() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("s".to_string(), make_step("s", "out", true));
+        std::env::set_var("LOK_TEST_TMPL_VAR", "envval");
+        let ctx = TemplateContext::new(&steps, &["argval".to_string()], &[]);
+        let result = engine
+            .render("{{ steps.s.output }}-{{ env.LOK_TEST_TMPL_VAR }}-{{ arg.1 }}", &ctx)
+            .unwrap();
+        std::env::remove_var("LOK_TEST_TMPL_VAR");
+        assert_eq!(result, "out-envval-argval");
+    }
+
+    #[test]
+    fn test_parse_error() {
+        let engine = TemplateEngine::new();
+        let ctx = TemplateContext::new(&HashMap::new(), &[], &[]);
+        let err = engine.render("{{ steps.x", &ctx).unwrap_err();
+        assert!(matches!(err, TemplateError::ParseError(_)));
+    }
+
+    #[test]
+    fn test_undefined_variable() {
+        let engine = TemplateEngine::new();
+        let ctx = TemplateContext::new(&HashMap::new(), &[], &[]);
+        let err = engine
+            .render("{{ steps.nonexistent.output }}", &ctx)
+            .unwrap_err();
+        assert!(matches!(err, TemplateError::UndefinedVariable(_)));
+    }
+}
