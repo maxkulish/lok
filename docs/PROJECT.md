@@ -6,7 +6,7 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-204](https://linear.app/cloud-ai/issue/CLO-204) | Add MiniJinja integration with TemplateContext and custom filters | In Progress | Phase 7 | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -18,6 +18,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-204](https://linear.app/cloud-ai/issue/CLO-204) | Add MiniJinja integration with TemplateContext and custom filters | 2026-04-04 | MiniJinja 2.0 template engine with TemplateContext, LazyEnv, 8 custom filters, TemplateError enum, 48 tests |
 | [CLO-203](https://linear.app/cloud-ai/issue/CLO-203) | Implement three-layer config merge with deny_unknown_fields | 2026-04-04 | Three-layer config merge (defaults -> user -> project), toml::Value deep merge, deny_unknown_fields on all structs |
 | [CLO-202](https://linear.app/cloud-ai/issue/CLO-202) | Add BackendError enum with typed variants and is_retryable() | 2026-04-04 | Added BackendError enum (8 variants), is_retryable(), typed errors on Backend::query(), QueryResult.error field |
 | [CLO-185](https://linear.app/cloud-ai/issue/CLO-185) | Implement structured failure data for step errors | 2026-04-03 | Added StepFailure struct with StepFailureKind enum (6 variants) for execution-level failure classification |

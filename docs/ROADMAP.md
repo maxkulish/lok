@@ -11,7 +11,7 @@
 | Phase 4: Backend Error Types & Retry | 3 | 1 | In Progress |
 | Phase 5: Enrich QueryOutput | 1 | 0 | Planned |
 | Phase 6: Config Merging | 1 | 1 | Complete |
-| Phase 7: MiniJinja Templates | 2 | 0 | In Progress |
+| Phase 7: MiniJinja Templates | 2 | 1 | In Progress |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 0 | Planned |
 | Phase 9: Configurable Role Routing | 1 | 0 | Planned |
 
@@ -53,7 +53,7 @@
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-204](https://linear.app/cloud-ai/issue/CLO-204) | Add MiniJinja integration with TemplateContext and custom filters | In Progress | - |
+| [CLO-204](https://linear.app/cloud-ai/issue/CLO-204) | Add MiniJinja integration with TemplateContext and custom filters | Done | - |
 | [CLO-209](https://linear.app/cloud-ai/issue/CLO-209) | Replace regex interpolation in workflow.rs with MiniJinja rendering | Backlog | CLO-204 |
 
 ## Phase 8: Apply-and-Verify Pipeline
