@@ -51,41 +51,17 @@ impl TemplateContext {
             step_map.insert("success".to_string(), Value::from(result.success));
 
             // Add parsed fields from parsed_output or fallback to string parsing
-            if let Some(ref parsed) = result.parsed_output {
+            // Extract JSON fields from parsed_output or fallback to string parsing
+            let json_source = if result.parsed_output.is_some() {
+                result.parsed_output.clone()
+            } else {
+                serde_json::from_str::<serde_json::Value>(&result.output).ok()
+            };
+            if let Some(ref parsed) = json_source {
                 if let Some(obj) = parsed.as_object() {
                     for (k, v) in obj {
                         if k != "output" && k != "success" {
-                            let val = match v {
-                                serde_json::Value::String(s) => Value::from(s.clone()),
-                                serde_json::Value::Number(n) => {
-                                    if let Some(i) = n.as_i64() {
-                                        Value::from(i)
-                                    } else if let Some(f) = n.as_f64() {
-                                        Value::from(f)
-                                    } else {
-                                        Value::from(n.to_string())
-                                    }
-                                }
-                                serde_json::Value::Bool(b) => Value::from(*b),
-                                serde_json::Value::Null => Value::from(()),
-                                other => Value::from(other.to_string()),
-                            };
-                            step_map.insert(k.to_string(), val);
-                        }
-                    }
-                }
-            } else {
-                // Fallback: try to parse output as JSON and extract top-level fields
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result.output) {
-                    if let Some(obj) = parsed.as_object() {
-                        for (k, v) in obj {
-                            if k != "output" && k != "success" {
-                                let val = match v {
-                                    serde_json::Value::String(s) => Value::from(s.clone()),
-                                    other => Value::from(other.to_string()),
-                                };
-                                step_map.insert(k.to_string(), val);
-                            }
+                            step_map.insert(k.to_string(), Value::from_serialize(v));
                         }
                     }
                 }
@@ -100,7 +76,7 @@ impl TemplateContext {
 
         // Build arg namespace as a sequence (1-indexed via index 0 placeholder)
         // {{ arg.1 }} accesses the first argument via sequence indexing
-        let mut arg_seq: Vec<Value> = vec![Value::from(())]; // index 0 placeholder
+        let mut arg_seq: Vec<Value> = vec![Value::UNDEFINED]; // index 0 placeholder
         for arg in args {
             arg_seq.push(Value::from(arg.clone()));
         }
@@ -138,13 +114,6 @@ impl TemplateContext {
     ///
     /// Returns a new context with `item`, `item.{field}`, and `index` available.
     pub fn with_loop_item(self, item: Value, index: usize) -> Self {
-        // Rebuild root by deserializing current values and adding loop vars
-        // MiniJinja Values are cheaply cloneable
-        let mut env = minijinja::Environment::new();
-        env.add_template("__ctx__", "{{ __ctx_dump__ }}")
-            .unwrap_or(());
-
-        // Simpler approach: build a new context merging existing + loop vars
         let mut root = std::collections::BTreeMap::<String, Value>::new();
 
         // Copy existing top-level keys by iterating the value
@@ -305,11 +274,14 @@ mod tests {
     }
 
     #[test]
-    fn test_arg_zero_is_placeholder() {
-        // arg.0 exists as a null placeholder (args are 1-indexed via sequence)
+    fn test_arg_zero_undefined() {
+        // arg.0 is undefined (args are 1-indexed, index 0 is an undefined placeholder)
         let ctx = TemplateContext::new(&HashMap::new(), &["val".to_string()], &[]);
-        let result = render_template("{{ arg.0 }}", &ctx);
-        assert_eq!(result, "none");
+        let mut env = minijinja::Environment::new();
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+        let tmpl = env.template_from_str("{{ arg.0 }}").unwrap();
+        let result = tmpl.render(ctx.as_value());
+        assert!(result.is_err());
     }
 
     #[test]

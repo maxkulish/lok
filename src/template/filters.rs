@@ -46,24 +46,14 @@ fn join_filter(value: Value, separator: Option<&str>) -> Result<String, minijinj
     Ok(parts.join(sep))
 }
 
-/// Return the first element of a sequence.
+/// Return the first element of a sequence, or undefined if empty.
 fn first(value: Value) -> Result<Value, minijinja::Error> {
-    value.try_iter()?.next().ok_or_else(|| {
-        minijinja::Error::new(
-            minijinja::ErrorKind::InvalidOperation,
-            "cannot get first element of empty sequence",
-        )
-    })
+    Ok(value.try_iter()?.next().unwrap_or(Value::UNDEFINED))
 }
 
-/// Return the last element of a sequence.
+/// Return the last element of a sequence, or undefined if empty.
 fn last(value: Value) -> Result<Value, minijinja::Error> {
-    value.try_iter()?.last().ok_or_else(|| {
-        minijinja::Error::new(
-            minijinja::ErrorKind::InvalidOperation,
-            "cannot get last element of empty sequence",
-        )
-    })
+    Ok(value.try_iter()?.last().unwrap_or(Value::UNDEFINED))
 }
 
 /// Return the value if it is defined and truthy, otherwise return the fallback.
@@ -190,7 +180,7 @@ mod tests {
     #[test]
     fn test_first_empty() {
         let seq = Value::from(Vec::<String>::new());
-        assert!(first(seq).is_err());
+        assert!(first(seq).unwrap().is_undefined());
     }
 
     #[test]
@@ -210,7 +200,7 @@ mod tests {
     #[test]
     fn test_last_empty() {
         let seq = Value::from(Vec::<String>::new());
-        assert!(last(seq).is_err());
+        assert!(last(seq).unwrap().is_undefined());
     }
 
     #[test]
