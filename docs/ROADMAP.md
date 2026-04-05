@@ -12,7 +12,7 @@
 | Phase 5: Enrich QueryOutput | 1 | 0 | Planned |
 | Phase 6: Config Merging | 1 | 1 | Complete |
 | Phase 7: MiniJinja Templates | 2 | 1 | In Progress |
-| Phase 8: Apply-and-Verify Pipeline | 3 | 0 | Planned |
+| Phase 8: Apply-and-Verify Pipeline | 3 | 0 | In Progress |
 | Phase 9: Configurable Role Routing | 1 | 0 | Planned |
 
 ## Phase 2: Validation Pipeline
@@ -60,7 +60,7 @@
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-205](https://linear.app/cloud-ai/issue/CLO-205) | Implement EditParser with 3-format auto-detection | Backlog | - |
+| [CLO-205](https://linear.app/cloud-ai/issue/CLO-205) | Implement EditParser with 3-format auto-detection | In Progress | - |
 | [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | Implement DiffApplier, Rollback, Verification, RetryLoop | Backlog | CLO-205 |
 | [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify pipeline into workflow step execution | Backlog | CLO-205, CLO-210, CLO-202 |
 

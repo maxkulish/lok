@@ -13,7 +13,6 @@
 
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
-| CLO-205 | None | 2026-04-03 |
 | CLO-206 | CLO-202 complete | 2026-04-04 |
 | CLO-207 | CLO-202 complete | 2026-04-04 |
 | CLO-209 | CLO-204 complete | 2026-04-04 |
