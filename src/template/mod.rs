@@ -25,8 +25,7 @@ impl TemplateError {
     fn from_minijinja(err: minijinja::Error) -> Self {
         match err.kind() {
             minijinja::ErrorKind::UndefinedError => TemplateError::UndefinedVariable(err),
-            minijinja::ErrorKind::SyntaxError
-            | minijinja::ErrorKind::InvalidOperation
+            minijinja::ErrorKind::SyntaxError | minijinja::ErrorKind::InvalidOperation
                 if err.line().is_some() =>
             {
                 TemplateError::ParseError(err)
@@ -161,7 +160,10 @@ mod tests {
         std::env::set_var("LOK_TEST_TMPL_VAR", "envval");
         let ctx = TemplateContext::new(&steps, &["argval".to_string()], &[]);
         let result = engine
-            .render("{{ steps.s.output }}-{{ env.LOK_TEST_TMPL_VAR }}-{{ arg.1 }}", &ctx)
+            .render(
+                "{{ steps.s.output }}-{{ env.LOK_TEST_TMPL_VAR }}-{{ arg.1 }}",
+                &ctx,
+            )
             .unwrap();
         std::env::remove_var("LOK_TEST_TMPL_VAR");
         assert_eq!(result, "out-envval-argval");

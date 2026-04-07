@@ -969,10 +969,8 @@ impl WorkflowRunner {
     /// Build the ordered, deduplicated list of backend names from step results.
     /// Used to construct a `TemplateContext` for interpolation/condition evaluation.
     fn collect_backends(results: &HashMap<String, StepResult>) -> Vec<String> {
-        let mut backends: Vec<String> = results
-            .values()
-            .filter_map(|r| r.backend.clone())
-            .collect();
+        let mut backends: Vec<String> =
+            results.values().filter_map(|r| r.backend.clone()).collect();
         backends.sort();
         backends.dedup();
         backends
@@ -3256,9 +3254,8 @@ mod tests {
 
     #[test]
     fn test_translate_multiple_contains() {
-        let out = translate_legacy_condition(
-            r#"contains(a.field, "x") and contains(b.field, "y")"#,
-        );
+        let out =
+            translate_legacy_condition(r#"contains(a.field, "x") and contains(b.field, "y")"#);
         assert_eq!(
             &*out,
             r#"("x" in (steps.a.field | default(''))) and ("y" in (steps.b.field | default('')))"#
