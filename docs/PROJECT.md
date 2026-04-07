@@ -6,7 +6,7 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-205](https://linear.app/cloud-ai/issue/CLO-205) | Implement EditParser with 3-format auto-detection | In Progress | Phase 8 | - |
 
 ## Up Next (Prioritized Backlog)
 
