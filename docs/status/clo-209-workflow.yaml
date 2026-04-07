@@ -42,11 +42,24 @@ phases:
       - "Specified extract_json_field investigation before deletion in sub-task 6"
     flagged_suggestions: []
   implement:
-    status: pending
-    commits: []
+    status: in_progress
+    commits:
+      - 835c413  # sub-task 1: add eval_expression to TemplateEngine
+      - a5ab328  # sub-task 2: add translate_legacy_condition helper
+      - f86bdf6  # sub-task 3: wire TemplateEngine into WorkflowRunner
+      - 834da64  # sub-task 4: replace interpolate() with MiniJinja
+      - a9961e1  # sub-task 5: replace interpolate_with_fields with MiniJinja
+      - eb33043  # sub-task 6: replace evaluate_condition with eval_expression
+      - 1106215  # sub-task 7: replace interpolate_loop_vars with MiniJinja
+      - c20e7cf  # sub-task 8: add Jinja feature tests + SemiStrict mode
+      - c2c3fad  # codex fixes: steps-prefix, loop-var pre-scan, err.range()
+    last_phase_completed: "codex validation fixes"
+    codex_validated: true
+    codex_verdict: FAIL_ADDRESSED
+    codex_report: "docs/reviews/clo-209-codex-validation.md"
     gemini_validated: false
-    gemini_verdict: null
-    gemini_validation_report: null
+    gemini_verdict: REVIEW_FAILED
+    gemini_validation_report: "docs/reviews/clo-209-gemini-validation.md"
   pr:
     status: pending
     pr_url: null
@@ -82,3 +95,19 @@ history:
     action: spec_approved
     phase: spec
     details: "User approved spec. Transitioning to implement phase."
+  - timestamp: "2026-04-07T01:00:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "All 8 sub-tasks complete: eval_expression, translate_legacy_condition, wire engine, replace interpolate(), replace interpolate_with_fields(), replace evaluate_condition() (with default('') wrapper for trim safety), replace interpolate_loop_vars(), add 8 Jinja feature tests + SemiStrict mode. 339 tests pass, clippy clean. 14 legacy interpolation regexes + 4 helper functions deleted. 6 new helper regexes (loop var protection, legacy condition translation, error var extraction). Smoke tests on test_interpolation.toml and test_conditionals.toml pass end-to-end."
+  - timestamp: "2026-04-07T01:00:01Z"
+    action: pushed_to_remote
+    phase: implement
+    details: "Pushed all 8 sub-task commits to feat/clo-209-minijinja-workflow"
+  - timestamp: "2026-04-07T02:00:00Z"
+    action: codex_validation_complete
+    phase: implement
+    details: "Codex verdict: FAIL. Findings: (1) HIGH translate_legacy_condition missing steps. prefix, (2) MEDIUM loop-var placeholder recovery bug, (3) MEDIUM map_template_error uses first {{...}} instead of err.range(). Gemini: REVIEW_FAILED (YOLO mode init noise only, no actual review). Reports: docs/reviews/clo-209-codex-validation.md, docs/reviews/clo-209-gemini-validation.md."
+  - timestamp: "2026-04-07T02:30:00Z"
+    action: codex_findings_addressed
+    phase: implement
+    details: "Applied all three Codex fixes in commit c2c3fad: steps-prefixed legacy condition regexes, pre-scan loop-var substitution, err.range()-based variable extraction in map_template_error. Added 5 regression tests (steps.-prefixed contains/equals, multi-expression error reporting, multi-field loop vars with one missing, inline {% for %} block, missing-step default_val fallback). 345 tests pass, clippy clean, smoke tests pass on test_interpolation.toml and test_conditionals.toml."
