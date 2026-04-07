@@ -102,32 +102,11 @@ static CONDITION_EQUALS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
 static CONDITION_NOT_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r#"not\(\s*(.+)\s*\)"#).unwrap());
 
-/// Regex for matching {{ steps.NAME.field }} patterns (for JSON field access)
-static FIELD_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"\{\{\s*steps\.([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*\}\}").unwrap()
-});
-
-/// Regex for matching {{ env.VAR }} patterns (environment variables)
-static ENV_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*env\.([a-zA-Z0-9_]+)\s*\}\}").unwrap());
-
-/// Regex for matching {{ arg.N }} patterns (positional arguments, 1-indexed)
-static ARG_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*arg\.(\d+)\s*\}\}").unwrap());
-
-/// Regex for matching {{ workflow.backends }} pattern
-static WORKFLOW_BACKENDS_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*workflow\.backends\s*\}\}").unwrap());
-
 /// Default timeout for workflow steps in milliseconds (2 minutes)
 const DEFAULT_STEP_TIMEOUT_MS: u64 = 120_000;
 
 /// Minimum timeout value in milliseconds (values 1 to MIN-1 are rejected)
 const MIN_TIMEOUT_MS: u64 = 100;
-
-/// Regex for detecting unknown {{ ... }} variables after all substitutions
-static UNKNOWN_VAR_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*([^}]+)\s*\}\}").unwrap());
 
 /// Regex for matching {{ item }} pattern (loop iteration item)
 static ITEM_RE: LazyLock<regex::Regex> =
@@ -145,19 +124,6 @@ static INDEX_RE: LazyLock<regex::Regex> =
 /// Captures: (1) step name
 static CONDITION_SUCCESS_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"^steps\.([a-zA-Z0-9_-]+)\.success$").unwrap());
-
-/// Placeholder for escaped braces - uses a pattern unlikely to appear in real content
-const ESCAPED_OPEN_BRACE: &str = "\x00LOK_OPEN_BRACE\x00";
-
-/// Escape {{ in content so it won't be treated as a variable reference
-fn escape_braces(s: &str) -> String {
-    s.replace("{{", ESCAPED_OPEN_BRACE)
-}
-
-/// Restore escaped braces after interpolation is complete
-fn unescape_braces(s: &str) -> String {
-    s.replace(ESCAPED_OPEN_BRACE, "{{")
-}
 
 /// A file edit to apply
 #[derive(Debug, Deserialize, Clone)]
@@ -2359,9 +2325,14 @@ impl WorkflowRunner {
         true
     }
 
-    /// Interpolate with JSON field access: {{ steps.X.field }} and env vars: {{ env.VAR }}
+    /// Interpolate `{{ steps.X.output }}`, `{{ steps.X.field }}`, `{{ env.VAR }}`,
+    /// `{{ arg.N }}`, and `{{ workflow.backends }}` via MiniJinja.
     ///
-    /// Uses replace_all for O(n) complexity per pattern instead of O(n*m) with repeated replace()
+    /// Loop variables (`item`, `item.X`, `index`) are protected with `{% raw %}` blocks
+    /// before rendering so they pass through unchanged for [`interpolate_loop_vars`] to
+    /// substitute later inside `for_each` iterations.
+    ///
+    /// Any remaining undefined variable surfaces as [`WorkflowError::UnknownVariable`].
     fn interpolate_with_fields(
         &self,
         template: &str,
@@ -2369,126 +2340,35 @@ impl WorkflowRunner {
         workflow_name: &str,
         current_step: &str,
     ) -> Result<String, WorkflowError> {
-        let output = self.interpolate(template, results, workflow_name, current_step)?;
-
-        // Handle {{ steps.X.field }} for JSON field access
-        // First validate all step references exist
-        for cap in FIELD_RE.captures_iter(&output) {
-            let referenced_step = cap.get(1).expect("regex group 1 always exists").as_str();
-            let field_name = cap.get(2).expect("regex group 2 always exists").as_str();
-            if field_name != "output" && !results.contains_key(referenced_step) {
-                return Err(WorkflowError::MissingStepOutput {
-                    workflow: workflow_name.to_string(),
-                    step: current_step.to_string(),
-                    referenced: referenced_step.to_string(),
-                });
-            }
-        }
-        // Then replace all in one pass
-        let output = FIELD_RE
-            .replace_all(&output, |caps: &regex::Captures| {
-                let step = &caps[1];
-                let field = &caps[2];
-                if field == "output" {
-                    // Already handled by interpolate(), return original match
-                    caps[0].to_string()
-                } else {
-                    // Try parsed_output first if available, then fall back to string parsing
-                    results
-                        .get(step)
-                        .and_then(|r| {
-                            // Use parsed_output if available
-                            if let Some(ref parsed) = r.parsed_output {
-                                parsed.get(field).map(|v| match v {
-                                    serde_json::Value::String(s) => s.clone(),
-                                    other => other.to_string(),
-                                })
-                            } else {
-                                // Fall back to parsing from string
-                                extract_json_field(&r.output, field)
-                            }
-                        })
-                        .unwrap_or_else(|| format!("[field {} not found]", field))
-                }
-            })
-            .into_owned();
-
-        // Handle {{ env.VAR }} for environment variables - single pass
-        let output = ENV_RE
-            .replace_all(&output, |caps: &regex::Captures| {
-                let var_name = &caps[1];
-                std::env::var(var_name).unwrap_or_else(|_| format!("[env {} not set]", var_name))
-            })
-            .into_owned();
-
-        // Handle {{ arg.N }} for positional arguments (1-indexed) - single pass
-        let output = ARG_RE
-            .replace_all(&output, |caps: &regex::Captures| {
-                let arg_index: usize = caps[1].parse().unwrap_or(0);
-                if arg_index > 0 && arg_index <= self.args.len() {
-                    self.args[arg_index - 1].clone()
-                } else {
-                    format!("[arg {} not provided]", arg_index)
-                }
-            })
-            .into_owned();
-
-        // Handle {{ workflow.backends }} - list unique backends used - single pass
-        let output = if WORKFLOW_BACKENDS_RE.is_match(&output) {
-            let mut backends: Vec<String> =
-                results.values().filter_map(|r| r.backend.clone()).collect();
-            backends.sort();
-            backends.dedup();
-
-            // Capitalize first letter of each backend name
-            let formatted: Vec<String> = backends
-                .iter()
-                .map(|b| {
-                    let mut chars = b.chars();
-                    match chars.next() {
-                        Some(c) => c.to_uppercase().to_string() + chars.as_str(),
-                        None => String::new(),
-                    }
-                })
-                .collect();
-
-            let replacement = if formatted.is_empty() {
-                "lok".to_string()
-            } else {
-                formatted.join(" + ")
-            };
-
-            WORKFLOW_BACKENDS_RE
-                .replace_all(&output, &replacement)
-                .into_owned()
-        } else {
-            output
-        };
-
-        // Check for any remaining unknown {{ ... }} variables
-        // Skip item, item.field, and index - those are handled by for_each loops
-        for cap in UNKNOWN_VAR_RE.captures_iter(&output) {
-            let variable = cap
-                .get(1)
-                .expect("regex group 1 always exists")
-                .as_str()
-                .trim();
-
-            // Skip loop variables - they'll be interpolated later by for_each
-            if variable == "item" || variable == "index" || variable.starts_with("item.") {
-                continue;
-            }
-
-            return Err(WorkflowError::UnknownVariable {
-                workflow: workflow_name.to_string(),
-                step: current_step.to_string(),
-                variable: variable.to_string(),
-            });
-        }
-
-        // Restore escaped braces from step outputs
-        Ok(unescape_braces(&output))
+        let protected = protect_loop_vars(template);
+        let backends = Self::collect_backends(results);
+        let ctx = crate::template::TemplateContext::new(results, &self.args, &backends);
+        self.template_engine
+            .render(&protected, &ctx)
+            .map_err(|e| map_template_error(e, template, workflow_name, current_step))
     }
+}
+
+/// Wrap loop-variable references (`{{ item }}`, `{{ item.field }}`, `{{ index }}`) in
+/// `{% raw %}...{% endraw %}` so MiniJinja preserves them verbatim while rendering the
+/// rest of the template. The loop variables are substituted later by
+/// [`interpolate_loop_vars`] inside each `for_each` iteration.
+fn protect_loop_vars(template: &str) -> std::borrow::Cow<'_, str> {
+    static LOOP_VAR_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"\{\{\s*(item(?:\.[a-zA-Z0-9_]+)?|index)\s*\}\}").unwrap()
+    });
+
+    if !LOOP_VAR_RE.is_match(template) {
+        return std::borrow::Cow::Borrowed(template);
+    }
+
+    std::borrow::Cow::Owned(
+        LOOP_VAR_RE
+            .replace_all(template, |caps: &regex::Captures| {
+                format!("{{% raw %}}{}{{% endraw %}}", &caps[0])
+            })
+            .into_owned(),
+    )
 }
 
 /// Translate legacy condition syntax to MiniJinja expressions.
