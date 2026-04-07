@@ -2296,11 +2296,12 @@ impl WorkflowRunner {
 
     /// Evaluate a condition expression
     ///
-    /// Supported syntax:
-    /// - `contains(step.output, "string")` - true if step output contains string
-    /// - `equals(step.output, "string")` - true if step output equals string exactly
-    /// - `not(condition)` - negates the inner condition
+    /// Supported syntax (translated to MiniJinja expressions):
+    /// - `contains(step.field, "string")` - true if step field contains string
+    /// - `equals(step.field, "string")` - true if step field equals string (trimmed)
+    /// - `not(condition)` - negates the inner condition (handled by MiniJinja `not`)
     /// - `steps.X.output contains 'Y'` - legacy syntax, still supported
+    /// - Any valid MiniJinja expression: `steps.X.success`, `"y" in steps.X.output`, etc.
     fn evaluate_condition(&self, condition: &str, results: &HashMap<String, StepResult>) -> bool {
         // Handle not(...) wrapper first
         if let Some(caps) = CONDITION_NOT_RE.captures(condition) {
@@ -2495,6 +2496,70 @@ impl WorkflowRunner {
 
         // Restore escaped braces from step outputs
         Ok(unescape_braces(&output))
+    }
+}
+
+/// Translate legacy condition syntax to MiniJinja expressions.
+///
+/// Accepts the following legacy forms and rewrites them as MiniJinja expressions:
+/// - `contains(step.field, "string")` -> `("string" in steps.step.field)`
+/// - `equals(step.field, "string")`   -> `((steps.step.field | trim) == "string")`
+/// - `steps.X.output contains 'Y'`    -> `("Y" in steps.X.output)`
+///
+/// `not(...)` wrappers are preserved as-is since MiniJinja parses `not(expr)` natively.
+/// Expressions that do not contain any legacy syntax (e.g. `steps.X.success and steps.Y.success`)
+/// are returned as `Cow::Borrowed` unchanged.
+fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
+    static RE_CONTAINS_CALL: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r#"contains\(\s*([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"]([^'"]*)['"]\s*\)"#,
+        )
+        .unwrap()
+    });
+    static RE_EQUALS_CALL: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r#"equals\(\s*([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"]([^'"]*)['"]\s*\)"#,
+        )
+        .unwrap()
+    });
+    static RE_LEGACY_CONTAINS: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r#"steps\.([a-zA-Z0-9_-]+)\.output\s+contains\s+['"]([^'"]*)['"]"#)
+            .unwrap()
+    });
+
+    // Fast path: if none of the legacy markers are present, return borrowed unchanged.
+    if !condition.contains("contains(")
+        && !condition.contains("equals(")
+        && !condition.contains(" contains ")
+    {
+        return std::borrow::Cow::Borrowed(condition);
+    }
+
+    let step1 = RE_CONTAINS_CALL
+        .replace_all(condition, |caps: &regex::Captures| {
+            format!(r#"("{}" in steps.{}.{})"#, &caps[3], &caps[1], &caps[2])
+        })
+        .into_owned();
+
+    let step2 = RE_EQUALS_CALL
+        .replace_all(&step1, |caps: &regex::Captures| {
+            format!(
+                r#"((steps.{}.{} | trim) == "{}")"#,
+                &caps[1], &caps[2], &caps[3]
+            )
+        })
+        .into_owned();
+
+    let step3 = RE_LEGACY_CONTAINS
+        .replace_all(&step2, |caps: &regex::Captures| {
+            format!(r#"("{}" in steps.{}.output)"#, &caps[2], &caps[1])
+        })
+        .into_owned();
+
+    if step3 == condition {
+        std::borrow::Cow::Borrowed(condition)
+    } else {
+        std::borrow::Cow::Owned(step3)
     }
 }
 
@@ -3274,6 +3339,75 @@ pub fn format_results(results: &[StepResult]) -> String {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn test_translate_contains_call() {
+        let out = translate_legacy_condition(r#"contains(fix.output, "ISSUES")"#);
+        assert_eq!(&*out, r#"("ISSUES" in steps.fix.output)"#);
+        assert!(matches!(out, std::borrow::Cow::Owned(_)));
+    }
+
+    #[test]
+    fn test_translate_equals_call() {
+        let out = translate_legacy_condition(r#"equals(check.verdict, "PASS")"#);
+        assert_eq!(&*out, r#"((steps.check.verdict | trim) == "PASS")"#);
+    }
+
+    #[test]
+    fn test_translate_legacy_steps_output_contains() {
+        let out = translate_legacy_condition(r#"steps.analyze.output contains 'ISSUES_FOUND'"#);
+        assert_eq!(&*out, r#"("ISSUES_FOUND" in steps.analyze.output)"#);
+    }
+
+    #[test]
+    fn test_translate_legacy_double_quotes() {
+        let out = translate_legacy_condition(r#"steps.analyze.output contains "ISSUES""#);
+        assert_eq!(&*out, r#"("ISSUES" in steps.analyze.output)"#);
+    }
+
+    #[test]
+    fn test_translate_nested_not() {
+        let out = translate_legacy_condition(r#"not(contains(analyze.output, "ISSUES_FOUND"))"#);
+        // `not(` is left for MiniJinja to handle; the inner contains() is translated.
+        assert_eq!(&*out, r#"not(("ISSUES_FOUND" in steps.analyze.output))"#);
+    }
+
+    #[test]
+    fn test_translate_mixed_legacy_new() {
+        let out = translate_legacy_condition(
+            r#"not(contains(analyze.output, "x")) and steps.Y.success"#,
+        );
+        assert_eq!(
+            &*out,
+            r#"not(("x" in steps.analyze.output)) and steps.Y.success"#
+        );
+    }
+
+    #[test]
+    fn test_translate_passthrough_already_valid() {
+        let input = r#"steps.X.success and not steps.Y.success"#;
+        let out = translate_legacy_condition(input);
+        assert_eq!(&*out, input);
+        assert!(matches!(out, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn test_translate_passthrough_empty() {
+        let out = translate_legacy_condition("");
+        assert_eq!(&*out, "");
+        assert!(matches!(out, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn test_translate_multiple_contains() {
+        let out = translate_legacy_condition(
+            r#"contains(a.field, "x") and contains(b.field, "y")"#,
+        );
+        assert_eq!(
+            &*out,
+            r#"("x" in steps.a.field) and ("y" in steps.b.field)"#
+        );
+    }
 
     #[test]
     fn test_extract_json_from_markdown_block() {
