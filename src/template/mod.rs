@@ -40,7 +40,6 @@ impl TemplateError {
     /// an undefined-variable error) so callers can extract the exact offending token
     /// instead of guessing it from the template. Returns `None` if MiniJinja could
     /// not associate the error with a source span.
-    #[allow(dead_code)]
     pub fn source_range(&self) -> Option<std::ops::Range<usize>> {
         let inner = match self {
             TemplateError::UndefinedVariable(e)

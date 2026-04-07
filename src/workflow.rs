@@ -1267,8 +1267,10 @@ impl WorkflowRunner {
 
                             for (index, item) in items.iter().enumerate() {
                                 // Interpolate item/index into prompt and shell
-                                let iter_prompt = interpolate_loop_vars(&prompt, item, index);
-                                let iter_shell = shell.as_ref().map(|s| interpolate_loop_vars(s, item, index));
+                                let iter_prompt = self.interpolate_loop_vars(&prompt, item, index);
+                                let iter_shell = shell
+                                    .as_ref()
+                                    .map(|s| self.interpolate_loop_vars(s, item, index));
 
                                 println!(
                                     "    {} [{}/{}]",
@@ -2229,7 +2231,50 @@ impl WorkflowRunner {
         let ctx = crate::template::TemplateContext::new(results, &self.args, &backends);
         self.template_engine
             .render(&protected, &ctx)
-            .map_err(|e| map_template_error(e, template, workflow_name, current_step))
+            .map_err(|e| map_template_error(e, &protected, workflow_name, current_step))
+    }
+
+    /// Interpolate loop variables (`{{ item }}`, `{{ item.field }}`, `{{ index }}`) in a string.
+    ///
+    /// Pre-scans the template for `{{ item.field }}` references and substitutes a
+    /// `[item.field not found]` placeholder for any field that does not exist on the
+    /// item, then hands the rest off to MiniJinja for rendering. The pre-scan ensures
+    /// that valid loop variables in the same template are not mistakenly substituted
+    /// when one missing field would otherwise raise an undefined-value error.
+    ///
+    /// Reuses `self.template_engine` (one engine per `WorkflowRunner`) to avoid
+    /// re-registering custom filters on every loop iteration.
+    fn interpolate_loop_vars(
+        &self,
+        template: &str,
+        item: &serde_json::Value,
+        index: usize,
+    ) -> String {
+        static ITEM_FIELD_RE: LazyLock<regex::Regex> =
+            LazyLock::new(|| regex::Regex::new(r"\{\{\s*item\.([a-zA-Z0-9_]+)\s*\}\}").unwrap());
+
+        // Substitute missing item.field references with literal placeholders BEFORE rendering
+        // so MiniJinja never sees an undefined attribute access for them.
+        let pre_processed: std::borrow::Cow<'_, str> =
+            ITEM_FIELD_RE.replace_all(template, |caps: &regex::Captures| {
+                let field = &caps[1];
+                if item.get(field).is_some() {
+                    caps[0].to_string()
+                } else {
+                    format!("[item.{} not found]", field)
+                }
+            });
+
+        let item_value = match item {
+            serde_json::Value::String(s) => minijinja::value::Value::from(s.clone()),
+            other => minijinja::value::Value::from_serialize(other),
+        };
+        let empty_steps = HashMap::new();
+        let ctx = crate::template::TemplateContext::new(&empty_steps, &[], &[])
+            .with_loop_item(item_value, index);
+        self.template_engine
+            .render(&pre_processed, &ctx)
+            .unwrap_or_else(|_| pre_processed.into_owned())
     }
 }
 
@@ -2273,54 +2318,83 @@ fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
     // Both forms accepted: `contains(step.field, "x")` and `contains(steps.step.field, "x")`.
     // The optional `(?:steps\.)?` prefix lets workflows reference steps by their bare name
     // (legacy shorthand) or with the full `steps.` namespace.
+    //
+    // The literal-string group uses alternation to accept either a double-quoted or
+    // single-quoted literal, each allowing backslash-escaped characters inside. This
+    // matches workflows like `contains(review.output, "\"approved\": true")`.
+    // Capture groups: 1=step, 2=field, 3=dq-content or 4=sq-content (mutually exclusive).
     static RE_CONTAINS_CALL: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(
-            r#"contains\(\s*(?:steps\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"]([^'"]*)['"]\s*\)"#,
+            r#"contains\(\s*(?:steps\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*\)"#,
         )
         .unwrap()
     });
     static RE_EQUALS_CALL: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(
-            r#"equals\(\s*(?:steps\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"]([^'"]*)['"]\s*\)"#,
+            r#"equals\(\s*(?:steps\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*\)"#,
         )
         .unwrap()
     });
     static RE_LEGACY_CONTAINS: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r#"steps\.([a-zA-Z0-9_-]+)\.output\s+contains\s+['"]([^'"]*)['"]"#)
-            .unwrap()
+        regex::Regex::new(
+            r#"steps\.([a-zA-Z0-9_-]+)\.output\s+contains\s+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')"#,
+        )
+        .unwrap()
     });
 
-    // Fast path: if none of the legacy markers are present, return borrowed unchanged.
-    if !condition.contains("contains(")
-        && !condition.contains("equals(")
-        && !condition.contains(" contains ")
+    // Fast path: if none of the legacy markers match, return borrowed unchanged.
+    // Uses regex `is_match` (not string `contains`) so that whitespace variants of
+    // `steps.X.output contains 'Y'` (e.g. multi-space, tabs) are still detected.
+    if !RE_CONTAINS_CALL.is_match(condition)
+        && !RE_EQUALS_CALL.is_match(condition)
+        && !RE_LEGACY_CONTAINS.is_match(condition)
     {
         return std::borrow::Cow::Borrowed(condition);
     }
 
+    // Extract the literal from either the double-quoted (group 3) or single-quoted
+    // (group 4) capture group. Exactly one will match for each hit because the
+    // alternation in the regex is mutually exclusive. The extracted literal still
+    // contains its original escape sequences (e.g. `\"`), which we re-emit as a
+    // double-quoted Jinja string literal - Jinja accepts the same `\"` escape.
+    fn literal_from(caps: &regex::Captures, dq_idx: usize, sq_idx: usize) -> String {
+        if let Some(m) = caps.get(dq_idx) {
+            m.as_str().to_string()
+        } else if let Some(m) = caps.get(sq_idx) {
+            // Re-escape any unescaped double-quotes so the literal embeds safely
+            // inside a Jinja double-quoted string.
+            m.as_str().replace('"', "\\\"")
+        } else {
+            String::new()
+        }
+    }
+
     let step1 = RE_CONTAINS_CALL
         .replace_all(condition, |caps: &regex::Captures| {
+            let literal = literal_from(caps, 3, 4);
             format!(
-                r#"("{}" in (steps.{}.{} | default('')))"#,
-                &caps[3], &caps[1], &caps[2]
+                r#"("{}" in (steps.{}.{} | default('') | string))"#,
+                literal, &caps[1], &caps[2]
             )
         })
         .into_owned();
 
     let step2 = RE_EQUALS_CALL
         .replace_all(&step1, |caps: &regex::Captures| {
+            let literal = literal_from(caps, 3, 4);
             format!(
-                r#"((steps.{}.{} | default('') | trim) == "{}")"#,
-                &caps[1], &caps[2], &caps[3]
+                r#"((steps.{}.{} | default('') | string | trim) == "{}")"#,
+                &caps[1], &caps[2], literal
             )
         })
         .into_owned();
 
     let step3 = RE_LEGACY_CONTAINS
         .replace_all(&step2, |caps: &regex::Captures| {
+            let literal = literal_from(caps, 2, 3);
             format!(
-                r#"("{}" in (steps.{}.output | default('')))"#,
-                &caps[2], &caps[1]
+                r#"("{}" in (steps.{}.output | default('') | string))"#,
+                literal, &caps[1]
             )
         })
         .into_owned();
@@ -2366,42 +2440,6 @@ fn map_template_error(
         step: current_step.to_string(),
         variable,
     }
-}
-
-/// Interpolate loop variables ({{ item }}, {{ item.field }}, {{ index }}) in a string.
-///
-/// Pre-scans the template for `{{ item.field }}` references and substitutes a
-/// `[item.field not found]` placeholder for any field that does not exist on the
-/// item, then hands the rest off to MiniJinja for rendering. The pre-scan ensures
-/// that valid loop variables in the same template are not mistakenly substituted
-/// when one missing field would otherwise raise an undefined-value error.
-fn interpolate_loop_vars(template: &str, item: &serde_json::Value, index: usize) -> String {
-    static ITEM_FIELD_RE: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"\{\{\s*item\.([a-zA-Z0-9_]+)\s*\}\}").unwrap());
-
-    // Substitute missing item.field references with literal placeholders BEFORE rendering
-    // so MiniJinja never sees an undefined attribute access for them.
-    let pre_processed: std::borrow::Cow<'_, str> =
-        ITEM_FIELD_RE.replace_all(template, |caps: &regex::Captures| {
-            let field = &caps[1];
-            if item.get(field).is_some() {
-                caps[0].to_string()
-            } else {
-                format!("[item.{} not found]", field)
-            }
-        });
-
-    let item_value = match item {
-        serde_json::Value::String(s) => minijinja::value::Value::from(s.clone()),
-        other => minijinja::value::Value::from_serialize(other),
-    };
-    let empty_steps = HashMap::new();
-    let ctx = crate::template::TemplateContext::new(&empty_steps, &[], &[])
-        .with_loop_item(item_value, index);
-    let engine = crate::template::TemplateEngine::new();
-    engine
-        .render(&pre_processed, &ctx)
-        .unwrap_or_else(|_| pre_processed.into_owned())
 }
 
 /// Parse for_each value into a JSON array
@@ -3161,7 +3199,10 @@ mod tests {
     #[test]
     fn test_translate_contains_call() {
         let out = translate_legacy_condition(r#"contains(fix.output, "ISSUES")"#);
-        assert_eq!(&*out, r#"("ISSUES" in (steps.fix.output | default('')))"#);
+        assert_eq!(
+            &*out,
+            r#"("ISSUES" in (steps.fix.output | default('') | string))"#
+        );
         assert!(matches!(out, std::borrow::Cow::Owned(_)));
     }
 
@@ -3170,7 +3211,7 @@ mod tests {
         let out = translate_legacy_condition(r#"equals(check.verdict, "PASS")"#);
         assert_eq!(
             &*out,
-            r#"((steps.check.verdict | default('') | trim) == "PASS")"#
+            r#"((steps.check.verdict | default('') | string | trim) == "PASS")"#
         );
     }
 
@@ -3179,7 +3220,7 @@ mod tests {
         let out = translate_legacy_condition(r#"steps.analyze.output contains 'ISSUES_FOUND'"#);
         assert_eq!(
             &*out,
-            r#"("ISSUES_FOUND" in (steps.analyze.output | default('')))"#
+            r#"("ISSUES_FOUND" in (steps.analyze.output | default('') | string))"#
         );
     }
 
@@ -3188,7 +3229,7 @@ mod tests {
         let out = translate_legacy_condition(r#"steps.analyze.output contains "ISSUES""#);
         assert_eq!(
             &*out,
-            r#"("ISSUES" in (steps.analyze.output | default('')))"#
+            r#"("ISSUES" in (steps.analyze.output | default('') | string))"#
         );
     }
 
@@ -3198,7 +3239,7 @@ mod tests {
         // `not(` is left for MiniJinja to handle; the inner contains() is translated.
         assert_eq!(
             &*out,
-            r#"not(("ISSUES_FOUND" in (steps.analyze.output | default(''))))"#
+            r#"not(("ISSUES_FOUND" in (steps.analyze.output | default('') | string)))"#
         );
     }
 
@@ -3212,7 +3253,7 @@ mod tests {
         );
         assert_eq!(
             &*out,
-            r#"not(("x" in (steps.fetch.output | default('')))) and steps.guard.success"#
+            r#"not(("x" in (steps.fetch.output | default('') | string))) and steps.guard.success"#
         );
     }
 
@@ -3224,7 +3265,7 @@ mod tests {
         let out = translate_legacy_condition(r#"contains(steps.analyze.output, "ERROR")"#);
         assert_eq!(
             &*out,
-            r#"("ERROR" in (steps.analyze.output | default('')))"#
+            r#"("ERROR" in (steps.analyze.output | default('') | string))"#
         );
     }
 
@@ -3233,7 +3274,7 @@ mod tests {
         let out = translate_legacy_condition(r#"equals(steps.review.verdict, "APPROVE")"#);
         assert_eq!(
             &*out,
-            r#"((steps.review.verdict | default('') | trim) == "APPROVE")"#
+            r#"((steps.review.verdict | default('') | string | trim) == "APPROVE")"#
         );
     }
 
@@ -3258,8 +3299,41 @@ mod tests {
             translate_legacy_condition(r#"contains(a.field, "x") and contains(b.field, "y")"#);
         assert_eq!(
             &*out,
-            r#"("x" in (steps.a.field | default(''))) and ("y" in (steps.b.field | default('')))"#
+            r#"("x" in (steps.a.field | default('') | string)) and ("y" in (steps.b.field | default('') | string))"#
         );
+    }
+
+    #[test]
+    fn test_translate_contains_with_escaped_quotes() {
+        // Regression: `contains(review.output, "\"approved\": true")` from full-heal.toml.
+        // The regex must accept backslash-escaped quotes inside the literal, and the
+        // translated output must re-emit them as valid Jinja string syntax.
+        let out = translate_legacy_condition(r#"contains(review.output, "\"approved\": true")"#);
+        assert_eq!(
+            &*out,
+            r#"("\"approved\": true" in (steps.review.output | default('') | string))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_contains_with_single_quoted_literal_containing_double_quote() {
+        // When the literal is single-quoted and contains a raw double-quote, the
+        // translated output re-emits it inside a Jinja double-quoted string, so the
+        // double-quote must be escaped to avoid closing the string prematurely.
+        let out = translate_legacy_condition(r#"contains(s.out, 'has "quote" inside')"#);
+        assert_eq!(
+            &*out,
+            r#"("has \"quote\" inside" in (steps.s.out | default('') | string))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_fast_path_whitespace_variants() {
+        // Regression for the fast-path bug: `contains` surrounded by tabs/multi-spaces
+        // must still be detected via regex `is_match` (not literal string contains).
+        let out = translate_legacy_condition("steps.X.output\tcontains\t'Y'");
+        assert_eq!(&*out, r#"("Y" in (steps.X.output | default('') | string))"#);
+        assert!(matches!(out, std::borrow::Cow::Owned(_)));
     }
 
     #[test]
@@ -4117,8 +4191,10 @@ line2"}"#;
         // Regression for the loop-var pre-scan fix: when one field is missing and
         // another is valid in the same template, only the missing one should be
         // replaced with the placeholder; the valid field must render normally.
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!({"name": "tests"});
-        let result = interpolate_loop_vars("{{ item.name }} {{ item.missing }}", &item, 0);
+        let result = runner.interpolate_loop_vars("{{ item.name }} {{ item.missing }}", &item, 0);
         assert_eq!(result, "tests [item.missing not found]");
     }
 
@@ -4140,15 +4216,19 @@ line2"}"#;
 
     #[test]
     fn test_interpolate_loop_vars_item_string() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!("hello");
-        let result = interpolate_loop_vars("Value: {{ item }}", &item, 0);
+        let result = runner.interpolate_loop_vars("Value: {{ item }}", &item, 0);
         assert_eq!(result, "Value: hello");
     }
 
     #[test]
     fn test_interpolate_loop_vars_item_object() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!({"name": "tests", "pattern": "*.spec.rb"});
-        let result = interpolate_loop_vars(
+        let result = runner.interpolate_loop_vars(
             "Name: {{ item.name }}, Pattern: {{ item.pattern }}",
             &item,
             0,
@@ -4158,23 +4238,29 @@ line2"}"#;
 
     #[test]
     fn test_interpolate_loop_vars_item_whole_object() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!({"name": "tests"});
-        let result = interpolate_loop_vars("Item: {{ item }}", &item, 0);
+        let result = runner.interpolate_loop_vars("Item: {{ item }}", &item, 0);
         // MiniJinja renders objects with a space after the colon
         assert_eq!(result, r#"Item: {"name": "tests"}"#);
     }
 
     #[test]
     fn test_interpolate_loop_vars_index() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!("value");
-        let result = interpolate_loop_vars("Index: {{ index }}", &item, 5);
+        let result = runner.interpolate_loop_vars("Index: {{ index }}", &item, 5);
         assert_eq!(result, "Index: 5");
     }
 
     #[test]
     fn test_interpolate_loop_vars_combined() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!({"file": "test.rb"});
-        let result = interpolate_loop_vars(
+        let result = runner.interpolate_loop_vars(
             "Processing {{ item.file }} ({{ index }}/10): {{ item }}",
             &item,
             3,
@@ -4185,8 +4271,10 @@ line2"}"#;
 
     #[test]
     fn test_interpolate_loop_vars_missing_field() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!({"name": "tests"});
-        let result = interpolate_loop_vars("Missing: {{ item.missing }}", &item, 0);
+        let result = runner.interpolate_loop_vars("Missing: {{ item.missing }}", &item, 0);
         assert_eq!(result, "Missing: [item.missing not found]");
     }
 
