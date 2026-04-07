@@ -47,11 +47,15 @@ pub struct TemplateEngine {
 
 #[allow(dead_code)]
 impl TemplateEngine {
-    /// Create a new template engine with custom filters registered
-    /// and strict undefined behavior.
+    /// Create a new template engine with custom filters registered.
+    ///
+    /// Uses [`UndefinedBehavior::SemiStrict`] so the `default()` filter and `is defined`
+    /// test can intercept missing values, while rendering an undefined value as the final
+    /// output still errors - preserving the strict-undefined contract for
+    /// `WorkflowError::UnknownVariable` reporting.
     pub fn new() -> Self {
         let mut env = minijinja::Environment::new();
-        env.set_undefined_behavior(UndefinedBehavior::Strict);
+        env.set_undefined_behavior(UndefinedBehavior::SemiStrict);
         filters::register_filters(&mut env);
         Self { env }
     }

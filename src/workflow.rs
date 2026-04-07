@@ -3785,6 +3785,221 @@ line2"}"#;
     }
 
     #[test]
+    fn test_jinja_if_block() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: "data".to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{% if steps.fetch.success %}A{% else %}B{% endif %}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "A");
+    }
+
+    #[test]
+    fn test_jinja_default_filter() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        // Step exists but has empty output - the custom default_val filter
+        // (registered in src/template/filters.rs) treats empty strings as missing
+        // and substitutes the fallback value.
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: String::new(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = r#"{{ steps.fetch.output | default_val("fallback") }}"#;
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "fallback");
+    }
+
+    #[test]
+    fn test_jinja_trim_filter() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: "  hello world  \n".to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{{ steps.fetch.output | trim }}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "hello world");
+    }
+
+    #[test]
+    fn test_jinja_join_filter() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let parsed = serde_json::json!({"items": ["a", "b", "c"]});
+        let mut results = HashMap::new();
+        results.insert(
+            "list".to_string(),
+            StepResult {
+                name: "list".to_string(),
+                output: "{}".to_string(),
+                parsed_output: Some(parsed),
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = r#"{{ steps.list.items | join(", ") }}"#;
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "a, b, c");
+    }
+
+    #[test]
+    fn test_jinja_shell_escape_filter() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let parsed = serde_json::json!({"path": "value with spaces"});
+        let mut results = HashMap::new();
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: "{}".to_string(),
+                parsed_output: Some(parsed),
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{{ steps.fetch.path | shell_escape }}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "'value with spaces'");
+    }
+
+    #[test]
+    fn test_jinja_chained_filters() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: "first line\nsecond line\nthird line".to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{{ steps.fetch.output | lines | first }}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "first line");
+    }
+
+    #[test]
+    fn test_evaluate_condition_error_recovery() {
+        // Lenient default: a condition with a syntax error returns true so the step still runs
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let results = HashMap::new();
+        // Syntactically invalid expression - should fall back to true (legacy lenient default)
+        assert!(runner.evaluate_condition("not a valid expression !!!", &results));
+        // Empty condition - should also be treated as truthy
+        assert!(runner.evaluate_condition("", &results));
+    }
+
+    #[test]
+    fn test_interpolate_parsed_output_none_fallback() {
+        // When parsed_output is None but output contains JSON (raw or markdown-fenced),
+        // the field should still be accessible via {{ steps.X.field }}
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "raw_json".to_string(),
+            StepResult {
+                name: "raw_json".to_string(),
+                output: r#"{"verdict":"PASS","summary":"all good"}"#.to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{{ steps.raw_json.verdict }}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "PASS");
+    }
+
+    #[test]
     fn test_step_if_alias() {
         // Test that `if` works as alias for `when` in TOML
         let toml_str = r#"
