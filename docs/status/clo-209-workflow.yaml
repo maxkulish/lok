@@ -66,8 +66,9 @@ phases:
     pr_url: "https://github.com/maxkulish/lok/pull/11"
     pr_number: 11
     ci_passed: true
-    ci_note: "Remote CI workflow (.github/workflows/ci.yml) is configured but has historically never run on this repo (total_count=0). Local pre-flight equivalent passed: cargo fmt --check, cargo clippy --bin lok -- -D warnings, cargo test --bin lok (345 passed)."
-    reviews_addressed: 0
+    ci_note: "Remote CI workflow (.github/workflows/ci.yml) is configured but has historically never run on this repo (total_count=0). Local pre-flight equivalent passed: cargo fmt --check, cargo clippy --bin lok -- -D warnings, cargo test --bin lok (348 passed after review fixes)."
+    reviews_addressed: 7
+    review_fix_commit: "3518bc5"
   complete:
     status: pending
     aggregation_files_updated: false
@@ -126,3 +127,7 @@ history:
     action: pr_created
     phase: pr
     details: "PR #11 created: https://github.com/maxkulish/lok/pull/11. Copilot code review auto-triggered (in_progress). Note: .github/workflows/ci.yml is configured for pull_request events but has total_count=0 in the repo - never run historically. Local pre-flight is the effective CI gate for this repo."
+  - timestamp: "2026-04-07T04:00:00Z"
+    action: review_addressed
+    phase: pr
+    details: "Addressed 7 PR review comments (2 gemini-code-assist, 5 Copilot) in commit 3518bc5. Fixes: (1) escaped-quote support in translate_legacy_condition regexes for full-heal.toml, (2) map_template_error passes &protected template for correct byte range lookup, (3) | string filter coercion for non-string fields in legacy rewrites, (4) interpolate_loop_vars as method on WorkflowRunner to reuse template_engine, (5) fast-path whitespace bug via regex is_match, (6) removed #[allow(dead_code)] from source_range(). Added 3 regression tests. 348 passed (was 345), clippy clean, smoke tests pass. Replied to all 7 comments; gemini replies include /gemini review trigger."
