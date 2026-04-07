@@ -62,9 +62,11 @@ phases:
     gemini_verdict: REVIEW_FAILED
     gemini_validation_report: "docs/reviews/clo-209-gemini-validation.md"
   pr:
-    status: pending
-    pr_url: null
-    pr_number: null
+    status: in_progress
+    pr_url: "https://github.com/maxkulish/lok/pull/11"
+    pr_number: 11
+    ci_passed: true
+    ci_note: "Remote CI workflow (.github/workflows/ci.yml) is configured but has historically never run on this repo (total_count=0). Local pre-flight equivalent passed: cargo fmt --check, cargo clippy --bin lok -- -D warnings, cargo test --bin lok (345 passed)."
     reviews_addressed: 0
   complete:
     status: pending
@@ -116,3 +118,11 @@ history:
     action: validation_gate_proceed
     phase: implement
     details: "User chose [proceed] at validation gate. Gemini timed out (exit 124) on re-run - consistently unavailable in this env. Codex findings all addressed. Transitioning to PR phase."
+  - timestamp: "2026-04-07T03:00:00Z"
+    action: pre_flight_checks_passed
+    phase: pr
+    details: "Local pre-flight: cargo fmt --check clean (after 33e250f + 277c59e), cargo clippy --bin lok -- -D warnings clean, cargo test --bin lok 345 passed. edit_parser.rs had pre-existing fmt debt from CLO-205 - fixed as chore commit."
+  - timestamp: "2026-04-07T03:05:00Z"
+    action: pr_created
+    phase: pr
+    details: "PR #11 created: https://github.com/maxkulish/lok/pull/11. Copilot code review auto-triggered (in_progress). Note: .github/workflows/ci.yml is configured for pull_request events but has total_count=0 in the repo - never run historically. Local pre-flight is the effective CI gate for this repo."
