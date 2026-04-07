@@ -78,18 +78,6 @@ const DEFAULT_STEP_TIMEOUT_MS: u64 = 120_000;
 /// Minimum timeout value in milliseconds (values 1 to MIN-1 are rejected)
 const MIN_TIMEOUT_MS: u64 = 100;
 
-/// Regex for matching {{ item }} pattern (loop iteration item)
-static ITEM_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*item\s*\}\}").unwrap());
-
-/// Regex for matching {{ item.field }} pattern (loop item field access)
-static ITEM_FIELD_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*item\.([a-zA-Z0-9_]+)\s*\}\}").unwrap());
-
-/// Regex for matching {{ index }} pattern (loop iteration index)
-static INDEX_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*index\s*\}\}").unwrap());
-
 /// A file edit to apply
 #[derive(Debug, Deserialize, Clone)]
 pub struct FileEdit {
@@ -2372,33 +2360,61 @@ fn map_template_error(
     }
 }
 
-/// Interpolate loop variables ({{ item }}, {{ item.field }}, {{ index }}) in a string
+/// Interpolate loop variables ({{ item }}, {{ item.field }}, {{ index }}) in a string.
+///
+/// Renders the partially-interpolated template (after [`WorkflowRunner::interpolate_with_fields`]
+/// has resolved step/env/arg references) through MiniJinja with a context that exposes
+/// `item`, `item.field`, and `index`.
+///
+/// On undefined variable (e.g. `item.missing` for an object that lacks the field), returns
+/// a `[item.field not found]` placeholder rather than erroring, matching legacy behaviour.
 fn interpolate_loop_vars(template: &str, item: &serde_json::Value, index: usize) -> String {
-    // Handle {{ item.field }} for object field access first
-    let output = ITEM_FIELD_RE
-        .replace_all(template, |caps: &regex::Captures| {
-            let field = &caps[1];
-            item.get(field)
-                .map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                })
-                .unwrap_or_else(|| format!("[item.{} not found]", field))
-        })
-        .into_owned();
+    let item_value = match item {
+        serde_json::Value::String(s) => minijinja::value::Value::from(s.clone()),
+        other => minijinja::value::Value::from_serialize(other),
+    };
+    let empty_steps = HashMap::new();
+    let ctx = crate::template::TemplateContext::new(&empty_steps, &[], &[])
+        .with_loop_item(item_value, index);
+    let engine = crate::template::TemplateEngine::new();
+    match engine.render(template, &ctx) {
+        Ok(s) => s,
+        Err(crate::template::TemplateError::UndefinedVariable(err)) => {
+            // Substitute placeholder for the specific missing field, then re-render
+            // to handle multiple loop variables in the same template.
+            let var = extract_undefined_var(&err, template).unwrap_or_else(|| "item".to_string());
+            let placeholder = format!("[{} not found]", var);
+            let escaped = format!("{{% raw %}}{}{{% endraw %}}", placeholder);
+            let pattern = format!(r"\{{\{{\s*{}\s*\}}\}}", regex::escape(&var));
+            let re = match regex::Regex::new(&pattern) {
+                Ok(r) => r,
+                Err(_) => return template.to_string(),
+            };
+            let patched = re.replace_all(template, escaped.as_str()).into_owned();
+            interpolate_loop_vars(&patched, item, index)
+        }
+        Err(_) => template.to_string(),
+    }
+}
 
-    // Handle {{ item }} for the whole item
-    let output = ITEM_RE
-        .replace_all(&output, |_: &regex::Captures| match item {
-            serde_json::Value::String(s) => s.clone(),
-            other => other.to_string(),
-        })
-        .into_owned();
-
-    // Handle {{ index }} for iteration index
-    INDEX_RE
-        .replace_all(&output, index.to_string().as_str())
-        .into_owned()
+/// Extract the variable path that triggered an UndefinedError from a MiniJinja error.
+///
+/// MiniJinja's error message has the form `undefined value (in <expression>)` - we look at
+/// the source line via `err.line()` and pull the matching `{{ var }}` token. Falls back
+/// to scanning the template for the first unresolved `{{ ... }}` expression.
+fn extract_undefined_var(err: &minijinja::Error, template: &str) -> Option<String> {
+    static UNRESOLVED_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}").unwrap());
+    if let Some(line_no) = err.line() {
+        if let Some(line) = template.lines().nth(line_no.saturating_sub(1)) {
+            if let Some(caps) = UNRESOLVED_RE.captures(line) {
+                return Some(caps[1].to_string());
+            }
+        }
+    }
+    UNRESOLVED_RE
+        .captures(template)
+        .map(|caps| caps[1].to_string())
 }
 
 /// Parse for_each value into a JSON array
@@ -3806,7 +3822,8 @@ line2"}"#;
     fn test_interpolate_loop_vars_item_whole_object() {
         let item = serde_json::json!({"name": "tests"});
         let result = interpolate_loop_vars("Item: {{ item }}", &item, 0);
-        assert_eq!(result, r#"Item: {"name":"tests"}"#);
+        // MiniJinja renders objects with a space after the colon
+        assert_eq!(result, r#"Item: {"name": "tests"}"#);
     }
 
     #[test]
