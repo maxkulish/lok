@@ -1036,6 +1036,7 @@ pub struct WorkflowRunner {
     cwd: PathBuf,
     args: Vec<String>,
     context: CodebaseContext,
+    template_engine: crate::template::TemplateEngine,
 }
 
 impl WorkflowRunner {
@@ -1046,7 +1047,20 @@ impl WorkflowRunner {
             cwd,
             args,
             context,
+            template_engine: crate::template::TemplateEngine::new(),
         }
+    }
+
+    /// Build the ordered, deduplicated list of backend names from step results.
+    /// Used to construct a `TemplateContext` for interpolation/condition evaluation.
+    fn collect_backends(results: &HashMap<String, StepResult>) -> Vec<String> {
+        let mut backends: Vec<String> = results
+            .values()
+            .filter_map(|r| r.backend.clone())
+            .collect();
+        backends.sort();
+        backends.dedup();
+        backends
     }
 
     /// Execute a workflow, returning results for each step
