@@ -2272,15 +2272,18 @@ fn protect_loop_vars(template: &str) -> std::borrow::Cow<'_, str> {
 /// Expressions that do not contain any legacy syntax (e.g. `steps.X.success and steps.Y.success`)
 /// are returned as `Cow::Borrowed` unchanged.
 fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
+    // Both forms accepted: `contains(step.field, "x")` and `contains(steps.step.field, "x")`.
+    // The optional `(?:steps\.)?` prefix lets workflows reference steps by their bare name
+    // (legacy shorthand) or with the full `steps.` namespace.
     static RE_CONTAINS_CALL: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(
-            r#"contains\(\s*([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"]([^'"]*)['"]\s*\)"#,
+            r#"contains\(\s*(?:steps\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"]([^'"]*)['"]\s*\)"#,
         )
         .unwrap()
     });
     static RE_EQUALS_CALL: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(
-            r#"equals\(\s*([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"]([^'"]*)['"]\s*\)"#,
+            r#"equals\(\s*(?:steps\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"]([^'"]*)['"]\s*\)"#,
         )
         .unwrap()
     });
@@ -2333,10 +2336,11 @@ fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
 
 /// Convert a [`crate::template::TemplateError`] into a [`WorkflowError::UnknownVariable`].
 ///
-/// MiniJinja errors expose only "undefined value" without the offending variable name,
-/// so we extract the first `{{ ... }}` expression from the source template as the variable
-/// name in the error message. This is best-effort but matches what users see when their
-/// template references an undefined value.
+/// Prefers the byte range exposed by MiniJinja (`TemplateError::source_range`), which
+/// points to the exact failing expression such as `steps.missing.output`. This handles
+/// templates with multiple interpolations correctly, where the first `{{ ... }}` in the
+/// source may not be the one that errored. Falls back to the first interpolation in the
+/// template, then to the error's `Display` form when no range is available.
 fn map_template_error(
     err: crate::template::TemplateError,
     template: &str,
@@ -2346,13 +2350,19 @@ fn map_template_error(
     static GENERIC_VAR_RE: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r"\{\{\s*([^}]+?)\s*\}\}").unwrap());
 
-    let variable = GENERIC_VAR_RE
-        .captures(template)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_string())
+    let variable = err
+        .source_range()
+        .and_then(|range| template.get(range))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            GENERIC_VAR_RE
+                .captures(template)
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str().to_string())
+        })
         .unwrap_or_else(|| err.to_string());
 
-    let _ = err;
     WorkflowError::UnknownVariable {
         workflow: workflow_name.to_string(),
         step: current_step.to_string(),
@@ -2362,13 +2372,27 @@ fn map_template_error(
 
 /// Interpolate loop variables ({{ item }}, {{ item.field }}, {{ index }}) in a string.
 ///
-/// Renders the partially-interpolated template (after [`WorkflowRunner::interpolate_with_fields`]
-/// has resolved step/env/arg references) through MiniJinja with a context that exposes
-/// `item`, `item.field`, and `index`.
-///
-/// On undefined variable (e.g. `item.missing` for an object that lacks the field), returns
-/// a `[item.field not found]` placeholder rather than erroring, matching legacy behaviour.
+/// Pre-scans the template for `{{ item.field }}` references and substitutes a
+/// `[item.field not found]` placeholder for any field that does not exist on the
+/// item, then hands the rest off to MiniJinja for rendering. The pre-scan ensures
+/// that valid loop variables in the same template are not mistakenly substituted
+/// when one missing field would otherwise raise an undefined-value error.
 fn interpolate_loop_vars(template: &str, item: &serde_json::Value, index: usize) -> String {
+    static ITEM_FIELD_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\{\{\s*item\.([a-zA-Z0-9_]+)\s*\}\}").unwrap());
+
+    // Substitute missing item.field references with literal placeholders BEFORE rendering
+    // so MiniJinja never sees an undefined attribute access for them.
+    let pre_processed: std::borrow::Cow<'_, str> =
+        ITEM_FIELD_RE.replace_all(template, |caps: &regex::Captures| {
+            let field = &caps[1];
+            if item.get(field).is_some() {
+                caps[0].to_string()
+            } else {
+                format!("[item.{} not found]", field)
+            }
+        });
+
     let item_value = match item {
         serde_json::Value::String(s) => minijinja::value::Value::from(s.clone()),
         other => minijinja::value::Value::from_serialize(other),
@@ -2377,44 +2401,9 @@ fn interpolate_loop_vars(template: &str, item: &serde_json::Value, index: usize)
     let ctx = crate::template::TemplateContext::new(&empty_steps, &[], &[])
         .with_loop_item(item_value, index);
     let engine = crate::template::TemplateEngine::new();
-    match engine.render(template, &ctx) {
-        Ok(s) => s,
-        Err(crate::template::TemplateError::UndefinedVariable(err)) => {
-            // Substitute placeholder for the specific missing field, then re-render
-            // to handle multiple loop variables in the same template.
-            let var = extract_undefined_var(&err, template).unwrap_or_else(|| "item".to_string());
-            let placeholder = format!("[{} not found]", var);
-            let escaped = format!("{{% raw %}}{}{{% endraw %}}", placeholder);
-            let pattern = format!(r"\{{\{{\s*{}\s*\}}\}}", regex::escape(&var));
-            let re = match regex::Regex::new(&pattern) {
-                Ok(r) => r,
-                Err(_) => return template.to_string(),
-            };
-            let patched = re.replace_all(template, escaped.as_str()).into_owned();
-            interpolate_loop_vars(&patched, item, index)
-        }
-        Err(_) => template.to_string(),
-    }
-}
-
-/// Extract the variable path that triggered an UndefinedError from a MiniJinja error.
-///
-/// MiniJinja's error message has the form `undefined value (in <expression>)` - we look at
-/// the source line via `err.line()` and pull the matching `{{ var }}` token. Falls back
-/// to scanning the template for the first unresolved `{{ ... }}` expression.
-fn extract_undefined_var(err: &minijinja::Error, template: &str) -> Option<String> {
-    static UNRESOLVED_RE: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}").unwrap());
-    if let Some(line_no) = err.line() {
-        if let Some(line) = template.lines().nth(line_no.saturating_sub(1)) {
-            if let Some(caps) = UNRESOLVED_RE.captures(line) {
-                return Some(caps[1].to_string());
-            }
-        }
-    }
-    UNRESOLVED_RE
-        .captures(template)
-        .map(|caps| caps[1].to_string())
+    engine
+        .render(&pre_processed, &ctx)
+        .unwrap_or_else(|_| pre_processed.into_owned())
 }
 
 /// Parse for_each value into a JSON array
@@ -3217,12 +3206,36 @@ mod tests {
 
     #[test]
     fn test_translate_mixed_legacy_new() {
+        // Mixed form using the specified `contains(steps.X.field, ...)` syntax alongside
+        // direct MiniJinja success access. Verifies the steps-prefixed legacy form is
+        // handled correctly (regression for translate_legacy_condition bug).
         let out = translate_legacy_condition(
-            r#"not(contains(analyze.output, "x")) and steps.Y.success"#,
+            r#"not(contains(steps.fetch.output, "x")) and steps.guard.success"#,
         );
         assert_eq!(
             &*out,
-            r#"not(("x" in (steps.analyze.output | default('')))) and steps.Y.success"#
+            r#"not(("x" in (steps.fetch.output | default('')))) and steps.guard.success"#
+        );
+    }
+
+    #[test]
+    fn test_translate_contains_with_steps_prefix() {
+        // Regression: `contains()` with explicit `steps.` prefix must be translated,
+        // not left as an untranslated MiniJinja call (which would always-error-recover
+        // to `true` and bypass the `when` guard).
+        let out = translate_legacy_condition(r#"contains(steps.analyze.output, "ERROR")"#);
+        assert_eq!(
+            &*out,
+            r#"("ERROR" in (steps.analyze.output | default('')))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_equals_with_steps_prefix() {
+        let out = translate_legacy_condition(r#"equals(steps.review.verdict, "APPROVE")"#);
+        assert_eq!(
+            &*out,
+            r#"((steps.review.verdict | default('') | trim) == "APPROVE")"#
         );
     }
 
@@ -3997,6 +4010,119 @@ line2"}"#;
             .interpolate_with_fields(template, &results, "wf", "step")
             .unwrap();
         assert_eq!(out, "PASS");
+    }
+
+    #[test]
+    fn test_jinja_missing_step_default_fallback() {
+        // Spec test 7: referencing a completely missing step surfaces as first-level
+        // undefined, which the custom `default_val` filter intercepts and replaces
+        // with the fallback. Covers the "step missing" case distinct from the
+        // "step exists with empty output" case verified by `test_jinja_default_filter`.
+        //
+        // Limitation: chained access through undefined (e.g. `steps.nonexistent.output`)
+        // errors in SemiStrict mode before any filter runs, so users must put the
+        // `default_val` on the first undefined segment.
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let results = HashMap::new();
+        let template = r#"{{ steps.nonexistent | default_val("fallback") }}"#;
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "fallback");
+    }
+
+    #[test]
+    fn test_jinja_inline_for_loop() {
+        // Spec test 11: MiniJinja `{% for %}` block iterates over a JSON array field
+        // from parsed output within a single template render.
+        //
+        // Note: the loop variable is named `entry`, not `item`, because the
+        // `protect_loop_vars` pre-processor escapes `{{ item }}` / `{{ index }}`
+        // references for later `for_each` substitution. Inline loops use any other
+        // identifier to avoid that collision.
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let parsed = serde_json::json!({"items": ["a", "b", "c"]});
+        let mut results = HashMap::new();
+        results.insert(
+            "list".to_string(),
+            StepResult {
+                name: "list".to_string(),
+                output: "{}".to_string(),
+                parsed_output: Some(parsed),
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{% for entry in steps.list.items %}{{ entry }},{% endfor %}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "a,b,c,");
+    }
+
+    #[test]
+    fn test_map_template_error_reports_offending_variable_in_multi_expression() {
+        // Spec test 24: in a template with multiple interpolations, the UnknownVariable
+        // error must surface the actual failing variable, not just the first `{{...}}`
+        // in the source. Regression for map_template_error using err.range().
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "first".to_string(),
+            StepResult {
+                name: "first".to_string(),
+                output: "ok".to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        // First interpolation is valid, second references a missing step - the error
+        // should name the second, not the first.
+        let template = "{{ steps.first.output }} then {{ steps.missing.output }}";
+        let err = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap_err();
+        match err {
+            WorkflowError::UnknownVariable { ref variable, .. } => {
+                assert!(
+                    variable.contains("missing"),
+                    "expected error to name `missing`, got: {}",
+                    variable
+                );
+                assert!(
+                    !variable.contains("first"),
+                    "error should not point at the valid `first` expression, got: {}",
+                    variable
+                );
+            }
+            other => panic!("expected UnknownVariable error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_interpolate_loop_vars_multiple_fields_one_missing() {
+        // Regression for the loop-var pre-scan fix: when one field is missing and
+        // another is valid in the same template, only the missing one should be
+        // replaced with the placeholder; the valid field must render normally.
+        let item = serde_json::json!({"name": "tests"});
+        let result = interpolate_loop_vars("{{ item.name }} {{ item.missing }}", &item, 0);
+        assert_eq!(result, "tests [item.missing not found]");
     }
 
     #[test]
