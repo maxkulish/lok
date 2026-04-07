@@ -1,0 +1,84 @@
+task_id: CLO-209
+task_title: "Replace regex interpolation in workflow.rs with MiniJinja rendering"
+task_url: "https://linear.app/cloud-ai/issue/CLO-209"
+task_type: specification
+created_at: "2026-04-07T00:00:00Z"
+
+workflow:
+  current_phase: implement
+  status: in_progress
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: "specs/2026-04-07-clo-209-minijinja-workflow-migration.md"
+    approved: true
+    review_completed: true
+    review_gemini: null
+    review_ollama: "docs/reviews/clo-209-spec-review-ollama.md"
+    review_synthesis: "docs/reviews/clo-209-spec-review-synthesis.md"
+    review_verdict: "APPROVE_WITH_SUGGESTIONS"
+    review_applied: true
+    applied_suggestions:
+      - "Verified: TemplateEngine.compile_expression doesn't exist - added eval_expression() public method as new sub-task 1"
+      - "Verified: test_no_reexpansion_of_braces_in_output exists in src/template/mod.rs:104 - explicitly delete escape_braces/unescape_braces/ESCAPED_OPEN_BRACE"
+      - "Specified WorkflowError::UnknownVariable construction: extract var name from minijinja Error, contextualize at call site"
+      - "Clarified parsed_output: None fallback behavior via TemplateContext"
+      - "Split sub-task 6 into separate steps: eval_expression (1), translator (2), wire engine (3), interpolate (4), interpolate_with_fields (5), evaluate_condition (6), loop_vars (7), tests + verification (8) - now 8 sub-tasks total"
+      - "Added test for mixed legacy/new condition syntax (test 15)"
+      - "Added test for condition error recovery returning true (test 16)"
+      - "Added test for parsed_output: None JSON string fallback (test 17)"
+      - "Added 3 tests for eval_expression method (tests 18-20)"
+      - "Made workflow integration smoke test mandatory (test 22, was optional)"
+      - "Added explicit CLO-204 prerequisite at top of spec"
+      - "Added test for test_no_reexpansion_of_braces_in_output regression check after escape_braces deletion (test 25)"
+      - "Specified extract_json_field investigation before deletion in sub-task 6"
+    flagged_suggestions: []
+  implement:
+    status: pending
+    commits: []
+    gemini_validated: false
+    gemini_verdict: null
+    gemini_validation_report: null
+  pr:
+    status: pending
+    pr_url: null
+    pr_number: null
+    reviews_addressed: 0
+  complete:
+    status: pending
+    aggregation_files_updated: false
+    merged_at: null
+
+history:
+  - timestamp: "2026-04-07T00:00:00Z"
+    action: workflow_started
+    phase: spec
+    details: "Initialized specification workflow for CLO-209 (MiniJinja workflow.rs migration)"
+  - timestamp: "2026-04-07T00:00:01Z"
+    action: project_sync_start
+    phase: spec
+    details: "Added to Active Work in PROJECT.md (1/3), ROADMAP.md status -> In Progress, removed from Unblocked & Ready"
+  - timestamp: "2026-04-07T00:01:00Z"
+    action: spec_draft_complete
+    phase: spec
+    details: "Spec written to specs/2026-04-07-clo-209-minijinja-workflow-migration.md (5 sections, M scope, 6 sub-tasks, 18 evaluation tests)"
+  - timestamp: "2026-04-07T00:02:00Z"
+    action: spec_review_complete
+    phase: spec
+    details: "Ollama: APPROVE_WITH_SUGGESTIONS (14 items: 3 critical, 6 important, 5 minor). Gemini: REVIEW_FAILED (timeout 120s)."
+  - timestamp: "2026-04-07T00:03:00Z"
+    action: spec_review_applied
+    phase: spec
+    details: "Verified critical findings (compile_expression missing, test_no_reexpansion_of_braces_in_output exists), applied 14 suggestions: added eval_expression sub-task, explicit escape_braces deletion, error mapping spec, mixed-syntax test, error recovery test, parsed_output fallback test, made integration test mandatory, restructured into 8 sub-tasks. No conflicts with prior decisions."
+  - timestamp: "2026-04-07T00:04:00Z"
+    action: spec_approved
+    phase: spec
+    details: "User approved spec. Transitioning to implement phase."
