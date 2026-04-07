@@ -5,7 +5,7 @@ task_type: specification
 created_at: "2026-04-07T00:00:00Z"
 
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
 
 phases:
@@ -42,7 +42,7 @@ phases:
       - "Specified extract_json_field investigation before deletion in sub-task 6"
     flagged_suggestions: []
   implement:
-    status: in_progress
+    status: complete
     commits:
       - 835c413  # sub-task 1: add eval_expression to TemplateEngine
       - a5ab328  # sub-task 2: add translate_legacy_condition helper
@@ -53,6 +53,7 @@ phases:
       - 1106215  # sub-task 7: replace interpolate_loop_vars with MiniJinja
       - c20e7cf  # sub-task 8: add Jinja feature tests + SemiStrict mode
       - c2c3fad  # codex fixes: steps-prefix, loop-var pre-scan, err.range()
+      - 84b806b  # docs: validation reports + workflow state
     last_phase_completed: "codex validation fixes"
     codex_validated: true
     codex_verdict: FAIL_ADDRESSED
@@ -111,3 +112,7 @@ history:
     action: codex_findings_addressed
     phase: implement
     details: "Applied all three Codex fixes in commit c2c3fad: steps-prefixed legacy condition regexes, pre-scan loop-var substitution, err.range()-based variable extraction in map_template_error. Added 5 regression tests (steps.-prefixed contains/equals, multi-expression error reporting, multi-field loop vars with one missing, inline {% for %} block, missing-step default_val fallback). 345 tests pass, clippy clean, smoke tests pass on test_interpolation.toml and test_conditionals.toml."
+  - timestamp: "2026-04-07T02:45:00Z"
+    action: validation_gate_proceed
+    phase: implement
+    details: "User chose [proceed] at validation gate. Gemini timed out (exit 124) on re-run - consistently unavailable in this env. Codex findings all addressed. Transitioning to PR phase."
