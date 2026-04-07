@@ -33,13 +33,6 @@ pub enum WorkflowError {
     )]
     CircularDependency { workflow: String, chain: String },
 
-    #[error("Workflow '{workflow}': step '{step}' references unknown step '{referenced}' in interpolation\n  hint: ensure the step exists and runs before this one")]
-    MissingStepOutput {
-        workflow: String,
-        step: String,
-        referenced: String,
-    },
-
     #[error("Workflow '{workflow}': step '{step}' has unknown variable '{{{{ {variable} }}}}'\n  hint: valid forms are steps.X.output, steps.X.field, env.VAR, arg.N, workflow.backends")]
     UnknownVariable {
         workflow: String,
@@ -79,29 +72,6 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tokio::process::Command;
 
-/// Regex for matching "steps.X.output contains 'Y'" conditions (legacy syntax)
-static CONDITION_LEGACY_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"steps\.([a-zA-Z0-9_-]+)\.output\s+contains\s+['"](.+)['"]"#).unwrap()
-});
-
-/// Regex for matching contains(step.field, "string") conditions
-/// Captures: (1) step name, (2) field name, (3) search string
-static CONDITION_CONTAINS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"contains\(\s*([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"](.+)['"]\s*\)"#)
-        .unwrap()
-});
-
-/// Regex for matching equals(step.field, "string") conditions
-/// Captures: (1) step name, (2) field name, (3) expected value
-static CONDITION_EQUALS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"equals\(\s*([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"](.+)['"]\s*\)"#)
-        .unwrap()
-});
-
-/// Regex for matching not(...) conditions
-static CONDITION_NOT_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r#"not\(\s*(.+)\s*\)"#).unwrap());
-
 /// Default timeout for workflow steps in milliseconds (2 minutes)
 const DEFAULT_STEP_TIMEOUT_MS: u64 = 120_000;
 
@@ -119,11 +89,6 @@ static ITEM_FIELD_RE: LazyLock<regex::Regex> =
 /// Regex for matching {{ index }} pattern (loop iteration index)
 static INDEX_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"\{\{\s*index\s*\}\}").unwrap());
-
-/// Regex for matching steps.X.success condition (checks if step succeeded)
-/// Captures: (1) step name
-static CONDITION_SUCCESS_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^steps\.([a-zA-Z0-9_-]+)\.success$").unwrap());
 
 /// A file edit to apply
 #[derive(Debug, Deserialize, Clone)]
@@ -2232,97 +2197,30 @@ impl WorkflowRunner {
         Ok(levels)
     }
 
-    /// Interpolate `{{ steps.X.output }}`, `{{ env.VAR }}`, `{{ arg.N }}`, `{{ workflow.backends }}`,
-    /// and JSON field accessors via MiniJinja.
+    /// Evaluate a step `when` condition expression.
     ///
-    /// Renders the template string through [`TemplateEngine`] against a [`TemplateContext`]
-    /// built from this runner's args, step results, and backends. Any undefined variable
-    /// surfaces as [`WorkflowError::UnknownVariable`] with workflow + step + variable name.
-    fn interpolate(
-        &self,
-        template: &str,
-        results: &HashMap<String, StepResult>,
-        workflow_name: &str,
-        current_step: &str,
-    ) -> Result<String, WorkflowError> {
+    /// Conditions are evaluated as MiniJinja expressions. Legacy syntax is rewritten
+    /// transparently by [`translate_legacy_condition`]:
+    /// - `contains(step.field, "string")` -> `"string" in steps.step.field`
+    /// - `equals(step.field, "string")`   -> `(steps.step.field | trim) == "string"`
+    /// - `steps.X.output contains 'Y'`    -> `"Y" in steps.X.output`
+    /// - `not(...)`, `and`, `or`, `in`, `is` etc. are handled natively by MiniJinja.
+    ///
+    /// Error semantics preserve legacy behaviour:
+    /// - **Undefined variable** (e.g. condition references a step that hasn't run) ->
+    ///   returns `false`, matching the legacy `unwrap_or(false)` paths.
+    /// - **Parse / other render error** (e.g. condition is gibberish or syntactically
+    ///   invalid) -> returns `true`, the lenient legacy default that runs the step
+    ///   rather than skipping it because of a typo.
+    fn evaluate_condition(&self, condition: &str, results: &HashMap<String, StepResult>) -> bool {
+        let translated = translate_legacy_condition(condition);
         let backends = Self::collect_backends(results);
         let ctx = crate::template::TemplateContext::new(results, &self.args, &backends);
-        self.template_engine
-            .render(template, &ctx)
-            .map_err(|e| map_template_error(e, template, workflow_name, current_step))
-    }
-
-    /// Evaluate a condition expression
-    ///
-    /// Supported syntax (translated to MiniJinja expressions):
-    /// - `contains(step.field, "string")` - true if step field contains string
-    /// - `equals(step.field, "string")` - true if step field equals string (trimmed)
-    /// - `not(condition)` - negates the inner condition (handled by MiniJinja `not`)
-    /// - `steps.X.output contains 'Y'` - legacy syntax, still supported
-    /// - Any valid MiniJinja expression: `steps.X.success`, `"y" in steps.X.output`, etc.
-    fn evaluate_condition(&self, condition: &str, results: &HashMap<String, StepResult>) -> bool {
-        // Handle not(...) wrapper first
-        if let Some(caps) = CONDITION_NOT_RE.captures(condition) {
-            let inner = caps.get(1).unwrap().as_str().trim();
-            return !self.evaluate_condition(inner, results);
+        match self.template_engine.eval_expression(&translated, &ctx) {
+            Ok(value) => value,
+            Err(crate::template::TemplateError::UndefinedVariable(_)) => false,
+            Err(_) => true,
         }
-
-        // Handle contains(step.field, "string")
-        if let Some(caps) = CONDITION_CONTAINS_RE.captures(condition) {
-            let step_name = caps.get(1).unwrap().as_str();
-            let field_name = caps.get(2).unwrap().as_str();
-            let search_str = caps.get(3).unwrap().as_str();
-            return results
-                .get(step_name)
-                .map(|r| {
-                    let value = if field_name == "output" {
-                        r.output.clone()
-                    } else {
-                        // Extract JSON field from output
-                        extract_json_field(&r.output, field_name).unwrap_or_default()
-                    };
-                    value.contains(search_str)
-                })
-                .unwrap_or(false);
-        }
-
-        // Handle equals(step.field, "string")
-        if let Some(caps) = CONDITION_EQUALS_RE.captures(condition) {
-            let step_name = caps.get(1).unwrap().as_str();
-            let field_name = caps.get(2).unwrap().as_str();
-            let expected = caps.get(3).unwrap().as_str();
-            return results
-                .get(step_name)
-                .map(|r| {
-                    let value = if field_name == "output" {
-                        r.output.trim().to_string()
-                    } else {
-                        // Extract JSON field from output
-                        extract_json_field(&r.output, field_name).unwrap_or_default()
-                    };
-                    value == expected
-                })
-                .unwrap_or(false);
-        }
-
-        // Legacy syntax: "steps.X.output contains 'Y'"
-        if let Some(caps) = CONDITION_LEGACY_RE.captures(condition) {
-            let step_name = caps.get(1).unwrap().as_str();
-            let search_str = caps.get(2).unwrap().as_str();
-            return results
-                .get(step_name)
-                .map(|r| r.output.contains(search_str))
-                .unwrap_or(false);
-        }
-
-        // Handle steps.X.success (check if step succeeded)
-        if let Some(caps) = CONDITION_SUCCESS_RE.captures(condition) {
-            let step_name = caps.get(1).unwrap().as_str();
-            return results.get(step_name).map(|r| r.success).unwrap_or(false);
-        }
-
-        // Default: if we can't parse, return true (run the step)
-        true
     }
 
     /// Interpolate `{{ steps.X.output }}`, `{{ steps.X.field }}`, `{{ env.VAR }}`,
@@ -2373,10 +2271,14 @@ fn protect_loop_vars(template: &str) -> std::borrow::Cow<'_, str> {
 
 /// Translate legacy condition syntax to MiniJinja expressions.
 ///
-/// Accepts the following legacy forms and rewrites them as MiniJinja expressions:
-/// - `contains(step.field, "string")` -> `("string" in steps.step.field)`
-/// - `equals(step.field, "string")`   -> `((steps.step.field | trim) == "string")`
-/// - `steps.X.output contains 'Y'`    -> `("Y" in steps.X.output)`
+/// Accepts the following legacy forms and rewrites them as MiniJinja expressions.
+/// Field accessors are wrapped in `default('')` so undefined values coerce to an empty
+/// string instead of raising a strict-mode error - this preserves the legacy
+/// "missing field -> falsy comparison" semantics.
+///
+/// - `contains(step.field, "string")` -> `("string" in (steps.step.field | default('')))`
+/// - `equals(step.field, "string")`   -> `((steps.step.field | default('') | trim) == "string")`
+/// - `steps.X.output contains 'Y'`    -> `("Y" in (steps.X.output | default('')))`
 ///
 /// `not(...)` wrappers are preserved as-is since MiniJinja parses `not(expr)` natively.
 /// Expressions that do not contain any legacy syntax (e.g. `steps.X.success and steps.Y.success`)
@@ -2409,14 +2311,17 @@ fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
 
     let step1 = RE_CONTAINS_CALL
         .replace_all(condition, |caps: &regex::Captures| {
-            format!(r#"("{}" in steps.{}.{})"#, &caps[3], &caps[1], &caps[2])
+            format!(
+                r#"("{}" in (steps.{}.{} | default('')))"#,
+                &caps[3], &caps[1], &caps[2]
+            )
         })
         .into_owned();
 
     let step2 = RE_EQUALS_CALL
         .replace_all(&step1, |caps: &regex::Captures| {
             format!(
-                r#"((steps.{}.{} | trim) == "{}")"#,
+                r#"((steps.{}.{} | default('') | trim) == "{}")"#,
                 &caps[1], &caps[2], &caps[3]
             )
         })
@@ -2424,7 +2329,10 @@ fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
 
     let step3 = RE_LEGACY_CONTAINS
         .replace_all(&step2, |caps: &regex::Captures| {
-            format!(r#"("{}" in steps.{}.output)"#, &caps[2], &caps[1])
+            format!(
+                r#"("{}" in (steps.{}.output | default('')))"#,
+                &caps[2], &caps[1]
+            )
         })
         .into_owned();
 
@@ -2688,7 +2596,13 @@ fn extract_json_array_from_text(text: &str) -> Option<String> {
     None
 }
 
-/// Extract a field from JSON in text (handles markdown code blocks)
+/// Extract a field from JSON in text (handles markdown code blocks).
+///
+/// Production code now goes through `TemplateContext::new()`, which calls the same
+/// `extract_json_from_text` + `sanitize_json_strings` helpers directly. This wrapper
+/// is kept under `#[cfg(test)]` to preserve regression coverage for the JSON
+/// extraction logic that the template context relies on.
+#[cfg(test)]
 fn extract_json_field(text: &str, field: &str) -> Option<String> {
     // Try to find JSON in the text (may be wrapped in ```json blocks)
     let json_str = extract_json_from_text(text)?;
@@ -3244,33 +3158,45 @@ mod tests {
     #[test]
     fn test_translate_contains_call() {
         let out = translate_legacy_condition(r#"contains(fix.output, "ISSUES")"#);
-        assert_eq!(&*out, r#"("ISSUES" in steps.fix.output)"#);
+        assert_eq!(&*out, r#"("ISSUES" in (steps.fix.output | default('')))"#);
         assert!(matches!(out, std::borrow::Cow::Owned(_)));
     }
 
     #[test]
     fn test_translate_equals_call() {
         let out = translate_legacy_condition(r#"equals(check.verdict, "PASS")"#);
-        assert_eq!(&*out, r#"((steps.check.verdict | trim) == "PASS")"#);
+        assert_eq!(
+            &*out,
+            r#"((steps.check.verdict | default('') | trim) == "PASS")"#
+        );
     }
 
     #[test]
     fn test_translate_legacy_steps_output_contains() {
         let out = translate_legacy_condition(r#"steps.analyze.output contains 'ISSUES_FOUND'"#);
-        assert_eq!(&*out, r#"("ISSUES_FOUND" in steps.analyze.output)"#);
+        assert_eq!(
+            &*out,
+            r#"("ISSUES_FOUND" in (steps.analyze.output | default('')))"#
+        );
     }
 
     #[test]
     fn test_translate_legacy_double_quotes() {
         let out = translate_legacy_condition(r#"steps.analyze.output contains "ISSUES""#);
-        assert_eq!(&*out, r#"("ISSUES" in steps.analyze.output)"#);
+        assert_eq!(
+            &*out,
+            r#"("ISSUES" in (steps.analyze.output | default('')))"#
+        );
     }
 
     #[test]
     fn test_translate_nested_not() {
         let out = translate_legacy_condition(r#"not(contains(analyze.output, "ISSUES_FOUND"))"#);
         // `not(` is left for MiniJinja to handle; the inner contains() is translated.
-        assert_eq!(&*out, r#"not(("ISSUES_FOUND" in steps.analyze.output))"#);
+        assert_eq!(
+            &*out,
+            r#"not(("ISSUES_FOUND" in (steps.analyze.output | default(''))))"#
+        );
     }
 
     #[test]
@@ -3280,7 +3206,7 @@ mod tests {
         );
         assert_eq!(
             &*out,
-            r#"not(("x" in steps.analyze.output)) and steps.Y.success"#
+            r#"not(("x" in (steps.analyze.output | default('')))) and steps.Y.success"#
         );
     }
 
@@ -3306,7 +3232,7 @@ mod tests {
         );
         assert_eq!(
             &*out,
-            r#"("x" in steps.a.field) and ("y" in steps.b.field)"#
+            r#"("x" in (steps.a.field | default(''))) and ("y" in (steps.b.field | default('')))"#
         );
     }
 
