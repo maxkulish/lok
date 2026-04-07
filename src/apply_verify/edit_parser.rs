@@ -203,49 +203,38 @@ struct JsonWrapper {
 ///
 /// Handles both `{"edits": [...]}` wrapper and bare `[{...}]` array.
 fn parse_json_edits(content: &str) -> Result<ParsedEdits, EditParseError> {
-    // Try AgenticOutput wrapper first
-    if let Ok(wrapper) = serde_json::from_str::<JsonWrapper>(content) {
-        if !wrapper.edits.is_empty() {
-            return Ok(ParsedEdits {
-                edits: normalize_edits(wrapper.edits),
-                format: EditFormat::JsonOldNew,
-                summary: wrapper.summary.or(wrapper.message),
-            });
+    let try_parse = |c: &str| -> Option<ParsedEdits> {
+        // Try AgenticOutput wrapper first
+        if let Ok(wrapper) = serde_json::from_str::<JsonWrapper>(c) {
+            if !wrapper.edits.is_empty() {
+                return Some(ParsedEdits {
+                    edits: normalize_edits(wrapper.edits),
+                    format: EditFormat::JsonOldNew,
+                    summary: wrapper.summary.or(wrapper.message),
+                });
+            }
         }
-    }
+        // Try bare array
+        if let Ok(edits) = serde_json::from_str::<Vec<FileEdit>>(c) {
+            if !edits.is_empty() {
+                return Some(ParsedEdits {
+                    edits: normalize_edits(edits),
+                    format: EditFormat::JsonOldNew,
+                    summary: None,
+                });
+            }
+        }
+        None
+    };
 
-    // Try bare array
-    if let Ok(edits) = serde_json::from_str::<Vec<FileEdit>>(content) {
-        if !edits.is_empty() {
-            return Ok(ParsedEdits {
-                edits: normalize_edits(edits),
-                format: EditFormat::JsonOldNew,
-                summary: None,
-            });
-        }
+    if let Some(result) = try_parse(content) {
+        return Ok(result);
     }
 
     // Try with sanitized JSON (LLM control character quirks)
     let sanitized = sanitize_json_strings(content);
-
-    if let Ok(wrapper) = serde_json::from_str::<JsonWrapper>(&sanitized) {
-        if !wrapper.edits.is_empty() {
-            return Ok(ParsedEdits {
-                edits: normalize_edits(wrapper.edits),
-                format: EditFormat::JsonOldNew,
-                summary: wrapper.summary.or(wrapper.message),
-            });
-        }
-    }
-
-    if let Ok(edits) = serde_json::from_str::<Vec<FileEdit>>(&sanitized) {
-        if !edits.is_empty() {
-            return Ok(ParsedEdits {
-                edits: normalize_edits(edits),
-                format: EditFormat::JsonOldNew,
-                summary: None,
-            });
-        }
+    if let Some(result) = try_parse(&sanitized) {
+        return Ok(result);
     }
 
     Err(EditParseError::InvalidJson(
@@ -383,10 +372,12 @@ fn parse_unified_diff(content: &str) -> Result<ParsedEdits, EditParseError> {
                 )));
             }
 
+            old_text.truncate(old_text.trim_end_matches('\n').len());
+            new_text.truncate(new_text.trim_end_matches('\n').len());
             edits.push(FileEdit {
                 file: file_path,
-                old: old_text.trim_end_matches('\n').to_string(),
-                new: new_text.trim_end_matches('\n').to_string(),
+                old: old_text,
+                new: new_text,
             });
         } else {
             i += 1;
@@ -466,17 +457,18 @@ fn parse_full_file(content: &str) -> Result<ParsedEdits, EditParseError> {
         ));
     }
 
-    let file_content = if content_start < lines.len() {
+    let mut file_content = if content_start < lines.len() {
         lines[content_start..].join("\n")
     } else {
         String::new()
     };
+    file_content.truncate(file_content.trim_end_matches('\n').len());
 
     Ok(ParsedEdits {
         edits: vec![FileEdit {
             file: file_path,
             old: String::new(),
-            new: file_content.trim_end_matches('\n').to_string(),
+            new: file_content,
         }],
         format: EditFormat::FullFile,
         summary: None,
@@ -491,10 +483,12 @@ fn parse_full_file(content: &str) -> Result<ParsedEdits, EditParseError> {
 fn normalize_edits(edits: Vec<FileEdit>) -> Vec<FileEdit> {
     edits
         .into_iter()
-        .map(|e| FileEdit {
-            file: e.file,
-            old: e.old.trim_end_matches('\n').to_string(),
-            new: e.new.trim_end_matches('\n').to_string(),
+        .map(|mut e| {
+            let old_len = e.old.trim_end_matches('\n').len();
+            e.old.truncate(old_len);
+            let new_len = e.new.trim_end_matches('\n').len();
+            e.new.truncate(new_len);
+            e
         })
         .collect()
 }
