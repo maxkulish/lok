@@ -6,7 +6,7 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-209](https://linear.app/cloud-ai/issue/CLO-209) | Replace regex interpolation in workflow.rs with MiniJinja rendering | In Progress | Phase 7 | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -18,6 +18,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-209](https://linear.app/cloud-ai/issue/CLO-209) | Replace regex interpolation in workflow.rs with MiniJinja rendering | 2026-04-07 | MiniJinja replaces 14 regexes + 4 interpolation/condition functions; backward-compat legacy translator; 348 tests |
 | [CLO-205](https://linear.app/cloud-ai/issue/CLO-205) | Implement EditParser with 3-format auto-detection | 2026-04-07 | EditParser auto-detects unified diff/JSON/full-file formats with markdown extraction, CRLF normalization, 1MB limit, 32 tests |
 | [CLO-204](https://linear.app/cloud-ai/issue/CLO-204) | Add MiniJinja integration with TemplateContext and custom filters | 2026-04-04 | MiniJinja 2.0 template engine with TemplateContext, LazyEnv, 8 custom filters, TemplateError enum, 48 tests |
 | [CLO-203](https://linear.app/cloud-ai/issue/CLO-203) | Implement three-layer config merge with deny_unknown_fields | 2026-04-04 | Three-layer config merge (defaults -> user -> project), toml::Value deep merge, deny_unknown_fields on all structs |

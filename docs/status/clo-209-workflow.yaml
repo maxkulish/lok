@@ -5,8 +5,8 @@ task_type: specification
 created_at: "2026-04-07T00:00:00Z"
 
 workflow:
-  current_phase: pr
-  status: in_progress
+  current_phase: complete
+  status: complete
 
 phases:
   discovery:
@@ -70,9 +70,9 @@ phases:
     reviews_addressed: 7
     review_fix_commit: "3518bc5"
   complete:
-    status: pending
-    aggregation_files_updated: false
-    merged_at: null
+    status: complete
+    aggregation_files_updated: true
+    merged_at: "2026-04-07T20:34:49Z"
 
 history:
   - timestamp: "2026-04-07T00:00:00Z"
@@ -131,3 +131,11 @@ history:
     action: review_addressed
     phase: pr
     details: "Addressed 7 PR review comments (2 gemini-code-assist, 5 Copilot) in commit 3518bc5. Fixes: (1) escaped-quote support in translate_legacy_condition regexes for full-heal.toml, (2) map_template_error passes &protected template for correct byte range lookup, (3) | string filter coercion for non-string fields in legacy rewrites, (4) interpolate_loop_vars as method on WorkflowRunner to reuse template_engine, (5) fast-path whitespace bug via regex is_match, (6) removed #[allow(dead_code)] from source_range(). Added 3 regression tests. 348 passed (was 345), clippy clean, smoke tests pass. Replied to all 7 comments; gemini replies include /gemini review trigger."
+  - timestamp: "2026-04-07T20:34:49Z"
+    action: pr_merged
+    phase: pr
+    details: "PR #11 merged to main."
+  - timestamp: "2026-04-07T20:40:00Z"
+    action: workflow_complete
+    phase: complete
+    details: "CLO-209 fully completed. Linear status -> Done. PROJECT.md, ROADMAP.md updated (Phase 7 now Complete 2/2). Final comment posted to Linear."
