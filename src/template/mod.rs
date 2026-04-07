@@ -65,6 +65,25 @@ impl TemplateEngine {
         tmpl.render(ctx.as_value())
             .map_err(TemplateError::from_minijinja)
     }
+
+    /// Evaluate a Jinja expression string against the context and coerce to bool.
+    ///
+    /// Used for step `when` conditions. Returns the truthiness of the evaluated
+    /// expression value. Undefined variables produce `TemplateError::UndefinedVariable`.
+    pub fn eval_expression(
+        &self,
+        expr: &str,
+        ctx: &TemplateContext,
+    ) -> Result<bool, TemplateError> {
+        let compiled = self
+            .env
+            .compile_expression(expr)
+            .map_err(TemplateError::from_minijinja)?;
+        let result = compiled
+            .eval(ctx.as_value())
+            .map_err(TemplateError::from_minijinja)?;
+        Ok(result.is_true())
+    }
 }
 
 #[cfg(test)]
@@ -142,6 +161,36 @@ mod tests {
         let ctx = TemplateContext::new(&HashMap::new(), &[], &[]);
         let err = engine
             .render("{{ steps.nonexistent.output }}", &ctx)
+            .unwrap_err();
+        assert!(matches!(err, TemplateError::UndefinedVariable(_)));
+    }
+
+    #[test]
+    fn test_eval_expression_truthy() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("s".to_string(), make_step("s", "PASS", true));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        assert!(engine
+            .eval_expression(r#"steps.s.success and "PASS" in steps.s.output"#, &ctx)
+            .unwrap());
+    }
+
+    #[test]
+    fn test_eval_expression_falsy() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("s".to_string(), make_step("s", "FAIL", false));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        assert!(!engine.eval_expression("steps.s.success", &ctx).unwrap());
+    }
+
+    #[test]
+    fn test_eval_expression_undefined() {
+        let engine = TemplateEngine::new();
+        let ctx = TemplateContext::new(&HashMap::new(), &[], &[]);
+        let err = engine
+            .eval_expression("steps.missing.success", &ctx)
             .unwrap_err();
         assert!(matches!(err, TemplateError::UndefinedVariable(_)));
     }
