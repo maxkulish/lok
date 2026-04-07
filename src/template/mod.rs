@@ -25,14 +25,28 @@ impl TemplateError {
     fn from_minijinja(err: minijinja::Error) -> Self {
         match err.kind() {
             minijinja::ErrorKind::UndefinedError => TemplateError::UndefinedVariable(err),
-            minijinja::ErrorKind::SyntaxError
-            | minijinja::ErrorKind::InvalidOperation
+            minijinja::ErrorKind::SyntaxError | minijinja::ErrorKind::InvalidOperation
                 if err.line().is_some() =>
             {
                 TemplateError::ParseError(err)
             }
             _ => TemplateError::RenderError(err),
         }
+    }
+
+    /// Byte range in the original template source where the error occurred.
+    ///
+    /// Returns the span of the failing expression (e.g. `steps.missing.output` for
+    /// an undefined-variable error) so callers can extract the exact offending token
+    /// instead of guessing it from the template. Returns `None` if MiniJinja could
+    /// not associate the error with a source span.
+    pub fn source_range(&self) -> Option<std::ops::Range<usize>> {
+        let inner = match self {
+            TemplateError::UndefinedVariable(e)
+            | TemplateError::ParseError(e)
+            | TemplateError::RenderError(e) => e,
+        };
+        inner.range()
     }
 }
 
@@ -47,11 +61,15 @@ pub struct TemplateEngine {
 
 #[allow(dead_code)]
 impl TemplateEngine {
-    /// Create a new template engine with custom filters registered
-    /// and strict undefined behavior.
+    /// Create a new template engine with custom filters registered.
+    ///
+    /// Uses [`UndefinedBehavior::SemiStrict`] so the `default()` filter and `is defined`
+    /// test can intercept missing values, while rendering an undefined value as the final
+    /// output still errors - preserving the strict-undefined contract for
+    /// `WorkflowError::UnknownVariable` reporting.
     pub fn new() -> Self {
         let mut env = minijinja::Environment::new();
-        env.set_undefined_behavior(UndefinedBehavior::Strict);
+        env.set_undefined_behavior(UndefinedBehavior::SemiStrict);
         filters::register_filters(&mut env);
         Self { env }
     }
@@ -64,6 +82,25 @@ impl TemplateEngine {
             .map_err(TemplateError::from_minijinja)?;
         tmpl.render(ctx.as_value())
             .map_err(TemplateError::from_minijinja)
+    }
+
+    /// Evaluate a Jinja expression string against the context and coerce to bool.
+    ///
+    /// Used for step `when` conditions. Returns the truthiness of the evaluated
+    /// expression value. Undefined variables produce `TemplateError::UndefinedVariable`.
+    pub fn eval_expression(
+        &self,
+        expr: &str,
+        ctx: &TemplateContext,
+    ) -> Result<bool, TemplateError> {
+        let compiled = self
+            .env
+            .compile_expression(expr)
+            .map_err(TemplateError::from_minijinja)?;
+        let result = compiled
+            .eval(ctx.as_value())
+            .map_err(TemplateError::from_minijinja)?;
+        Ok(result.is_true())
     }
 }
 
@@ -122,7 +159,10 @@ mod tests {
         std::env::set_var("LOK_TEST_TMPL_VAR", "envval");
         let ctx = TemplateContext::new(&steps, &["argval".to_string()], &[]);
         let result = engine
-            .render("{{ steps.s.output }}-{{ env.LOK_TEST_TMPL_VAR }}-{{ arg.1 }}", &ctx)
+            .render(
+                "{{ steps.s.output }}-{{ env.LOK_TEST_TMPL_VAR }}-{{ arg.1 }}",
+                &ctx,
+            )
             .unwrap();
         std::env::remove_var("LOK_TEST_TMPL_VAR");
         assert_eq!(result, "out-envval-argval");
@@ -142,6 +182,36 @@ mod tests {
         let ctx = TemplateContext::new(&HashMap::new(), &[], &[]);
         let err = engine
             .render("{{ steps.nonexistent.output }}", &ctx)
+            .unwrap_err();
+        assert!(matches!(err, TemplateError::UndefinedVariable(_)));
+    }
+
+    #[test]
+    fn test_eval_expression_truthy() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("s".to_string(), make_step("s", "PASS", true));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        assert!(engine
+            .eval_expression(r#"steps.s.success and "PASS" in steps.s.output"#, &ctx)
+            .unwrap());
+    }
+
+    #[test]
+    fn test_eval_expression_falsy() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("s".to_string(), make_step("s", "FAIL", false));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        assert!(!engine.eval_expression("steps.s.success", &ctx).unwrap());
+    }
+
+    #[test]
+    fn test_eval_expression_undefined() {
+        let engine = TemplateEngine::new();
+        let ctx = TemplateContext::new(&HashMap::new(), &[], &[]);
+        let err = engine
+            .eval_expression("steps.missing.success", &ctx)
             .unwrap_err();
         assert!(matches!(err, TemplateError::UndefinedVariable(_)));
     }

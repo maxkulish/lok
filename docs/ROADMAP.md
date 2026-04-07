@@ -54,7 +54,7 @@
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-204](https://linear.app/cloud-ai/issue/CLO-204) | Add MiniJinja integration with TemplateContext and custom filters | Done | - |
-| [CLO-209](https://linear.app/cloud-ai/issue/CLO-209) | Replace regex interpolation in workflow.rs with MiniJinja rendering | Backlog | CLO-204 |
+| [CLO-209](https://linear.app/cloud-ai/issue/CLO-209) | Replace regex interpolation in workflow.rs with MiniJinja rendering | In Progress | CLO-204 |
 
 ## Phase 8: Apply-and-Verify Pipeline
 

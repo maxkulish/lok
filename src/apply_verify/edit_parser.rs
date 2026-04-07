@@ -312,9 +312,8 @@ fn parse_unified_diff(content: &str) -> Result<ParsedEdits, EditParseError> {
                 ));
             }
             let new_path = extract_diff_path(lines[i]);
-            let file_path = new_path.unwrap_or_else(|| {
-                old_path.unwrap_or_else(|| "unknown".to_string())
-            });
+            let file_path =
+                new_path.unwrap_or_else(|| old_path.unwrap_or_else(|| "unknown".to_string()));
 
             i += 1;
 
@@ -440,9 +439,7 @@ fn parse_full_file(content: &str) -> Result<ParsedEdits, EditParseError> {
         (path.trim().to_string(), 1)
     } else if let Some(path) = lines[0].strip_prefix("--- ") {
         let path = path.trim();
-        let path = path
-            .strip_prefix("a/")
-            .unwrap_or(path);
+        let path = path.strip_prefix("a/").unwrap_or(path);
         (path.to_string(), 1)
     } else {
         return Err(EditParseError::InvalidFormat(
@@ -535,7 +532,8 @@ mod tests {
 
     #[test]
     fn test_json_with_message_field() {
-        let input = r#"{"edits": [{"file": "a.rs", "old": "x", "new": "y"}], "message": "Updated a"}"#;
+        let input =
+            r#"{"edits": [{"file": "a.rs", "old": "x", "new": "y"}], "message": "Updated a"}"#;
         let result = EditParser::parse(input).unwrap();
         assert_eq!(result.summary, Some("Updated a".to_string()));
     }
@@ -727,7 +725,8 @@ fn main() {
 
     #[test]
     fn test_markdown_diff_block() {
-        let input = "Changes:\n\n```diff\n--- a/file.rs\n+++ b/file.rs\n@@ -1 +1 @@\n-old\n+new\n```";
+        let input =
+            "Changes:\n\n```diff\n--- a/file.rs\n+++ b/file.rs\n@@ -1 +1 @@\n-old\n+new\n```";
         let result = EditParser::parse(input).unwrap();
         assert_eq!(result.format, EditFormat::UnifiedDiff);
         assert_eq!(result.edits[0].file, "file.rs");

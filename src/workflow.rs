@@ -33,13 +33,6 @@ pub enum WorkflowError {
     )]
     CircularDependency { workflow: String, chain: String },
 
-    #[error("Workflow '{workflow}': step '{step}' references unknown step '{referenced}' in interpolation\n  hint: ensure the step exists and runs before this one")]
-    MissingStepOutput {
-        workflow: String,
-        step: String,
-        referenced: String,
-    },
-
     #[error("Workflow '{workflow}': step '{step}' has unknown variable '{{{{ {variable} }}}}'\n  hint: valid forms are steps.X.output, steps.X.field, env.VAR, arg.N, workflow.backends")]
     UnknownVariable {
         workflow: String,
@@ -79,89 +72,11 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tokio::process::Command;
 
-/// Regex for matching {{ steps.NAME.output }} patterns
-static INTERPOLATE_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*steps\.([a-zA-Z0-9_-]+)\.output\s*\}\}").unwrap());
-
-/// Regex for matching "steps.X.output contains 'Y'" conditions (legacy syntax)
-static CONDITION_LEGACY_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"steps\.([a-zA-Z0-9_-]+)\.output\s+contains\s+['"](.+)['"]"#).unwrap()
-});
-
-/// Regex for matching contains(step.field, "string") conditions
-/// Captures: (1) step name, (2) field name, (3) search string
-static CONDITION_CONTAINS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"contains\(\s*([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"](.+)['"]\s*\)"#)
-        .unwrap()
-});
-
-/// Regex for matching equals(step.field, "string") conditions
-/// Captures: (1) step name, (2) field name, (3) expected value
-static CONDITION_EQUALS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"equals\(\s*([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*['"](.+)['"]\s*\)"#)
-        .unwrap()
-});
-
-/// Regex for matching not(...) conditions
-static CONDITION_NOT_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r#"not\(\s*(.+)\s*\)"#).unwrap());
-
-/// Regex for matching {{ steps.NAME.field }} patterns (for JSON field access)
-static FIELD_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"\{\{\s*steps\.([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*\}\}").unwrap()
-});
-
-/// Regex for matching {{ env.VAR }} patterns (environment variables)
-static ENV_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*env\.([a-zA-Z0-9_]+)\s*\}\}").unwrap());
-
-/// Regex for matching {{ arg.N }} patterns (positional arguments, 1-indexed)
-static ARG_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*arg\.(\d+)\s*\}\}").unwrap());
-
-/// Regex for matching {{ workflow.backends }} pattern
-static WORKFLOW_BACKENDS_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*workflow\.backends\s*\}\}").unwrap());
-
 /// Default timeout for workflow steps in milliseconds (2 minutes)
 const DEFAULT_STEP_TIMEOUT_MS: u64 = 120_000;
 
 /// Minimum timeout value in milliseconds (values 1 to MIN-1 are rejected)
 const MIN_TIMEOUT_MS: u64 = 100;
-
-/// Regex for detecting unknown {{ ... }} variables after all substitutions
-static UNKNOWN_VAR_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*([^}]+)\s*\}\}").unwrap());
-
-/// Regex for matching {{ item }} pattern (loop iteration item)
-static ITEM_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*item\s*\}\}").unwrap());
-
-/// Regex for matching {{ item.field }} pattern (loop item field access)
-static ITEM_FIELD_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*item\.([a-zA-Z0-9_]+)\s*\}\}").unwrap());
-
-/// Regex for matching {{ index }} pattern (loop iteration index)
-static INDEX_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*index\s*\}\}").unwrap());
-
-/// Regex for matching steps.X.success condition (checks if step succeeded)
-/// Captures: (1) step name
-static CONDITION_SUCCESS_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^steps\.([a-zA-Z0-9_-]+)\.success$").unwrap());
-
-/// Placeholder for escaped braces - uses a pattern unlikely to appear in real content
-const ESCAPED_OPEN_BRACE: &str = "\x00LOK_OPEN_BRACE\x00";
-
-/// Escape {{ in content so it won't be treated as a variable reference
-fn escape_braces(s: &str) -> String {
-    s.replace("{{", ESCAPED_OPEN_BRACE)
-}
-
-/// Restore escaped braces after interpolation is complete
-fn unescape_braces(s: &str) -> String {
-    s.replace(ESCAPED_OPEN_BRACE, "{{")
-}
 
 /// A file edit to apply
 #[derive(Debug, Deserialize, Clone)]
@@ -1036,6 +951,7 @@ pub struct WorkflowRunner {
     cwd: PathBuf,
     args: Vec<String>,
     context: CodebaseContext,
+    template_engine: crate::template::TemplateEngine,
 }
 
 impl WorkflowRunner {
@@ -1046,7 +962,18 @@ impl WorkflowRunner {
             cwd,
             args,
             context,
+            template_engine: crate::template::TemplateEngine::new(),
         }
+    }
+
+    /// Build the ordered, deduplicated list of backend names from step results.
+    /// Used to construct a `TemplateContext` for interpolation/condition evaluation.
+    fn collect_backends(results: &HashMap<String, StepResult>) -> Vec<String> {
+        let mut backends: Vec<String> =
+            results.values().filter_map(|r| r.backend.clone()).collect();
+        backends.sort();
+        backends.dedup();
+        backends
     }
 
     /// Execute a workflow, returning results for each step
@@ -1340,8 +1267,10 @@ impl WorkflowRunner {
 
                             for (index, item) in items.iter().enumerate() {
                                 // Interpolate item/index into prompt and shell
-                                let iter_prompt = interpolate_loop_vars(&prompt, item, index);
-                                let iter_shell = shell.as_ref().map(|s| interpolate_loop_vars(s, item, index));
+                                let iter_prompt = self.interpolate_loop_vars(&prompt, item, index);
+                                let iter_shell = shell
+                                    .as_ref()
+                                    .map(|s| self.interpolate_loop_vars(s, item, index));
 
                                 println!(
                                     "    {} [{}/{}]",
@@ -2256,119 +2185,40 @@ impl WorkflowRunner {
         Ok(levels)
     }
 
-    /// Interpolate {{ steps.X.output }} variables in a string
+    /// Evaluate a step `when` condition expression.
     ///
-    /// Uses replace_all for O(n) complexity instead of O(n*m) with repeated replace()
-    /// Step outputs are escaped to prevent their content from being treated as variables.
-    fn interpolate(
-        &self,
-        template: &str,
-        results: &HashMap<String, StepResult>,
-        workflow_name: &str,
-        current_step: &str,
-    ) -> Result<String, WorkflowError> {
-        // First pass: validate all step references exist
-        for cap in INTERPOLATE_RE.captures_iter(template) {
-            let referenced_step = cap.get(1).expect("regex group 1 always exists").as_str();
-            if !results.contains_key(referenced_step) {
-                return Err(WorkflowError::MissingStepOutput {
-                    workflow: workflow_name.to_string(),
-                    step: current_step.to_string(),
-                    referenced: referenced_step.to_string(),
-                });
-            }
-        }
-
-        // Second pass: replace all in one pass (O(n) instead of O(n*m))
-        // Escape {{ in step outputs so they don't get treated as variables
-        let output = INTERPOLATE_RE
-            .replace_all(template, |caps: &regex::Captures| {
-                let step = &caps[1];
-                results
-                    .get(step)
-                    .map(|r| escape_braces(&r.output))
-                    .unwrap_or_default()
-            })
-            .into_owned();
-
-        Ok(output)
-    }
-
-    /// Evaluate a condition expression
+    /// Conditions are evaluated as MiniJinja expressions. Legacy syntax is rewritten
+    /// transparently by [`translate_legacy_condition`]:
+    /// - `contains(step.field, "string")` -> `"string" in steps.step.field`
+    /// - `equals(step.field, "string")`   -> `(steps.step.field | trim) == "string"`
+    /// - `steps.X.output contains 'Y'`    -> `"Y" in steps.X.output`
+    /// - `not(...)`, `and`, `or`, `in`, `is` etc. are handled natively by MiniJinja.
     ///
-    /// Supported syntax:
-    /// - `contains(step.output, "string")` - true if step output contains string
-    /// - `equals(step.output, "string")` - true if step output equals string exactly
-    /// - `not(condition)` - negates the inner condition
-    /// - `steps.X.output contains 'Y'` - legacy syntax, still supported
+    /// Error semantics preserve legacy behaviour:
+    /// - **Undefined variable** (e.g. condition references a step that hasn't run) ->
+    ///   returns `false`, matching the legacy `unwrap_or(false)` paths.
+    /// - **Parse / other render error** (e.g. condition is gibberish or syntactically
+    ///   invalid) -> returns `true`, the lenient legacy default that runs the step
+    ///   rather than skipping it because of a typo.
     fn evaluate_condition(&self, condition: &str, results: &HashMap<String, StepResult>) -> bool {
-        // Handle not(...) wrapper first
-        if let Some(caps) = CONDITION_NOT_RE.captures(condition) {
-            let inner = caps.get(1).unwrap().as_str().trim();
-            return !self.evaluate_condition(inner, results);
+        let translated = translate_legacy_condition(condition);
+        let backends = Self::collect_backends(results);
+        let ctx = crate::template::TemplateContext::new(results, &self.args, &backends);
+        match self.template_engine.eval_expression(&translated, &ctx) {
+            Ok(value) => value,
+            Err(crate::template::TemplateError::UndefinedVariable(_)) => false,
+            Err(_) => true,
         }
-
-        // Handle contains(step.field, "string")
-        if let Some(caps) = CONDITION_CONTAINS_RE.captures(condition) {
-            let step_name = caps.get(1).unwrap().as_str();
-            let field_name = caps.get(2).unwrap().as_str();
-            let search_str = caps.get(3).unwrap().as_str();
-            return results
-                .get(step_name)
-                .map(|r| {
-                    let value = if field_name == "output" {
-                        r.output.clone()
-                    } else {
-                        // Extract JSON field from output
-                        extract_json_field(&r.output, field_name).unwrap_or_default()
-                    };
-                    value.contains(search_str)
-                })
-                .unwrap_or(false);
-        }
-
-        // Handle equals(step.field, "string")
-        if let Some(caps) = CONDITION_EQUALS_RE.captures(condition) {
-            let step_name = caps.get(1).unwrap().as_str();
-            let field_name = caps.get(2).unwrap().as_str();
-            let expected = caps.get(3).unwrap().as_str();
-            return results
-                .get(step_name)
-                .map(|r| {
-                    let value = if field_name == "output" {
-                        r.output.trim().to_string()
-                    } else {
-                        // Extract JSON field from output
-                        extract_json_field(&r.output, field_name).unwrap_or_default()
-                    };
-                    value == expected
-                })
-                .unwrap_or(false);
-        }
-
-        // Legacy syntax: "steps.X.output contains 'Y'"
-        if let Some(caps) = CONDITION_LEGACY_RE.captures(condition) {
-            let step_name = caps.get(1).unwrap().as_str();
-            let search_str = caps.get(2).unwrap().as_str();
-            return results
-                .get(step_name)
-                .map(|r| r.output.contains(search_str))
-                .unwrap_or(false);
-        }
-
-        // Handle steps.X.success (check if step succeeded)
-        if let Some(caps) = CONDITION_SUCCESS_RE.captures(condition) {
-            let step_name = caps.get(1).unwrap().as_str();
-            return results.get(step_name).map(|r| r.success).unwrap_or(false);
-        }
-
-        // Default: if we can't parse, return true (run the step)
-        true
     }
 
-    /// Interpolate with JSON field access: {{ steps.X.field }} and env vars: {{ env.VAR }}
+    /// Interpolate `{{ steps.X.output }}`, `{{ steps.X.field }}`, `{{ env.VAR }}`,
+    /// `{{ arg.N }}`, and `{{ workflow.backends }}` via MiniJinja.
     ///
-    /// Uses replace_all for O(n) complexity per pattern instead of O(n*m) with repeated replace()
+    /// Loop variables (`item`, `item.X`, `index`) are protected with `{% raw %}` blocks
+    /// before rendering so they pass through unchanged for [`interpolate_loop_vars`] to
+    /// substitute later inside `for_each` iterations.
+    ///
+    /// Any remaining undefined variable surfaces as [`WorkflowError::UnknownVariable`].
     fn interpolate_with_fields(
         &self,
         template: &str,
@@ -2376,155 +2226,220 @@ impl WorkflowRunner {
         workflow_name: &str,
         current_step: &str,
     ) -> Result<String, WorkflowError> {
-        let output = self.interpolate(template, results, workflow_name, current_step)?;
+        let protected = protect_loop_vars(template);
+        let backends = Self::collect_backends(results);
+        let ctx = crate::template::TemplateContext::new(results, &self.args, &backends);
+        self.template_engine
+            .render(&protected, &ctx)
+            .map_err(|e| map_template_error(e, &protected, workflow_name, current_step))
+    }
 
-        // Handle {{ steps.X.field }} for JSON field access
-        // First validate all step references exist
-        for cap in FIELD_RE.captures_iter(&output) {
-            let referenced_step = cap.get(1).expect("regex group 1 always exists").as_str();
-            let field_name = cap.get(2).expect("regex group 2 always exists").as_str();
-            if field_name != "output" && !results.contains_key(referenced_step) {
-                return Err(WorkflowError::MissingStepOutput {
-                    workflow: workflow_name.to_string(),
-                    step: current_step.to_string(),
-                    referenced: referenced_step.to_string(),
-                });
-            }
-        }
-        // Then replace all in one pass
-        let output = FIELD_RE
-            .replace_all(&output, |caps: &regex::Captures| {
-                let step = &caps[1];
-                let field = &caps[2];
-                if field == "output" {
-                    // Already handled by interpolate(), return original match
+    /// Interpolate loop variables (`{{ item }}`, `{{ item.field }}`, `{{ index }}`) in a string.
+    ///
+    /// Pre-scans the template for `{{ item.field }}` references and substitutes a
+    /// `[item.field not found]` placeholder for any field that does not exist on the
+    /// item, then hands the rest off to MiniJinja for rendering. The pre-scan ensures
+    /// that valid loop variables in the same template are not mistakenly substituted
+    /// when one missing field would otherwise raise an undefined-value error.
+    ///
+    /// Reuses `self.template_engine` (one engine per `WorkflowRunner`) to avoid
+    /// re-registering custom filters on every loop iteration.
+    fn interpolate_loop_vars(
+        &self,
+        template: &str,
+        item: &serde_json::Value,
+        index: usize,
+    ) -> String {
+        static ITEM_FIELD_RE: LazyLock<regex::Regex> =
+            LazyLock::new(|| regex::Regex::new(r"\{\{\s*item\.([a-zA-Z0-9_]+)\s*\}\}").unwrap());
+
+        // Substitute missing item.field references with literal placeholders BEFORE rendering
+        // so MiniJinja never sees an undefined attribute access for them.
+        let pre_processed: std::borrow::Cow<'_, str> =
+            ITEM_FIELD_RE.replace_all(template, |caps: &regex::Captures| {
+                let field = &caps[1];
+                if item.get(field).is_some() {
                     caps[0].to_string()
                 } else {
-                    // Try parsed_output first if available, then fall back to string parsing
-                    results
-                        .get(step)
-                        .and_then(|r| {
-                            // Use parsed_output if available
-                            if let Some(ref parsed) = r.parsed_output {
-                                parsed.get(field).map(|v| match v {
-                                    serde_json::Value::String(s) => s.clone(),
-                                    other => other.to_string(),
-                                })
-                            } else {
-                                // Fall back to parsing from string
-                                extract_json_field(&r.output, field)
-                            }
-                        })
-                        .unwrap_or_else(|| format!("[field {} not found]", field))
+                    format!("[item.{} not found]", field)
                 }
-            })
-            .into_owned();
-
-        // Handle {{ env.VAR }} for environment variables - single pass
-        let output = ENV_RE
-            .replace_all(&output, |caps: &regex::Captures| {
-                let var_name = &caps[1];
-                std::env::var(var_name).unwrap_or_else(|_| format!("[env {} not set]", var_name))
-            })
-            .into_owned();
-
-        // Handle {{ arg.N }} for positional arguments (1-indexed) - single pass
-        let output = ARG_RE
-            .replace_all(&output, |caps: &regex::Captures| {
-                let arg_index: usize = caps[1].parse().unwrap_or(0);
-                if arg_index > 0 && arg_index <= self.args.len() {
-                    self.args[arg_index - 1].clone()
-                } else {
-                    format!("[arg {} not provided]", arg_index)
-                }
-            })
-            .into_owned();
-
-        // Handle {{ workflow.backends }} - list unique backends used - single pass
-        let output = if WORKFLOW_BACKENDS_RE.is_match(&output) {
-            let mut backends: Vec<String> =
-                results.values().filter_map(|r| r.backend.clone()).collect();
-            backends.sort();
-            backends.dedup();
-
-            // Capitalize first letter of each backend name
-            let formatted: Vec<String> = backends
-                .iter()
-                .map(|b| {
-                    let mut chars = b.chars();
-                    match chars.next() {
-                        Some(c) => c.to_uppercase().to_string() + chars.as_str(),
-                        None => String::new(),
-                    }
-                })
-                .collect();
-
-            let replacement = if formatted.is_empty() {
-                "lok".to_string()
-            } else {
-                formatted.join(" + ")
-            };
-
-            WORKFLOW_BACKENDS_RE
-                .replace_all(&output, &replacement)
-                .into_owned()
-        } else {
-            output
-        };
-
-        // Check for any remaining unknown {{ ... }} variables
-        // Skip item, item.field, and index - those are handled by for_each loops
-        for cap in UNKNOWN_VAR_RE.captures_iter(&output) {
-            let variable = cap
-                .get(1)
-                .expect("regex group 1 always exists")
-                .as_str()
-                .trim();
-
-            // Skip loop variables - they'll be interpolated later by for_each
-            if variable == "item" || variable == "index" || variable.starts_with("item.") {
-                continue;
-            }
-
-            return Err(WorkflowError::UnknownVariable {
-                workflow: workflow_name.to_string(),
-                step: current_step.to_string(),
-                variable: variable.to_string(),
             });
-        }
 
-        // Restore escaped braces from step outputs
-        Ok(unescape_braces(&output))
+        let item_value = match item {
+            serde_json::Value::String(s) => minijinja::value::Value::from(s.clone()),
+            other => minijinja::value::Value::from_serialize(other),
+        };
+        let empty_steps = HashMap::new();
+        let ctx = crate::template::TemplateContext::new(&empty_steps, &[], &[])
+            .with_loop_item(item_value, index);
+        self.template_engine
+            .render(&pre_processed, &ctx)
+            .unwrap_or_else(|_| pre_processed.into_owned())
     }
 }
 
-/// Interpolate loop variables ({{ item }}, {{ item.field }}, {{ index }}) in a string
-fn interpolate_loop_vars(template: &str, item: &serde_json::Value, index: usize) -> String {
-    // Handle {{ item.field }} for object field access first
-    let output = ITEM_FIELD_RE
-        .replace_all(template, |caps: &regex::Captures| {
-            let field = &caps[1];
-            item.get(field)
-                .map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                })
-                .unwrap_or_else(|| format!("[item.{} not found]", field))
+/// Wrap loop-variable references (`{{ item }}`, `{{ item.field }}`, `{{ index }}`) in
+/// `{% raw %}...{% endraw %}` so MiniJinja preserves them verbatim while rendering the
+/// rest of the template. The loop variables are substituted later by
+/// [`interpolate_loop_vars`] inside each `for_each` iteration.
+fn protect_loop_vars(template: &str) -> std::borrow::Cow<'_, str> {
+    static LOOP_VAR_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"\{\{\s*(item(?:\.[a-zA-Z0-9_]+)?|index)\s*\}\}").unwrap()
+    });
+
+    if !LOOP_VAR_RE.is_match(template) {
+        return std::borrow::Cow::Borrowed(template);
+    }
+
+    std::borrow::Cow::Owned(
+        LOOP_VAR_RE
+            .replace_all(template, |caps: &regex::Captures| {
+                format!("{{% raw %}}{}{{% endraw %}}", &caps[0])
+            })
+            .into_owned(),
+    )
+}
+
+/// Translate legacy condition syntax to MiniJinja expressions.
+///
+/// Accepts the following legacy forms and rewrites them as MiniJinja expressions.
+/// Field accessors are wrapped in `default('')` so undefined values coerce to an empty
+/// string instead of raising a strict-mode error - this preserves the legacy
+/// "missing field -> falsy comparison" semantics.
+///
+/// - `contains(step.field, "string")` -> `("string" in (steps.step.field | default('')))`
+/// - `equals(step.field, "string")`   -> `((steps.step.field | default('') | trim) == "string")`
+/// - `steps.X.output contains 'Y'`    -> `("Y" in (steps.X.output | default('')))`
+///
+/// `not(...)` wrappers are preserved as-is since MiniJinja parses `not(expr)` natively.
+/// Expressions that do not contain any legacy syntax (e.g. `steps.X.success and steps.Y.success`)
+/// are returned as `Cow::Borrowed` unchanged.
+fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
+    // Both forms accepted: `contains(step.field, "x")` and `contains(steps.step.field, "x")`.
+    // The optional `(?:steps\.)?` prefix lets workflows reference steps by their bare name
+    // (legacy shorthand) or with the full `steps.` namespace.
+    //
+    // The literal-string group uses alternation to accept either a double-quoted or
+    // single-quoted literal, each allowing backslash-escaped characters inside. This
+    // matches workflows like `contains(review.output, "\"approved\": true")`.
+    // Capture groups: 1=step, 2=field, 3=dq-content or 4=sq-content (mutually exclusive).
+    static RE_CONTAINS_CALL: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r#"contains\(\s*(?:steps\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*\)"#,
+        )
+        .unwrap()
+    });
+    static RE_EQUALS_CALL: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r#"equals\(\s*(?:steps\.)?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\s*,\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*\)"#,
+        )
+        .unwrap()
+    });
+    static RE_LEGACY_CONTAINS: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r#"steps\.([a-zA-Z0-9_-]+)\.output\s+contains\s+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')"#,
+        )
+        .unwrap()
+    });
+
+    // Fast path: if none of the legacy markers match, return borrowed unchanged.
+    // Uses regex `is_match` (not string `contains`) so that whitespace variants of
+    // `steps.X.output contains 'Y'` (e.g. multi-space, tabs) are still detected.
+    if !RE_CONTAINS_CALL.is_match(condition)
+        && !RE_EQUALS_CALL.is_match(condition)
+        && !RE_LEGACY_CONTAINS.is_match(condition)
+    {
+        return std::borrow::Cow::Borrowed(condition);
+    }
+
+    // Extract the literal from either the double-quoted (group 3) or single-quoted
+    // (group 4) capture group. Exactly one will match for each hit because the
+    // alternation in the regex is mutually exclusive. The extracted literal still
+    // contains its original escape sequences (e.g. `\"`), which we re-emit as a
+    // double-quoted Jinja string literal - Jinja accepts the same `\"` escape.
+    fn literal_from(caps: &regex::Captures, dq_idx: usize, sq_idx: usize) -> String {
+        if let Some(m) = caps.get(dq_idx) {
+            m.as_str().to_string()
+        } else if let Some(m) = caps.get(sq_idx) {
+            // Re-escape any unescaped double-quotes so the literal embeds safely
+            // inside a Jinja double-quoted string.
+            m.as_str().replace('"', "\\\"")
+        } else {
+            String::new()
+        }
+    }
+
+    let step1 = RE_CONTAINS_CALL
+        .replace_all(condition, |caps: &regex::Captures| {
+            let literal = literal_from(caps, 3, 4);
+            format!(
+                r#"("{}" in (steps.{}.{} | default('') | string))"#,
+                literal, &caps[1], &caps[2]
+            )
         })
         .into_owned();
 
-    // Handle {{ item }} for the whole item
-    let output = ITEM_RE
-        .replace_all(&output, |_: &regex::Captures| match item {
-            serde_json::Value::String(s) => s.clone(),
-            other => other.to_string(),
+    let step2 = RE_EQUALS_CALL
+        .replace_all(&step1, |caps: &regex::Captures| {
+            let literal = literal_from(caps, 3, 4);
+            format!(
+                r#"((steps.{}.{} | default('') | string | trim) == "{}")"#,
+                &caps[1], &caps[2], literal
+            )
         })
         .into_owned();
 
-    // Handle {{ index }} for iteration index
-    INDEX_RE
-        .replace_all(&output, index.to_string().as_str())
-        .into_owned()
+    let step3 = RE_LEGACY_CONTAINS
+        .replace_all(&step2, |caps: &regex::Captures| {
+            let literal = literal_from(caps, 2, 3);
+            format!(
+                r#"("{}" in (steps.{}.output | default('') | string))"#,
+                literal, &caps[1]
+            )
+        })
+        .into_owned();
+
+    if step3 == condition {
+        std::borrow::Cow::Borrowed(condition)
+    } else {
+        std::borrow::Cow::Owned(step3)
+    }
+}
+
+/// Convert a [`crate::template::TemplateError`] into a [`WorkflowError::UnknownVariable`].
+///
+/// Prefers the byte range exposed by MiniJinja (`TemplateError::source_range`), which
+/// points to the exact failing expression such as `steps.missing.output`. This handles
+/// templates with multiple interpolations correctly, where the first `{{ ... }}` in the
+/// source may not be the one that errored. Falls back to the first interpolation in the
+/// template, then to the error's `Display` form when no range is available.
+fn map_template_error(
+    err: crate::template::TemplateError,
+    template: &str,
+    workflow_name: &str,
+    current_step: &str,
+) -> WorkflowError {
+    static GENERIC_VAR_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\{\{\s*([^}]+?)\s*\}\}").unwrap());
+
+    let variable = err
+        .source_range()
+        .and_then(|range| template.get(range))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            GENERIC_VAR_RE
+                .captures(template)
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str().to_string())
+        })
+        .unwrap_or_else(|| err.to_string());
+
+    WorkflowError::UnknownVariable {
+        workflow: workflow_name.to_string(),
+        step: current_step.to_string(),
+        variable,
+    }
 }
 
 /// Parse for_each value into a JSON array
@@ -2722,7 +2637,13 @@ fn extract_json_array_from_text(text: &str) -> Option<String> {
     None
 }
 
-/// Extract a field from JSON in text (handles markdown code blocks)
+/// Extract a field from JSON in text (handles markdown code blocks).
+///
+/// Production code now goes through `TemplateContext::new()`, which calls the same
+/// `extract_json_from_text` + `sanitize_json_strings` helpers directly. This wrapper
+/// is kept under `#[cfg(test)]` to preserve regression coverage for the JSON
+/// extraction logic that the template context relies on.
+#[cfg(test)]
 fn extract_json_field(text: &str, field: &str) -> Option<String> {
     // Try to find JSON in the text (may be wrapped in ```json blocks)
     let json_str = extract_json_from_text(text)?;
@@ -2744,7 +2665,7 @@ fn extract_json_field(text: &str, field: &str) -> Option<String> {
 }
 
 /// Sanitize JSON by escaping control characters inside string values
-fn sanitize_json_strings(json: &str) -> String {
+pub(crate) fn sanitize_json_strings(json: &str) -> String {
     let mut result = String::with_capacity(json.len());
     let mut in_string = false;
     for c in json.chars() {
@@ -2786,7 +2707,7 @@ fn find_closing_fence(text: &str) -> Option<usize> {
 }
 
 /// Extract JSON object from text, handling markdown code blocks
-fn extract_json_from_text(text: &str) -> Option<String> {
+pub(crate) fn extract_json_from_text(text: &str) -> Option<String> {
     // Try to find ```json ... ``` block first
     if let Some(start) = text.find("```json") {
         let after_marker = &text[start + 7..];
@@ -3274,6 +3195,146 @@ pub fn format_results(results: &[StepResult]) -> String {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn test_translate_contains_call() {
+        let out = translate_legacy_condition(r#"contains(fix.output, "ISSUES")"#);
+        assert_eq!(
+            &*out,
+            r#"("ISSUES" in (steps.fix.output | default('') | string))"#
+        );
+        assert!(matches!(out, std::borrow::Cow::Owned(_)));
+    }
+
+    #[test]
+    fn test_translate_equals_call() {
+        let out = translate_legacy_condition(r#"equals(check.verdict, "PASS")"#);
+        assert_eq!(
+            &*out,
+            r#"((steps.check.verdict | default('') | string | trim) == "PASS")"#
+        );
+    }
+
+    #[test]
+    fn test_translate_legacy_steps_output_contains() {
+        let out = translate_legacy_condition(r#"steps.analyze.output contains 'ISSUES_FOUND'"#);
+        assert_eq!(
+            &*out,
+            r#"("ISSUES_FOUND" in (steps.analyze.output | default('') | string))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_legacy_double_quotes() {
+        let out = translate_legacy_condition(r#"steps.analyze.output contains "ISSUES""#);
+        assert_eq!(
+            &*out,
+            r#"("ISSUES" in (steps.analyze.output | default('') | string))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_nested_not() {
+        let out = translate_legacy_condition(r#"not(contains(analyze.output, "ISSUES_FOUND"))"#);
+        // `not(` is left for MiniJinja to handle; the inner contains() is translated.
+        assert_eq!(
+            &*out,
+            r#"not(("ISSUES_FOUND" in (steps.analyze.output | default('') | string)))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_mixed_legacy_new() {
+        // Mixed form using the specified `contains(steps.X.field, ...)` syntax alongside
+        // direct MiniJinja success access. Verifies the steps-prefixed legacy form is
+        // handled correctly (regression for translate_legacy_condition bug).
+        let out = translate_legacy_condition(
+            r#"not(contains(steps.fetch.output, "x")) and steps.guard.success"#,
+        );
+        assert_eq!(
+            &*out,
+            r#"not(("x" in (steps.fetch.output | default('') | string))) and steps.guard.success"#
+        );
+    }
+
+    #[test]
+    fn test_translate_contains_with_steps_prefix() {
+        // Regression: `contains()` with explicit `steps.` prefix must be translated,
+        // not left as an untranslated MiniJinja call (which would always-error-recover
+        // to `true` and bypass the `when` guard).
+        let out = translate_legacy_condition(r#"contains(steps.analyze.output, "ERROR")"#);
+        assert_eq!(
+            &*out,
+            r#"("ERROR" in (steps.analyze.output | default('') | string))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_equals_with_steps_prefix() {
+        let out = translate_legacy_condition(r#"equals(steps.review.verdict, "APPROVE")"#);
+        assert_eq!(
+            &*out,
+            r#"((steps.review.verdict | default('') | string | trim) == "APPROVE")"#
+        );
+    }
+
+    #[test]
+    fn test_translate_passthrough_already_valid() {
+        let input = r#"steps.X.success and not steps.Y.success"#;
+        let out = translate_legacy_condition(input);
+        assert_eq!(&*out, input);
+        assert!(matches!(out, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn test_translate_passthrough_empty() {
+        let out = translate_legacy_condition("");
+        assert_eq!(&*out, "");
+        assert!(matches!(out, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn test_translate_multiple_contains() {
+        let out =
+            translate_legacy_condition(r#"contains(a.field, "x") and contains(b.field, "y")"#);
+        assert_eq!(
+            &*out,
+            r#"("x" in (steps.a.field | default('') | string)) and ("y" in (steps.b.field | default('') | string))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_contains_with_escaped_quotes() {
+        // Regression: `contains(review.output, "\"approved\": true")` from full-heal.toml.
+        // The regex must accept backslash-escaped quotes inside the literal, and the
+        // translated output must re-emit them as valid Jinja string syntax.
+        let out = translate_legacy_condition(r#"contains(review.output, "\"approved\": true")"#);
+        assert_eq!(
+            &*out,
+            r#"("\"approved\": true" in (steps.review.output | default('') | string))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_contains_with_single_quoted_literal_containing_double_quote() {
+        // When the literal is single-quoted and contains a raw double-quote, the
+        // translated output re-emits it inside a Jinja double-quoted string, so the
+        // double-quote must be escaped to avoid closing the string prematurely.
+        let out = translate_legacy_condition(r#"contains(s.out, 'has "quote" inside')"#);
+        assert_eq!(
+            &*out,
+            r#"("has \"quote\" inside" in (steps.s.out | default('') | string))"#
+        );
+    }
+
+    #[test]
+    fn test_translate_fast_path_whitespace_variants() {
+        // Regression for the fast-path bug: `contains` surrounded by tabs/multi-spaces
+        // must still be detected via regex `is_match` (not literal string contains).
+        let out = translate_legacy_condition("steps.X.output\tcontains\t'Y'");
+        assert_eq!(&*out, r#"("Y" in (steps.X.output | default('') | string))"#);
+        assert!(matches!(out, std::borrow::Cow::Owned(_)));
+    }
 
     #[test]
     fn test_extract_json_from_markdown_block() {
@@ -3808,6 +3869,336 @@ line2"}"#;
     }
 
     #[test]
+    fn test_jinja_if_block() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: "data".to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{% if steps.fetch.success %}A{% else %}B{% endif %}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "A");
+    }
+
+    #[test]
+    fn test_jinja_default_filter() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        // Step exists but has empty output - the custom default_val filter
+        // (registered in src/template/filters.rs) treats empty strings as missing
+        // and substitutes the fallback value.
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: String::new(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = r#"{{ steps.fetch.output | default_val("fallback") }}"#;
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "fallback");
+    }
+
+    #[test]
+    fn test_jinja_trim_filter() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: "  hello world  \n".to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{{ steps.fetch.output | trim }}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "hello world");
+    }
+
+    #[test]
+    fn test_jinja_join_filter() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let parsed = serde_json::json!({"items": ["a", "b", "c"]});
+        let mut results = HashMap::new();
+        results.insert(
+            "list".to_string(),
+            StepResult {
+                name: "list".to_string(),
+                output: "{}".to_string(),
+                parsed_output: Some(parsed),
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = r#"{{ steps.list.items | join(", ") }}"#;
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "a, b, c");
+    }
+
+    #[test]
+    fn test_jinja_shell_escape_filter() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let parsed = serde_json::json!({"path": "value with spaces"});
+        let mut results = HashMap::new();
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: "{}".to_string(),
+                parsed_output: Some(parsed),
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{{ steps.fetch.path | shell_escape }}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "'value with spaces'");
+    }
+
+    #[test]
+    fn test_jinja_chained_filters() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "fetch".to_string(),
+            StepResult {
+                name: "fetch".to_string(),
+                output: "first line\nsecond line\nthird line".to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{{ steps.fetch.output | lines | first }}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "first line");
+    }
+
+    #[test]
+    fn test_evaluate_condition_error_recovery() {
+        // Lenient default: a condition with a syntax error returns true so the step still runs
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let results = HashMap::new();
+        // Syntactically invalid expression - should fall back to true (legacy lenient default)
+        assert!(runner.evaluate_condition("not a valid expression !!!", &results));
+        // Empty condition - should also be treated as truthy
+        assert!(runner.evaluate_condition("", &results));
+    }
+
+    #[test]
+    fn test_interpolate_parsed_output_none_fallback() {
+        // When parsed_output is None but output contains JSON (raw or markdown-fenced),
+        // the field should still be accessible via {{ steps.X.field }}
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "raw_json".to_string(),
+            StepResult {
+                name: "raw_json".to_string(),
+                output: r#"{"verdict":"PASS","summary":"all good"}"#.to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{{ steps.raw_json.verdict }}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "PASS");
+    }
+
+    #[test]
+    fn test_jinja_missing_step_default_fallback() {
+        // Spec test 7: referencing a completely missing step surfaces as first-level
+        // undefined, which the custom `default_val` filter intercepts and replaces
+        // with the fallback. Covers the "step missing" case distinct from the
+        // "step exists with empty output" case verified by `test_jinja_default_filter`.
+        //
+        // Limitation: chained access through undefined (e.g. `steps.nonexistent.output`)
+        // errors in SemiStrict mode before any filter runs, so users must put the
+        // `default_val` on the first undefined segment.
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let results = HashMap::new();
+        let template = r#"{{ steps.nonexistent | default_val("fallback") }}"#;
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "fallback");
+    }
+
+    #[test]
+    fn test_jinja_inline_for_loop() {
+        // Spec test 11: MiniJinja `{% for %}` block iterates over a JSON array field
+        // from parsed output within a single template render.
+        //
+        // Note: the loop variable is named `entry`, not `item`, because the
+        // `protect_loop_vars` pre-processor escapes `{{ item }}` / `{{ index }}`
+        // references for later `for_each` substitution. Inline loops use any other
+        // identifier to avoid that collision.
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let parsed = serde_json::json!({"items": ["a", "b", "c"]});
+        let mut results = HashMap::new();
+        results.insert(
+            "list".to_string(),
+            StepResult {
+                name: "list".to_string(),
+                output: "{}".to_string(),
+                parsed_output: Some(parsed),
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        let template = "{% for entry in steps.list.items %}{{ entry }},{% endfor %}";
+        let out = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap();
+        assert_eq!(out, "a,b,c,");
+    }
+
+    #[test]
+    fn test_map_template_error_reports_offending_variable_in_multi_expression() {
+        // Spec test 24: in a template with multiple interpolations, the UnknownVariable
+        // error must surface the actual failing variable, not just the first `{{...}}`
+        // in the source. Regression for map_template_error using err.range().
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let mut results = HashMap::new();
+        results.insert(
+            "first".to_string(),
+            StepResult {
+                name: "first".to_string(),
+                output: "ok".to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+            },
+        );
+        // First interpolation is valid, second references a missing step - the error
+        // should name the second, not the first.
+        let template = "{{ steps.first.output }} then {{ steps.missing.output }}";
+        let err = runner
+            .interpolate_with_fields(template, &results, "wf", "step")
+            .unwrap_err();
+        match err {
+            WorkflowError::UnknownVariable { ref variable, .. } => {
+                assert!(
+                    variable.contains("missing"),
+                    "expected error to name `missing`, got: {}",
+                    variable
+                );
+                assert!(
+                    !variable.contains("first"),
+                    "error should not point at the valid `first` expression, got: {}",
+                    variable
+                );
+            }
+            other => panic!("expected UnknownVariable error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_interpolate_loop_vars_multiple_fields_one_missing() {
+        // Regression for the loop-var pre-scan fix: when one field is missing and
+        // another is valid in the same template, only the missing one should be
+        // replaced with the placeholder; the valid field must render normally.
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
+        let item = serde_json::json!({"name": "tests"});
+        let result = runner.interpolate_loop_vars("{{ item.name }} {{ item.missing }}", &item, 0);
+        assert_eq!(result, "tests [item.missing not found]");
+    }
+
+    #[test]
     fn test_step_if_alias() {
         // Test that `if` works as alias for `when` in TOML
         let toml_str = r#"
@@ -3825,15 +4216,19 @@ line2"}"#;
 
     #[test]
     fn test_interpolate_loop_vars_item_string() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!("hello");
-        let result = interpolate_loop_vars("Value: {{ item }}", &item, 0);
+        let result = runner.interpolate_loop_vars("Value: {{ item }}", &item, 0);
         assert_eq!(result, "Value: hello");
     }
 
     #[test]
     fn test_interpolate_loop_vars_item_object() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!({"name": "tests", "pattern": "*.spec.rb"});
-        let result = interpolate_loop_vars(
+        let result = runner.interpolate_loop_vars(
             "Name: {{ item.name }}, Pattern: {{ item.pattern }}",
             &item,
             0,
@@ -3843,22 +4238,29 @@ line2"}"#;
 
     #[test]
     fn test_interpolate_loop_vars_item_whole_object() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!({"name": "tests"});
-        let result = interpolate_loop_vars("Item: {{ item }}", &item, 0);
-        assert_eq!(result, r#"Item: {"name":"tests"}"#);
+        let result = runner.interpolate_loop_vars("Item: {{ item }}", &item, 0);
+        // MiniJinja renders objects with a space after the colon
+        assert_eq!(result, r#"Item: {"name": "tests"}"#);
     }
 
     #[test]
     fn test_interpolate_loop_vars_index() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!("value");
-        let result = interpolate_loop_vars("Index: {{ index }}", &item, 5);
+        let result = runner.interpolate_loop_vars("Index: {{ index }}", &item, 5);
         assert_eq!(result, "Index: 5");
     }
 
     #[test]
     fn test_interpolate_loop_vars_combined() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!({"file": "test.rb"});
-        let result = interpolate_loop_vars(
+        let result = runner.interpolate_loop_vars(
             "Processing {{ item.file }} ({{ index }}/10): {{ item }}",
             &item,
             3,
@@ -3869,8 +4271,10 @@ line2"}"#;
 
     #[test]
     fn test_interpolate_loop_vars_missing_field() {
+        let config = Config::default();
+        let runner = WorkflowRunner::new(config, PathBuf::from("."), vec![]);
         let item = serde_json::json!({"name": "tests"});
-        let result = interpolate_loop_vars("Missing: {{ item.missing }}", &item, 0);
+        let result = runner.interpolate_loop_vars("Missing: {{ item.missing }}", &item, 0);
         assert_eq!(result, "Missing: [item.missing not found]");
     }
 
