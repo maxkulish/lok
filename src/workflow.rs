@@ -79,10 +79,6 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tokio::process::Command;
 
-/// Regex for matching {{ steps.NAME.output }} patterns
-static INTERPOLATE_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"\{\{\s*steps\.([a-zA-Z0-9_-]+)\.output\s*\}\}").unwrap());
-
 /// Regex for matching "steps.X.output contains 'Y'" conditions (legacy syntax)
 static CONDITION_LEGACY_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"steps\.([a-zA-Z0-9_-]+)\.output\s+contains\s+['"](.+)['"]"#).unwrap()
@@ -2270,10 +2266,12 @@ impl WorkflowRunner {
         Ok(levels)
     }
 
-    /// Interpolate {{ steps.X.output }} variables in a string
+    /// Interpolate `{{ steps.X.output }}`, `{{ env.VAR }}`, `{{ arg.N }}`, `{{ workflow.backends }}`,
+    /// and JSON field accessors via MiniJinja.
     ///
-    /// Uses replace_all for O(n) complexity instead of O(n*m) with repeated replace()
-    /// Step outputs are escaped to prevent their content from being treated as variables.
+    /// Renders the template string through [`TemplateEngine`] against a [`TemplateContext`]
+    /// built from this runner's args, step results, and backends. Any undefined variable
+    /// surfaces as [`WorkflowError::UnknownVariable`] with workflow + step + variable name.
     fn interpolate(
         &self,
         template: &str,
@@ -2281,31 +2279,11 @@ impl WorkflowRunner {
         workflow_name: &str,
         current_step: &str,
     ) -> Result<String, WorkflowError> {
-        // First pass: validate all step references exist
-        for cap in INTERPOLATE_RE.captures_iter(template) {
-            let referenced_step = cap.get(1).expect("regex group 1 always exists").as_str();
-            if !results.contains_key(referenced_step) {
-                return Err(WorkflowError::MissingStepOutput {
-                    workflow: workflow_name.to_string(),
-                    step: current_step.to_string(),
-                    referenced: referenced_step.to_string(),
-                });
-            }
-        }
-
-        // Second pass: replace all in one pass (O(n) instead of O(n*m))
-        // Escape {{ in step outputs so they don't get treated as variables
-        let output = INTERPOLATE_RE
-            .replace_all(template, |caps: &regex::Captures| {
-                let step = &caps[1];
-                results
-                    .get(step)
-                    .map(|r| escape_braces(&r.output))
-                    .unwrap_or_default()
-            })
-            .into_owned();
-
-        Ok(output)
+        let backends = Self::collect_backends(results);
+        let ctx = crate::template::TemplateContext::new(results, &self.args, &backends);
+        self.template_engine
+            .render(template, &ctx)
+            .map_err(|e| map_template_error(e, template, workflow_name, current_step))
     }
 
     /// Evaluate a condition expression
@@ -2577,6 +2555,35 @@ fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
+/// Convert a [`crate::template::TemplateError`] into a [`WorkflowError::UnknownVariable`].
+///
+/// MiniJinja errors expose only "undefined value" without the offending variable name,
+/// so we extract the first `{{ ... }}` expression from the source template as the variable
+/// name in the error message. This is best-effort but matches what users see when their
+/// template references an undefined value.
+fn map_template_error(
+    err: crate::template::TemplateError,
+    template: &str,
+    workflow_name: &str,
+    current_step: &str,
+) -> WorkflowError {
+    static GENERIC_VAR_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\{\{\s*([^}]+?)\s*\}\}").unwrap());
+
+    let variable = GENERIC_VAR_RE
+        .captures(template)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_else(|| err.to_string());
+
+    let _ = err;
+    WorkflowError::UnknownVariable {
+        workflow: workflow_name.to_string(),
+        step: current_step.to_string(),
+        variable,
+    }
+}
+
 /// Interpolate loop variables ({{ item }}, {{ item.field }}, {{ index }}) in a string
 fn interpolate_loop_vars(template: &str, item: &serde_json::Value, index: usize) -> String {
     // Handle {{ item.field }} for object field access first
@@ -2823,7 +2830,7 @@ fn extract_json_field(text: &str, field: &str) -> Option<String> {
 }
 
 /// Sanitize JSON by escaping control characters inside string values
-fn sanitize_json_strings(json: &str) -> String {
+pub(crate) fn sanitize_json_strings(json: &str) -> String {
     let mut result = String::with_capacity(json.len());
     let mut in_string = false;
     for c in json.chars() {
@@ -2865,7 +2872,7 @@ fn find_closing_fence(text: &str) -> Option<usize> {
 }
 
 /// Extract JSON object from text, handling markdown code blocks
-fn extract_json_from_text(text: &str) -> Option<String> {
+pub(crate) fn extract_json_from_text(text: &str) -> Option<String> {
     // Try to find ```json ... ``` block first
     if let Some(start) = text.find("```json") {
         let after_marker = &text[start + 7..];

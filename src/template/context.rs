@@ -53,11 +53,19 @@ impl TemplateContext {
             step_map.insert("success".to_string(), Value::from(result.success));
 
             // Add parsed fields from parsed_output or fallback to string parsing
-            // Extract JSON fields from parsed_output or fallback to string parsing
+            // Extract JSON fields from parsed_output or fallback to extracting JSON from
+            // markdown-fenced blocks in the raw output (matches legacy extract_json_field).
             let json_source = if result.parsed_output.is_some() {
                 result.parsed_output.clone()
             } else {
-                serde_json::from_str::<serde_json::Value>(&result.output).ok()
+                crate::workflow::extract_json_from_text(&result.output).and_then(|s| {
+                    serde_json::from_str::<serde_json::Value>(&s)
+                        .or_else(|_| {
+                            let sanitized = crate::workflow::sanitize_json_strings(&s);
+                            serde_json::from_str::<serde_json::Value>(&sanitized)
+                        })
+                        .ok()
+                })
             };
             if let Some(ref parsed) = json_source {
                 if let Some(obj) = parsed.as_object() {
