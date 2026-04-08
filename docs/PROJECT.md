@@ -1,6 +1,6 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-04-07
+**Last Updated**: 2026-04-08
 
 ## Active Work (WIP Limit: 3)
 
@@ -12,12 +12,20 @@
 
 | Priority | Task | Title | Dependencies |
 |----------|------|-------|--------------|
-| - | - | - | - |
+| 1 | [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | DiffApplier + Rollback + Verification + RetryLoop | CLO-205 (done) |
+| 2 | [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Enrich QueryOutput with model, usage, duration | CLO-202 (done) |
+| 3 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Configurable role routing with [roles]/[teams] config | CLO-203 (done) |
+| 4 | [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify into workflow execution | CLO-205, CLO-210 |
 
 ## Recently Completed
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-216](https://linear.app/cloud-ai/issue/CLO-216) | Support validate.mode = "lenient" for noise-cleanup validators | 2026-04-08 | mode="lenient" bypasses parser; any non-empty response passes; reconciled with tests |
+| [CLO-215](https://linear.app/cloud-ai/issue/CLO-215) | Add --explain-validation CLI flag for raw validator response | 2026-04-08 | raw_response field on ValidationResult + CLI flag dump on parse failure |
+| [CLO-214](https://linear.app/cloud-ai/issue/CLO-214) | Add validate.on_parse_error config (pass/skip/fail) | 2026-04-08 | on_parse_error policy independent of on_error; reconciled with helper extraction + tests |
+| [CLO-208](https://linear.app/cloud-ai/issue/CLO-208) | Add RetryExecutor decorator wrapping Backend trait | 2026-04-08 | Transparent decorator, retries only on is_retryable(), honors RateLimit retry_after_ms |
+| [CLO-206](https://linear.app/cloud-ai/issue/CLO-206) | Add RetryPolicy with exponential backoff, jitter, retry_after | 2026-04-08 | Exponential backoff (base * 2^n) with ±10% jitter, clamped at max_delay; spec divergences logged in Linear |
 | [CLO-209](https://linear.app/cloud-ai/issue/CLO-209) | Replace regex interpolation in workflow.rs with MiniJinja rendering | 2026-04-07 | MiniJinja replaces 14 regexes + 4 interpolation/condition functions; backward-compat legacy translator; 348 tests |
 | [CLO-205](https://linear.app/cloud-ai/issue/CLO-205) | Implement EditParser with 3-format auto-detection | 2026-04-07 | EditParser auto-detects unified diff/JSON/full-file formats with markdown extraction, CRLF normalization, 1MB limit, 32 tests |
 | [CLO-204](https://linear.app/cloud-ai/issue/CLO-204) | Add MiniJinja integration with TemplateContext and custom filters | 2026-04-04 | MiniJinja 2.0 template engine with TemplateContext, LazyEnv, 8 custom filters, TemplateError enum, 48 tests |
