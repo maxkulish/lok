@@ -5,8 +5,8 @@ task_type: specification
 created_at: "2026-04-08T00:00:00Z"
 
 workflow:
-  current_phase: spec
-  status: awaiting_input
+  current_phase: implement
+  status: in_progress
 
 phases:
   discovery:
@@ -17,18 +17,46 @@ phases:
     status: skipped
     reason: "Specification task - using /spec instead"
   spec:
-    status: pending
-    spec_file: null
-    approved: false
-    review_completed: false
-    review_gemini: null
+    status: complete
+    spec_file: "specs/2026-04-08-clo-210-apply-verify-pipeline.md"
+    approved: true
+    approved_at: "2026-04-09T00:00:00Z"
+    review_completed: true
+    review_gemini: "docs/reviews/clo-210-spec-review-gemini.md"
     review_ollama: null
-    review_synthesis: null
-    review_verdict: null
-    review_applied: false
+    review_perplexity: "docs/reviews/clo-210-spec-review-perplexity.md"
+    review_synthesis: "docs/reviews/clo-210-spec-review-synthesis.md"
+    review_verdict: "APPROVED_AFTER_REVISIONS"
+    review_applied: true
+    workflow_crashed: true
+    workflow_crash_reason: "spec-review.toml MiniJinja hyphen bug (steps.gemini-review.success parsed as subtraction) + validation step expecting JSON/REVIEW_FAILED prefix not emitted by prompt. Ran reviewers directly as recovery."
+    applied_suggestions:
+      - "RetryContext+RetryReason enum replacing VerifyFailureContext (Gemini critical)"
+      - "Single apply() API with ApplyError.partial replacing apply+apply_with_partial (Perplexity HIGH)"
+      - "Real elapsed_ms via Instant::now() replacing self.timeout.as_millis lie (Perplexity HIGH)"
+      - "max_output_bytes + VerifyResult.truncated for bounded output (Perplexity HIGH)"
+      - "Unix process_group(0) + libc::kill(-pid, SIGKILL) for zombie reaping (Gemini)"
+      - "Removed cwd from Verification struct, pass as run(cwd) param (Gemini)"
+      - "Explicit stop_on_parse_error truth table (Perplexity MEDIUM)"
+      - "Documented single-retry-budget rationale (Perplexity MEDIUM)"
+      - "Directory rollback non-bug acknowledgment (Gemini LOW)"
+      - "Shell pass-through edge case note (Perplexity LOW)"
+      - "New tests #9b (empty edits), #22b (truncation), #22c (process-group), #30b (parse context), #30c (apply context)"
+    flagged_suggestions:
+      - "Env var inheritance in verify subprocess - deferred to CLO-211 (workflow executor owns env story)"
+      - "FD exhaustion on spawn failures - acceptable operational risk"
+      - "Free functions vs unit structs stylistic preference (Gemini) - kept unit structs for consistency with EditParser"
   implement:
-    status: pending
+    status: in_progress
     commits: []
+    sub_tasks:
+      sub_task_1_skeleton: pending
+      sub_task_2_diff_applier: pending
+      sub_task_3_rollback: pending
+      sub_task_4_verification: pending
+      sub_task_5_retry_loop: pending
+      sub_task_6_integration_test: pending
+      sub_task_7_clippy_sweep: pending
   pr:
     status: pending
     pr_url: null
@@ -46,3 +74,27 @@ history:
     action: project_sync_start
     phase: spec
     details: "Added to Active Work in PROJECT.md, ROADMAP.md status -> In Progress, removed from Unblocked & Ready in DEPENDENCIES.md. WIP 1/3."
+  - timestamp: "2026-04-08T00:02:00Z"
+    action: spec_draft_complete
+    phase: spec
+    details: "Spec written to specs/2026-04-08-clo-210-apply-verify-pipeline.md. Scope L, 7 sub-tasks, 36 evaluation tests, 4 new modules (diff_applier/rollback/verification/retry_loop). EditRequester trait pattern to keep apply_verify decoupled from Backend."
+  - timestamp: "2026-04-08T00:03:00Z"
+    action: spec_review_failed
+    phase: spec
+    details: "lok spec-review workflow crashed: 'Workflow spec-review: step synthesis has unknown variable review.success'. Root cause: MiniJinja parses steps.gemini-review.success as subtraction (hyphen) - CLO-209 regression. Secondary bug: validation step expects JSON/REVIEW_FAILED prefix not emitted by spec-review-prompt.md. Recovery: ran Gemini directly via background task and Perplexity via perplexity_reason in parallel."
+  - timestamp: "2026-04-08T00:04:00Z"
+    action: spec_review_complete
+    phase: spec
+    details: "Gemini verdict: NEEDS_REVISION (1 critical logic gap on VerifyFailureContext unconstructable, 2 design flaws on cwd duplication and zombie processes). Perplexity verdict: APPROVE_WITH_SUGGESTIONS (3 HIGH: dual-API smell, elapsed_ms lie, unbounded output; 2 MEDIUM: stop_on_parse_error, retry budgets; 1 LOW: shell pass-through). Reviews saved to docs/reviews/clo-210-spec-review-{gemini,perplexity,synthesis}.md."
+  - timestamp: "2026-04-08T00:05:00Z"
+    action: spec_review_applied
+    phase: spec
+    details: "11 review items applied to spec. Key structural changes: (1) RetryContext+RetryReason enum replacing VerifyFailureContext; (2) Single apply() API with ApplyError.partial; (3) Real elapsed_ms via Instant::now; (4) max_output_bytes + truncated flag; (5) Unix process_group + SIGKILL for zombie reaping; (6) cwd removed from Verification struct; (7) stop_on_parse_error truth table; (8) single-budget rationale; (9) directory rollback acknowledgment; (10) shell pass-through note; (11) 5 new tests added (#9b, #22b, #22c, #30b, #30c). Test target raised from 35+ to 40+."
+  - timestamp: "2026-04-09T00:00:00Z"
+    action: spec_approved
+    phase: spec
+    details: "User approved spec at SPEC CHECKPOINT. Spec phase marked complete. Transitioning to implement phase."
+  - timestamp: "2026-04-09T00:00:01Z"
+    action: phase_transition
+    phase: implement
+    details: "Entered implement phase. Plan: execute 7-sub-task decomposition from spec Section 4. Sub-tasks 2/3/4 (DiffApplier, Rollback, Verification) are independent and parallelizable; sub-task 5 (RetryLoop) depends on all three; sub-tasks 1/6/7 are sequential bookends."
