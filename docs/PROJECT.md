@@ -6,16 +6,15 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | DiffApplier + Rollback + Verification + RetryLoop | Spec | Phase 8 | - |
 
 ## Up Next (Prioritized Backlog)
 
 | Priority | Task | Title | Dependencies |
 |----------|------|-------|--------------|
-| 1 | [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | DiffApplier + Rollback + Verification + RetryLoop | CLO-205 (done) |
-| 2 | [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Enrich QueryOutput with model, usage, duration | CLO-202 (done) |
-| 3 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Configurable role routing with [roles]/[teams] config | CLO-203 (done) |
-| 4 | [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify into workflow execution | CLO-205, CLO-210 |
+| 1 | [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Enrich QueryOutput with model, usage, duration | CLO-202 (done) |
+| 2 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Configurable role routing with [roles]/[teams] config | CLO-203 (done) |
+| 3 | [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify into workflow execution | CLO-205, CLO-210 |
 
 ## Recently Completed
 
