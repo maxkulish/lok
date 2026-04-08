@@ -4,10 +4,12 @@ mod claude;
 mod codex;
 mod gemini;
 mod ollama;
+mod retry;
 
 #[cfg(feature = "bedrock")]
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
+pub use retry::{RetryExecutor, RetryPolicy};
 
 use crate::config::{BackendConfig, Config};
 use anyhow::Result;
@@ -142,22 +144,42 @@ pub struct QueryResult {
     pub error: Option<BackendError>,
 }
 
-pub fn create_backend(name: &str, config: &BackendConfig) -> Result<Arc<dyn Backend>> {
-    match name {
-        "codex" => Ok(Arc::new(codex::CodexBackend::new(config)?)),
-        "gemini" => Ok(Arc::new(gemini::GeminiBackend::new(config)?)),
-        "claude" => Ok(Arc::new(claude::ClaudeBackend::new(config)?)),
-        "ollama" => Ok(Arc::new(ollama::OllamaBackend::new(config)?)),
+pub fn get_retry_policy(config: &BackendConfig, defaults: &crate::config::Defaults) -> RetryPolicy {
+    RetryPolicy {
+        max_retries: config.max_retries.unwrap_or(defaults.max_retries),
+        base_delay: Duration::from_millis(config.retry_delay_ms.unwrap_or(defaults.retry_delay_ms)),
+        max_delay: Duration::from_secs(30),
+    }
+}
+
+pub fn create_backend(
+    name: &str,
+    config: &BackendConfig,
+    retry_policy: RetryPolicy,
+) -> Result<Arc<dyn Backend>> {
+    let inner: Arc<dyn Backend> = match name {
+        "codex" => Arc::new(codex::CodexBackend::new(config)?),
+        "gemini" => Arc::new(gemini::GeminiBackend::new(config)?),
+        "claude" => Arc::new(claude::ClaudeBackend::new(config)?),
+        "ollama" => Arc::new(ollama::OllamaBackend::new(config)?),
         #[cfg(feature = "bedrock")]
         "bedrock" => {
             // BedrockBackend::new is async, need runtime
             let rt = tokio::runtime::Handle::current();
             let config = config.clone();
-            rt.block_on(async { Ok(Arc::new(bedrock::BedrockBackend::new(&config).await?) as Arc<dyn Backend>) })
+            rt.block_on(async {
+                Ok(Arc::new(bedrock::BedrockBackend::new(&config).await?) as Arc<dyn Backend>)
+            })?
         }
         #[cfg(not(feature = "bedrock"))]
         "bedrock" => anyhow::bail!("Bedrock backend requires the 'bedrock' feature. Rebuild with: cargo build --features bedrock"),
         _ => anyhow::bail!("Unknown backend: {}", name),
+    };
+
+    if retry_policy.max_retries > 0 {
+        Ok(Arc::new(RetryExecutor::new(inner, retry_policy)))
+    } else {
+        Ok(inner)
     }
 }
 
@@ -185,7 +207,8 @@ pub fn get_backends(config: &Config, filter: Option<&str>) -> Result<Vec<Arc<dyn
             }
         }
 
-        match create_backend(name, backend_config) {
+        let retry_policy = get_retry_policy(backend_config, &config.defaults);
+        match create_backend(name, backend_config, retry_policy) {
             Ok(backend) => {
                 if backend.is_available() {
                     backends.push(backend);
@@ -405,7 +428,8 @@ pub fn list_backends(config: &Config) -> Result<()> {
             "disabled".red()
         };
 
-        let available = match create_backend(name, backend_config) {
+        let retry_policy = get_retry_policy(backend_config, &config.defaults);
+        let available = match create_backend(name, backend_config, retry_policy) {
             Ok(b) if b.is_available() => "available".green(),
             _ => "not available".yellow(),
         };

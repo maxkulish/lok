@@ -26,6 +26,10 @@ pub struct Defaults {
     pub parallel: bool,
     #[serde(default = "default_timeout")]
     pub timeout: u64,
+    #[serde(default = "default_retries")]
+    pub max_retries: usize,
+    #[serde(default = "default_retry_delay_ms")]
+    pub retry_delay_ms: u64,
     /// Optional wrapper for shell commands (e.g., "nix-shell --run '{cmd}'" or "docker exec dev sh -c '{cmd}'")
     /// The {cmd} placeholder will be replaced with the actual command
     #[serde(default)]
@@ -40,11 +44,21 @@ fn default_timeout() -> u64 {
     300
 }
 
+fn default_retries() -> usize {
+    0
+}
+
+fn default_retry_delay_ms() -> u64 {
+    1000
+}
+
 impl Default for Defaults {
     fn default() -> Self {
         Self {
             parallel: default_parallel(),
             timeout: default_timeout(),
+            max_retries: default_retries(),
+            retry_delay_ms: default_retry_delay_ms(),
             command_wrapper: None,
         }
     }
@@ -90,6 +104,10 @@ pub struct BackendConfig {
     pub model: Option<String>,
     /// Per-backend timeout in seconds (overrides defaults.timeout)
     pub timeout: Option<u64>,
+    /// Per-backend retry limit (overrides defaults.max_retries)
+    pub max_retries: Option<usize>,
+    /// Per-backend retry delay in milliseconds (overrides defaults.retry_delay_ms)
+    pub retry_delay_ms: Option<u64>,
 }
 
 fn default_enabled() -> bool {
@@ -132,6 +150,8 @@ impl Default for Config {
                 api_key_env: None,
                 model: None,
                 timeout: None,
+                max_retries: None,
+                retry_delay_ms: None,
             },
         );
 
@@ -145,6 +165,8 @@ impl Default for Config {
                 api_key_env: None,
                 model: None,
                 timeout: Some(600), // Gemini goes agentic, needs more time
+                max_retries: None,
+                retry_delay_ms: None,
             },
         );
 
@@ -158,6 +180,8 @@ impl Default for Config {
                 api_key_env: None,
                 model: None, // Uses Claude Code's default model
                 timeout: None,
+                max_retries: None,
+                retry_delay_ms: None,
             },
         );
 
@@ -171,6 +195,8 @@ impl Default for Config {
                 api_key_env: None,
                 model: Some("llama3.2".to_string()), // Default model
                 timeout: None,
+                max_retries: None,
+                retry_delay_ms: None,
             },
         );
 

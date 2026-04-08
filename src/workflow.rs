@@ -179,6 +179,12 @@ pub struct ValidateConfig {
     /// Policy when validation backend itself fails: "fail" (default), "pass", "skip"
     #[serde(default)]
     pub on_error: Option<String>,
+    /// Policy when validator response cannot be parsed: "fail" (default), "pass", "skip"
+    #[serde(default)]
+    pub on_parse_error: Option<String>,
+    /// Validation strictness mode: "strict" (default) or "lenient"
+    #[serde(default)]
+    pub mode: Option<String>,
     /// Maximum characters of step output to include in validation prompt.
     /// Output exceeding this is truncated with a marker.
     #[serde(default)]
@@ -366,6 +372,7 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
             failure_reason: None,
             validator: "heuristic:noop".to_string(),
             elapsed_ms: start.elapsed().as_millis() as u64,
+            raw_response: None,
         };
     }
 
@@ -385,6 +392,7 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
             },
             validator: "heuristic:not_empty".to_string(),
             elapsed_ms: start.elapsed().as_millis() as u64,
+            raw_response: None,
         };
     }
 
@@ -404,6 +412,7 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
                     )),
                     validator: "heuristic:min_length".to_string(),
                     elapsed_ms: start.elapsed().as_millis() as u64,
+                    raw_response: None,
                 };
             }
         };
@@ -426,6 +435,7 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
             },
             validator: "heuristic:min_length".to_string(),
             elapsed_ms: start.elapsed().as_millis() as u64,
+            raw_response: None,
         };
     }
 
@@ -458,6 +468,7 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
             },
             validator: "heuristic:contains".to_string(),
             elapsed_ms: start.elapsed().as_millis() as u64,
+            raw_response: None,
         };
     }
 
@@ -468,6 +479,7 @@ fn run_heuristic_check(check: &str, output: &str) -> ValidationResult {
         failure_reason: Some(format!("Unknown check: {}", check_trimmed)),
         validator: format!("heuristic:{}", check_trimmed),
         elapsed_ms: start.elapsed().as_millis() as u64,
+        raw_response: None,
     }
 }
 
@@ -606,6 +618,7 @@ async fn run_llm_validation(
                     failure_reason: None,
                     validator: format!("{}:error_passthrough", label),
                     elapsed_ms: start.elapsed().as_millis() as u64,
+                    raw_response: None,
                 }),
                 None,
             ),
@@ -617,6 +630,7 @@ async fn run_llm_validation(
                     failure_reason: Some(reason),
                     validator: label.to_string(),
                     elapsed_ms: start.elapsed().as_millis() as u64,
+                    raw_response: None,
                 }),
                 None,
             ),
@@ -634,7 +648,8 @@ async fn run_llm_validation(
         }
     };
 
-    let backend_instance = match backend::create_backend(backend_name, backend_config) {
+    let retry_policy = backend::get_retry_policy(backend_config, &config.defaults);
+    let backend_instance = match backend::create_backend(backend_name, backend_config, retry_policy) {
         Ok(b) => b,
         Err(e) => {
             return handle_infra_error(
@@ -660,6 +675,7 @@ async fn run_llm_validation(
                     ),
                     validator: validator_label,
                     elapsed_ms: start.elapsed().as_millis() as u64,
+                    raw_response: None,
                 }),
                 None,
             );
@@ -688,6 +704,39 @@ async fn run_llm_validation(
     match query_result {
         Ok(query_output) => {
             let elapsed_ms = start.elapsed().as_millis() as u64;
+            let mode = validate_config.mode.as_deref().unwrap_or("strict");
+
+            if mode == "lenient" {
+                let trimmed = query_output.stdout.trim();
+                return if !trimmed.is_empty() {
+                    (
+                        Some(ValidationResult {
+                            passed: true,
+                            failure_type: None,
+                            failure_reason: None,
+                            validator: validator_label,
+                            elapsed_ms,
+                            raw_response: None,
+                        }),
+                        Some(trimmed.to_string()),
+                    )
+                } else {
+                    (
+                        Some(ValidationResult {
+                            passed: false,
+                            failure_type: Some(FailureType::ValidatorError),
+                            failure_reason: Some(
+                                "Validator returned empty response in lenient mode".to_string(),
+                            ),
+                            validator: validator_label,
+                            elapsed_ms,
+                            raw_response: Some(query_output.stdout.clone()),
+                        }),
+                        None,
+                    )
+                };
+            }
+
             match parse_validation_response(&query_output.stdout) {
                 Ok(response) => {
                     if response.status == "pass" {
@@ -698,6 +747,7 @@ async fn run_llm_validation(
                                 failure_reason: None,
                                 validator: validator_label,
                                 elapsed_ms,
+                                raw_response: None,
                             }),
                             response.output.filter(|s| !s.is_empty()),
                         )
@@ -712,24 +762,44 @@ async fn run_llm_validation(
                                 failure_reason: Some(reason),
                                 validator: validator_label,
                                 elapsed_ms,
+                                raw_response: None,
                             }),
                             None,
                         )
                     }
                 }
-                Err(parse_err) => (
-                    Some(ValidationResult {
-                        passed: false,
-                        failure_type: Some(FailureType::ValidatorError),
-                        failure_reason: Some(format!(
-                            "Failed to parse validation response: {}",
-                            parse_err
-                        )),
-                        validator: validator_label,
-                        elapsed_ms,
-                    }),
-                    None,
-                ),
+                Err(parse_err) => {
+                    let on_parse_error =
+                        validate_config.on_parse_error.as_deref().unwrap_or("fail");
+                    match on_parse_error {
+                        "pass" => (
+                            Some(ValidationResult {
+                                passed: true,
+                                failure_type: None,
+                                failure_reason: None,
+                                validator: format!("{}:parse_passthrough", validator_label),
+                                elapsed_ms,
+                                raw_response: None,
+                            }),
+                            None,
+                        ),
+                        "skip" => (None, None),
+                        _ => (
+                            Some(ValidationResult {
+                                passed: false,
+                                failure_type: Some(FailureType::ValidatorError),
+                                failure_reason: Some(format!(
+                                    "Failed to parse validation response: {}",
+                                    parse_err
+                                )),
+                                validator: validator_label,
+                                elapsed_ms,
+                                raw_response: Some(query_output.stdout.clone()),
+                            }),
+                            None,
+                        ),
+                    }
+                }
             }
         }
         Err(e) => {
@@ -743,6 +813,7 @@ async fn run_llm_validation(
                         failure_reason: None,
                         validator: format!("{}:error_passthrough", validator_label),
                         elapsed_ms,
+                        raw_response: None,
                     }),
                     None,
                 ),
@@ -754,6 +825,7 @@ async fn run_llm_validation(
                         failure_reason: Some(format!("Validation backend error: {}", e)),
                         validator: validator_label,
                         elapsed_ms,
+                        raw_response: None,
                     }),
                     None,
                 ),
@@ -869,6 +941,10 @@ pub struct ValidationResult {
     /// Identifier for which validator ran: "heuristic:not_empty", "heuristic:min_length", "llm:haiku"
     pub validator: String,
     pub elapsed_ms: u64,
+    /// Raw validator LLM response. Populated when validation fails with
+    /// ValidatorError (parse failure). Used by --explain-validation.
+    #[allow(dead_code)]
+    pub raw_response: Option<String>,
 }
 
 /// Why a validation check failed.
@@ -952,6 +1028,7 @@ pub struct WorkflowRunner {
     args: Vec<String>,
     context: CodebaseContext,
     template_engine: crate::template::TemplateEngine,
+    pub explain_validation: bool,
 }
 
 impl WorkflowRunner {
@@ -963,7 +1040,14 @@ impl WorkflowRunner {
             args,
             context,
             template_engine: crate::template::TemplateEngine::new(),
+            explain_validation: false,
         }
+    }
+
+    /// Set whether to dump raw validator responses on parse failures
+    pub fn with_explain_validation(mut self, explain: bool) -> Self {
+        self.explain_validation = explain;
+        self
     }
 
     /// Build the ordered, deduplicated list of backend names from step results.
@@ -1318,7 +1402,8 @@ impl WorkflowRunner {
                                         }
                                     };
 
-                                    let backend = match backend::create_backend(&backend_name, backend_config) {
+                                    let retry_policy = backend::get_retry_policy(backend_config, &self.config.defaults);
+                                    let backend = match backend::create_backend(&backend_name, backend_config, retry_policy) {
                                         Ok(b) => b,
                                         Err(e) => {
                                             iter_output = format!("Failed to create backend: {}", e);
@@ -1439,6 +1524,15 @@ impl WorkflowRunner {
                                             if let Some(ref v) = validation {
                                                 let reason = v.failure_reason.as_deref().unwrap_or("validation failed");
                                                 println!("  {} Validation failed ({}): {}", "✗".red(), v.validator, reason);
+                                                if self.explain_validation {
+                                                    if let Some(ref raw) = v.raw_response {
+                                                        println!("\n  --- Raw validator response ({} chars) ---", raw.len());
+                                                        for line in raw.lines() {
+                                                            println!("  {}", line.dimmed());
+                                                        }
+                                                        println!("  --- End raw response ---\n");
+                                                    }
+                                                }
                                             }
                                         }
 
@@ -1523,7 +1617,8 @@ impl WorkflowRunner {
                                         Some(c) => c,
                                         None => return (bn.clone(), Err(format!("Backend not found: {}", bn))),
                                     };
-                                    let backend = match backend::create_backend(&bn, backend_config) {
+                                    let retry_policy = backend::get_retry_policy(backend_config, &cfg.defaults);
+                                    let backend = match backend::create_backend(&bn, backend_config, retry_policy) {
                                         Ok(b) => b,
                                         Err(e) => return (bn.clone(), Err(format!("Failed to create backend: {}", e))),
                                     };
@@ -1626,7 +1721,8 @@ impl WorkflowRunner {
                                     println!("    {} Synthesizing with {}...", "⚙".cyan(), synth_backend_name);
 
                                     if let Some(synth_config) = config.backends.get(synth_backend_name) {
-                                        if let Ok(synth_backend) = backend::create_backend(synth_backend_name, synth_config) {
+                                        let retry_policy = backend::get_retry_policy(synth_config, &config.defaults);
+                                        if let Ok(synth_backend) = backend::create_backend(synth_backend_name, synth_config, retry_policy) {
                                             match tokio::time::timeout(timeout_duration, synth_backend.query(&synth_prompt, &cwd, None)).await {
                                                 Ok(Ok(qo)) => {
                                                     let synthesized = qo.stdout;
@@ -1673,9 +1769,17 @@ impl WorkflowRunner {
                                 if let Some(ref v) = validation {
                                     let reason = v.failure_reason.as_deref().unwrap_or("validation failed");
                                     println!("  {} Validation failed ({}): {}", "✗".red(), v.validator, reason);
+                                    if self.explain_validation {
+                                        if let Some(ref raw) = v.raw_response {
+                                            println!("\n  --- Raw validator response ({} chars) ---", raw.len());
+                                            for line in raw.lines() {
+                                                println!("  {}", line.dimmed());
+                                            }
+                                            println!("  --- End raw response ---\n");
+                                        }
+                                    }
                                 }
                             }
-
                             let (validated_output, raw_output) = if let Some(cleaned) = cleaned_output {
                                 if validate_config.as_ref().map(|vc| vc.replace_output).unwrap_or(false) {
                                     (cleaned, Some(final_output))
@@ -1711,7 +1815,8 @@ impl WorkflowRunner {
                             }
                         };
 
-                        let backend = match backend::create_backend(&backend_name, backend_config) {
+                        let retry_policy = backend::get_retry_policy(backend_config, &config.defaults);
+                        let backend = match backend::create_backend(&backend_name, backend_config, retry_policy) {
                             Ok(b) => b,
                             Err(e) => {
                                 // Record step complete (failure - failed to create backend)
@@ -2004,9 +2109,17 @@ impl WorkflowRunner {
                                 if let Some(ref v) = validation {
                                     let reason = v.failure_reason.as_deref().unwrap_or("validation failed");
                                     println!("  {} Validation failed ({}): {}", "✗".red(), v.validator, reason);
+                                    if self.explain_validation {
+                                        if let Some(ref raw) = v.raw_response {
+                                            println!("\n  --- Raw validator response ({} chars) ---", raw.len());
+                                            for line in raw.lines() {
+                                                println!("  {}", line.dimmed());
+                                            }
+                                            println!("  --- End raw response ---\n");
+                                        }
+                                    }
                                 }
                             }
-
                             let (final_output, raw_output) = if let Some(cleaned) = cleaned_output {
                                 if validate_config.as_ref().map(|vc| vc.replace_output).unwrap_or(false) {
                                     (cleaned, Some(current_text))
@@ -5699,6 +5812,7 @@ prompt = "Validate: {{ output }}"
                 failure_reason: Some("Output not valid".to_string()),
                 validator: "heuristic:contains".to_string(),
                 elapsed_ms: 10,
+                raw_response: None,
             }),
             failure: None,
         };
