@@ -271,6 +271,10 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
+        /// Dump raw validator responses on parse failures for debugging
+        #[arg(long)]
+        explain_validation: bool,
+
         /// Positional arguments for the workflow (accessible as {{ arg.1 }}, {{ arg.2 }}, etc.)
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
@@ -363,6 +367,10 @@ enum WorkflowCommands {
         /// Write full output to file instead of stdout
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Dump raw validator responses on parse failures for debugging
+        #[arg(long)]
+        explain_validation: bool,
 
         /// Positional arguments for the workflow (accessible as {{ arg.1 }}, {{ arg.2 }}, etc.)
         #[arg(allow_hyphen_values = true)]
@@ -688,9 +696,18 @@ async fn main() -> Result<()> {
                 name,
                 dir,
                 output,
+                explain_validation,
                 args,
             } => {
-                run_workflow(&name, &dir, output.as_deref(), args, &config).await?;
+                run_workflow(
+                    &name,
+                    &dir,
+                    output.as_deref(),
+                    explain_validation,
+                    args,
+                    &config,
+                )
+                .await?;
             }
             WorkflowCommands::List => {
                 list_workflows().await?;
@@ -703,10 +720,19 @@ async fn main() -> Result<()> {
             name,
             dir,
             output,
+            explain_validation,
             args,
         } => {
             // Shorthand for 'workflow run'
-            run_workflow(&name, &dir, output.as_deref(), args, &config).await?;
+            run_workflow(
+                &name,
+                &dir,
+                output.as_deref(),
+                explain_validation,
+                args,
+                &config,
+            )
+            .await?;
         }
         Commands::Context {
             dir,
@@ -983,6 +1009,7 @@ async fn run_workflow(
     name: &str,
     dir: &Path,
     output: Option<&Path>,
+    explain_validation: bool,
     args: Vec<String>,
     config: &config::Config,
 ) -> Result<()> {
@@ -990,7 +1017,8 @@ async fn run_workflow(
     let wf = workflow::load_workflow_from_source(source).await?;
 
     let cwd = crate::utils::canonicalize_async(dir).await;
-    let runner = workflow::WorkflowRunner::new(config.clone(), cwd, args);
+    let runner = workflow::WorkflowRunner::new(config.clone(), cwd, args)
+        .with_explain_validation(explain_validation);
 
     let results = runner.run(&wf).await?;
 
