@@ -22,8 +22,11 @@ pub struct Verification {
     pub command: String,
     /// Hard wall-clock timeout. On timeout the whole process group is killed.
     pub timeout: Duration,
-    /// Maximum bytes to capture from stdout+stderr combined. Further output
-    /// is dropped and `VerifyResult::truncated` is set to `true`.
+    /// Maximum bytes to capture from each of stdout and stderr independently.
+    /// Further output is dropped and `VerifyResult::truncated` is set to `true`.
+    /// Note: worst-case total memory is `2 * max_output_bytes` (both streams
+    /// at capacity). This per-stream cap avoids shared-counter complexity
+    /// across concurrent tokio tasks.
     pub max_output_bytes: usize,
 }
 
@@ -92,8 +95,20 @@ impl Verification {
         };
 
         let pid = child.id();
-        let stdout = child.stdout.take().expect("stdout was piped");
-        let stderr = child.stderr.take().expect("stderr was piped");
+        let (stdout, stderr) = match (child.stdout.take(), child.stderr.take()) {
+            (Some(out), Some(err)) => (out, err),
+            _ => {
+                return VerifyResult {
+                    success: false,
+                    stdout: String::new(),
+                    stderr: "failed to capture stdout/stderr pipes".to_string(),
+                    exit_code: None,
+                    elapsed_ms: start.elapsed().as_millis() as u64,
+                    timed_out: false,
+                    truncated: false,
+                };
+            }
+        };
         let max_bytes = self.max_output_bytes;
 
         let stdout_handle = tokio::spawn(read_bounded(stdout, max_bytes));

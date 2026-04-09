@@ -9,7 +9,7 @@
 use crate::apply_verify::edit_parser::{EditFormat, ParsedEdits};
 use crate::workflow::FileEdit;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 /// Maximum characters of `old` text included in `OldTextNotFound::snippet`.
@@ -165,6 +165,22 @@ impl DiffApplier {
 
             let file_path = cwd.join(&edit.file);
 
+            // Reject paths that escape cwd (absolute paths, ".." traversal).
+            // LLM-generated edit.file values are untrusted.
+            if Path::new(&edit.file).is_absolute()
+                || Path::new(&edit.file)
+                    .components()
+                    .any(|c| matches!(c, Component::ParentDir))
+                || !file_path.starts_with(cwd)
+            {
+                return Err(ApplyError {
+                    kind: ApplyErrorKind::InvalidEdit {
+                        reason: format!("path escapes working directory: {}", edit.file),
+                    },
+                    partial,
+                });
+            }
+
             let backup = match parsed.format {
                 EditFormat::FullFile => apply_full_file(edit, file_path, &partial).await?,
                 EditFormat::JsonOldNew | EditFormat::UnifiedDiff => {
@@ -262,6 +278,15 @@ async fn apply_find_replace(
             });
         }
     };
+
+    if edit.old.is_empty() {
+        return Err(ApplyError {
+            kind: ApplyErrorKind::InvalidEdit {
+                reason: "find/replace edit requires non-empty old text".to_string(),
+            },
+            partial: partial.clone(),
+        });
+    }
 
     let match_count = content.matches(&edit.old).count();
     if match_count == 0 {
@@ -594,6 +619,54 @@ mod tests {
                 file: String::new(),
                 old: "a".to_string(),
                 new: "b".to_string(),
+            }],
+            EditFormat::JsonOldNew,
+        );
+        let err = DiffApplier.apply(&parsed, dir.path()).await.unwrap_err();
+        assert!(matches!(err.kind, ApplyErrorKind::InvalidEdit { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_apply_rejects_path_traversal() {
+        let dir = tempdir().unwrap();
+        let parsed = make_parsed(
+            vec![FileEdit {
+                file: "../escape.txt".to_string(),
+                old: String::new(),
+                new: "pwned".to_string(),
+            }],
+            EditFormat::FullFile,
+        );
+        let err = DiffApplier.apply(&parsed, dir.path()).await.unwrap_err();
+        assert!(matches!(err.kind, ApplyErrorKind::InvalidEdit { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_apply_rejects_absolute_path() {
+        let dir = tempdir().unwrap();
+        let parsed = make_parsed(
+            vec![FileEdit {
+                file: "/etc/passwd".to_string(),
+                old: String::new(),
+                new: "pwned".to_string(),
+            }],
+            EditFormat::FullFile,
+        );
+        let err = DiffApplier.apply(&parsed, dir.path()).await.unwrap_err();
+        assert!(matches!(err.kind, ApplyErrorKind::InvalidEdit { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_apply_empty_old_in_find_replace_is_invalid() {
+        let dir = tempdir().unwrap();
+        let f = dir.path().join("a.txt");
+        tokio::fs::write(&f, "content").await.unwrap();
+
+        let parsed = make_parsed(
+            vec![FileEdit {
+                file: "a.txt".to_string(),
+                old: String::new(),
+                new: "replacement".to_string(),
             }],
             EditFormat::JsonOldNew,
         );
