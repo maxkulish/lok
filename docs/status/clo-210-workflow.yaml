@@ -5,7 +5,7 @@ task_type: specification
 created_at: "2026-04-08T00:00:00Z"
 
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
 
 phases:
@@ -47,18 +47,23 @@ phases:
       - "FD exhaustion on spawn failures - acceptable operational risk"
       - "Free functions vs unit structs stylistic preference (Gemini) - kept unit structs for consistency with EditParser"
   implement:
-    status: in_progress
-    commits: []
+    status: complete
+    commits:
+      - "838e382 feat(CLO-210): add apply-verify module skeleton and types"
+      - "bd206f7 feat(CLO-210): implement DiffApplier, Rollback, and Verification"
+      - "3b334e1 feat(CLO-210): implement RetryLoop with parse-apply-verify-rollback cycle"
     sub_tasks:
-      sub_task_1_skeleton: pending
-      sub_task_2_diff_applier: pending
-      sub_task_3_rollback: pending
-      sub_task_4_verification: pending
-      sub_task_5_retry_loop: pending
-      sub_task_6_integration_test: pending
-      sub_task_7_clippy_sweep: pending
+      sub_task_1_skeleton: complete
+      sub_task_2_diff_applier: complete
+      sub_task_3_rollback: complete
+      sub_task_4_verification: complete
+      sub_task_5_retry_loop: complete
+      sub_task_6_integration_test: complete
+      sub_task_7_clippy_sweep: complete
+    test_count: 412
+    new_tests: 45
   pr:
-    status: pending
+    status: in_progress
     pr_url: null
     pr_number: null
   complete:
@@ -98,3 +103,11 @@ history:
     action: phase_transition
     phase: implement
     details: "Entered implement phase. Plan: execute 7-sub-task decomposition from spec Section 4. Sub-tasks 2/3/4 (DiffApplier, Rollback, Verification) are independent and parallelizable; sub-task 5 (RetryLoop) depends on all three; sub-tasks 1/6/7 are sequential bookends."
+  - timestamp: "2026-04-09T00:01:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "All 7 sub-tasks complete. 3 commits: skeleton types, DiffApplier+Rollback+Verification (32 tests), RetryLoop (13 tests). Total 412 tests passing, clippy clean. 45 new tests across 4 modules. New files: diff_applier.rs (~440 lines), rollback.rs (~270 lines), verification.rs (~360 lines), retry_loop.rs (~700 lines). Added libc 0.2 dep for Unix process-group kill."
+  - timestamp: "2026-04-09T00:01:01Z"
+    action: phase_transition
+    phase: pr
+    details: "Implementation complete, transitioning to PR phase."
