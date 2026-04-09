@@ -1,7 +1,11 @@
+#[allow(dead_code)]
 mod diff_applier;
 mod edit_parser;
-mod rollback;
+#[allow(dead_code)]
 mod retry_loop;
+#[allow(dead_code)]
+mod rollback;
+#[allow(dead_code)]
 mod verification;
 
 #[allow(unused_imports)]
@@ -15,4 +19,4 @@ pub use retry_loop::{
 #[allow(unused_imports)]
 pub use rollback::{Rollback, RollbackFailure, RollbackReport};
 #[allow(unused_imports)]
-pub use verification::{VerifyResult, Verification};
+pub use verification::{Verification, VerifyResult};

@@ -63,15 +63,13 @@ impl Rollback {
 
 async fn rollback_one(backup: &FileBackup, report: &mut RollbackReport) {
     match &backup.original_content {
-        Some(original) => {
-            match tokio::fs::write(&backup.path, original).await {
-                Ok(()) => report.restored.push(backup.path.clone()),
-                Err(e) => report.failed.push(RollbackFailure {
-                    path: backup.path.clone(),
-                    reason: format!("failed to restore: {e}"),
-                }),
-            }
-        }
+        Some(original) => match tokio::fs::write(&backup.path, original).await {
+            Ok(()) => report.restored.push(backup.path.clone()),
+            Err(e) => report.failed.push(RollbackFailure {
+                path: backup.path.clone(),
+                reason: format!("failed to restore: {e}"),
+            }),
+        },
         None => {
             match tokio::fs::remove_file(&backup.path).await {
                 Ok(()) => report.deleted.push(backup.path.clone()),
@@ -209,7 +207,10 @@ mod tests {
         assert_eq!(report.restored[0], ok_file);
         assert_eq!(report.failed.len(), 1);
         assert_eq!(report.failed[0].path, bad_file);
-        assert_eq!(tokio::fs::read_to_string(&ok_file).await.unwrap(), "ok_orig");
+        assert_eq!(
+            tokio::fs::read_to_string(&ok_file).await.unwrap(),
+            "ok_orig"
+        );
     }
 
     #[tokio::test]
@@ -237,7 +238,10 @@ mod tests {
         assert_eq!(report.restored.len(), 1);
         assert_eq!(report.deleted.len(), 1);
         assert!(report.failed.is_empty());
-        assert_eq!(tokio::fs::read_to_string(&existing).await.unwrap(), "was_here");
+        assert_eq!(
+            tokio::fs::read_to_string(&existing).await.unwrap(),
+            "was_here"
+        );
         assert!(!created.exists());
     }
 

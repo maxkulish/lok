@@ -245,7 +245,9 @@ mod tests {
     #[tokio::test]
     async fn test_verify_captures_stdout() {
         let dir = tempdir().unwrap();
-        let result = verification("echo hello_world", 5_000).run(dir.path()).await;
+        let result = verification("echo hello_world", 5_000)
+            .run(dir.path())
+            .await;
         assert!(result.success);
         assert!(result.stdout.contains("hello_world"));
     }

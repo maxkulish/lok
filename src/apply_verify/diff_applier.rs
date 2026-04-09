@@ -150,11 +150,7 @@ impl DiffApplier {
     /// Returns `Ok(ApplyResult)` with all modified files on success, or
     /// `Err(ApplyError { kind, partial })` where `partial.modified_files`
     /// holds any files that were successfully written before the failure.
-    pub async fn apply(
-        &self,
-        parsed: &ParsedEdits,
-        cwd: &Path,
-    ) -> Result<ApplyResult, ApplyError> {
+    pub async fn apply(&self, parsed: &ParsedEdits, cwd: &Path) -> Result<ApplyResult, ApplyError> {
         let mut partial = ApplyResult::empty(parsed.format);
 
         for edit in &parsed.edits {
@@ -343,7 +339,10 @@ mod tests {
         let result = applier.apply(&parsed, dir.path()).await.unwrap();
 
         assert_eq!(result.modified_files.len(), 1);
-        assert_eq!(result.modified_files[0].original_content.as_deref(), Some("hello world"));
+        assert_eq!(
+            result.modified_files[0].original_content.as_deref(),
+            Some("hello world")
+        );
         assert_eq!(result.modified_files[0].new_content, "goodbye world");
         let on_disk = tokio::fs::read_to_string(&file).await.unwrap();
         assert_eq!(on_disk, "goodbye world");
