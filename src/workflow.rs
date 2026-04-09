@@ -591,6 +591,85 @@ fn parse_validation_response(response: &str) -> std::result::Result<ValidationRe
     ))
 }
 
+/// Apply `mode = "lenient"` semantics: any non-empty validator response passes
+/// (with the trimmed text becoming the cleaned output), an empty/whitespace-only
+/// response fails with `ValidatorError` and captures the raw stdout for debugging.
+fn apply_lenient_mode(
+    raw_stdout: &str,
+    validator_label: &str,
+    elapsed_ms: u64,
+) -> (Option<ValidationResult>, Option<String>) {
+    let trimmed = raw_stdout.trim();
+    if !trimmed.is_empty() {
+        (
+            Some(ValidationResult {
+                passed: true,
+                failure_type: None,
+                failure_reason: None,
+                validator: validator_label.to_string(),
+                elapsed_ms,
+                raw_response: None,
+            }),
+            Some(trimmed.to_string()),
+        )
+    } else {
+        (
+            Some(ValidationResult {
+                passed: false,
+                failure_type: Some(FailureType::ValidatorError),
+                failure_reason: Some(
+                    "Validator returned empty response in lenient mode".to_string(),
+                ),
+                validator: validator_label.to_string(),
+                elapsed_ms,
+                raw_response: Some(raw_stdout.to_string()),
+            }),
+            None,
+        )
+    }
+}
+
+/// Apply `on_parse_error` policy when the validator response cannot be parsed.
+/// Mirrors `handle_infra_error` for parse failures: "pass" treats it as success,
+/// "skip" drops the validation result entirely, anything else (default "fail")
+/// returns a `ValidatorError` with the raw response captured for `--explain-validation`.
+fn apply_parse_error_policy(
+    on_parse_error: Option<&str>,
+    parse_err: &str,
+    raw_stdout: &str,
+    validator_label: &str,
+    elapsed_ms: u64,
+) -> (Option<ValidationResult>, Option<String>) {
+    match on_parse_error.unwrap_or("fail") {
+        "pass" => (
+            Some(ValidationResult {
+                passed: true,
+                failure_type: None,
+                failure_reason: None,
+                validator: format!("{}:parse_passthrough", validator_label),
+                elapsed_ms,
+                raw_response: None,
+            }),
+            None,
+        ),
+        "skip" => (None, None),
+        _ => (
+            Some(ValidationResult {
+                passed: false,
+                failure_type: Some(FailureType::ValidatorError),
+                failure_reason: Some(format!(
+                    "Failed to parse validation response: {}",
+                    parse_err
+                )),
+                validator: validator_label.to_string(),
+                elapsed_ms,
+                raw_response: Some(raw_stdout.to_string()),
+            }),
+            None,
+        ),
+    }
+}
+
 /// Run LLM-based validation on step output.
 /// Returns (ValidationResult, Option<cleaned_output>).
 async fn run_llm_validation(
@@ -707,34 +786,7 @@ async fn run_llm_validation(
             let mode = validate_config.mode.as_deref().unwrap_or("strict");
 
             if mode == "lenient" {
-                let trimmed = query_output.stdout.trim();
-                return if !trimmed.is_empty() {
-                    (
-                        Some(ValidationResult {
-                            passed: true,
-                            failure_type: None,
-                            failure_reason: None,
-                            validator: validator_label,
-                            elapsed_ms,
-                            raw_response: None,
-                        }),
-                        Some(trimmed.to_string()),
-                    )
-                } else {
-                    (
-                        Some(ValidationResult {
-                            passed: false,
-                            failure_type: Some(FailureType::ValidatorError),
-                            failure_reason: Some(
-                                "Validator returned empty response in lenient mode".to_string(),
-                            ),
-                            validator: validator_label,
-                            elapsed_ms,
-                            raw_response: Some(query_output.stdout.clone()),
-                        }),
-                        None,
-                    )
-                };
+                return apply_lenient_mode(&query_output.stdout, &validator_label, elapsed_ms);
             }
 
             match parse_validation_response(&query_output.stdout) {
@@ -768,38 +820,13 @@ async fn run_llm_validation(
                         )
                     }
                 }
-                Err(parse_err) => {
-                    let on_parse_error =
-                        validate_config.on_parse_error.as_deref().unwrap_or("fail");
-                    match on_parse_error {
-                        "pass" => (
-                            Some(ValidationResult {
-                                passed: true,
-                                failure_type: None,
-                                failure_reason: None,
-                                validator: format!("{}:parse_passthrough", validator_label),
-                                elapsed_ms,
-                                raw_response: None,
-                            }),
-                            None,
-                        ),
-                        "skip" => (None, None),
-                        _ => (
-                            Some(ValidationResult {
-                                passed: false,
-                                failure_type: Some(FailureType::ValidatorError),
-                                failure_reason: Some(format!(
-                                    "Failed to parse validation response: {}",
-                                    parse_err
-                                )),
-                                validator: validator_label,
-                                elapsed_ms,
-                                raw_response: Some(query_output.stdout.clone()),
-                            }),
-                            None,
-                        ),
-                    }
-                }
+                Err(parse_err) => apply_parse_error_policy(
+                    validate_config.on_parse_error.as_deref(),
+                    &parse_err,
+                    &query_output.stdout,
+                    &validator_label,
+                    elapsed_ms,
+                ),
             }
         }
         Err(e) => {
@@ -5792,6 +5819,227 @@ prompt = "Validate: {{ output }}"
         };
         assert!(result.success);
         assert!(result.failure.is_none());
+    }
+
+    // ==================== CLO-214 on_parse_error policy tests ====================
+
+    #[test]
+    fn test_apply_parse_error_policy_default_fails() {
+        let (vr, cleaned) = apply_parse_error_policy(
+            None,
+            "bad json",
+            "raw garbage from validator",
+            "llm:claude",
+            42,
+        );
+        let vr = vr.expect("default policy should produce a validation result");
+        assert!(!vr.passed);
+        assert!(matches!(vr.failure_type, Some(FailureType::ValidatorError)));
+        assert!(vr
+            .failure_reason
+            .as_deref()
+            .unwrap()
+            .contains("Failed to parse validation response"));
+        assert_eq!(vr.validator, "llm:claude");
+        assert_eq!(vr.elapsed_ms, 42);
+        // CLO-215: raw_response is captured on parse failure
+        assert_eq!(vr.raw_response.as_deref(), Some("raw garbage from validator"));
+        assert!(cleaned.is_none());
+    }
+
+    #[test]
+    fn test_apply_parse_error_policy_explicit_fail_matches_default() {
+        let (vr, _) = apply_parse_error_policy(Some("fail"), "bad", "raw", "llm:claude", 1);
+        let vr = vr.unwrap();
+        assert!(!vr.passed);
+        assert!(matches!(vr.failure_type, Some(FailureType::ValidatorError)));
+    }
+
+    #[test]
+    fn test_apply_parse_error_policy_pass_succeeds_without_output() {
+        let (vr, cleaned) = apply_parse_error_policy(
+            Some("pass"),
+            "bad json",
+            "raw stdout that nobody can parse",
+            "llm:haiku",
+            10,
+        );
+        let vr = vr.expect("pass policy should still emit a ValidationResult");
+        assert!(vr.passed);
+        assert!(vr.failure_type.is_none());
+        assert!(vr.failure_reason.is_none());
+        assert_eq!(vr.validator, "llm:haiku:parse_passthrough");
+        // pass-through does not surface raw_response (only failures do)
+        assert!(vr.raw_response.is_none());
+        // pass-through does not mutate downstream output
+        assert!(cleaned.is_none());
+    }
+
+    #[test]
+    fn test_apply_parse_error_policy_skip_drops_validation() {
+        let (vr, cleaned) = apply_parse_error_policy(
+            Some("skip"),
+            "bad",
+            "raw",
+            "llm:haiku",
+            5,
+        );
+        // skip means no validation result attached at all
+        assert!(vr.is_none());
+        assert!(cleaned.is_none());
+    }
+
+    #[test]
+    fn test_apply_parse_error_policy_unknown_value_falls_back_to_fail() {
+        // Unknown policy strings should NOT silently pass — they fail closed.
+        let (vr, _) = apply_parse_error_policy(
+            Some("yolo"),
+            "bad",
+            "raw",
+            "llm:claude",
+            1,
+        );
+        let vr = vr.unwrap();
+        assert!(!vr.passed);
+        assert!(matches!(vr.failure_type, Some(FailureType::ValidatorError)));
+    }
+
+    // ==================== CLO-216 lenient mode tests ====================
+
+    #[test]
+    fn test_apply_lenient_mode_non_empty_passes_with_cleaned_output() {
+        let (vr, cleaned) = apply_lenient_mode(
+            "  Some validator commentary  \n",
+            "llm:haiku",
+            12,
+        );
+        let vr = vr.expect("non-empty lenient response should produce a result");
+        assert!(vr.passed);
+        assert!(vr.failure_type.is_none());
+        assert!(vr.failure_reason.is_none());
+        assert!(vr.raw_response.is_none());
+        assert_eq!(vr.validator, "llm:haiku");
+        assert_eq!(vr.elapsed_ms, 12);
+        // The trimmed text becomes the cleaned output (used by replace_output downstream)
+        assert_eq!(cleaned.as_deref(), Some("Some validator commentary"));
+    }
+
+    #[test]
+    fn test_apply_lenient_mode_empty_response_fails() {
+        let (vr, cleaned) = apply_lenient_mode("", "llm:claude", 3);
+        let vr = vr.expect("empty lenient response should still produce a result");
+        assert!(!vr.passed);
+        assert!(matches!(vr.failure_type, Some(FailureType::ValidatorError)));
+        assert!(vr
+            .failure_reason
+            .as_deref()
+            .unwrap()
+            .contains("empty response"));
+        // Even empty responses are captured for --explain-validation
+        assert_eq!(vr.raw_response.as_deref(), Some(""));
+        assert!(cleaned.is_none());
+    }
+
+    #[test]
+    fn test_apply_lenient_mode_whitespace_only_fails() {
+        let (vr, _) = apply_lenient_mode("   \n\t  \n", "llm:claude", 1);
+        let vr = vr.unwrap();
+        assert!(!vr.passed);
+        assert!(matches!(vr.failure_type, Some(FailureType::ValidatorError)));
+    }
+
+    #[test]
+    fn test_apply_lenient_mode_preserves_internal_whitespace() {
+        let (_, cleaned) = apply_lenient_mode(
+            "  line one\nline two  ",
+            "llm:claude",
+            1,
+        );
+        // Outer trimming, but internal newline preserved
+        assert_eq!(cleaned.as_deref(), Some("line one\nline two"));
+    }
+
+    // ==================== CLO-214 / CLO-216 ValidateConfig deserialization ====================
+
+    #[tokio::test]
+    async fn test_validate_config_parses_on_parse_error_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-on-parse-error"
+
+[[steps]]
+name = "step1"
+shell = "echo hi"
+
+[steps.validate]
+backend = "claude"
+prompt = "Validate: {{ output }}"
+on_parse_error = "pass"
+"#,
+        )
+        .unwrap();
+
+        let workflow = load_workflow(&workflow_path).await.unwrap();
+        let vc = workflow.steps[0].validate.as_ref().unwrap();
+        assert_eq!(vc.on_parse_error.as_deref(), Some("pass"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_config_parses_mode_lenient_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-mode-lenient"
+
+[[steps]]
+name = "step1"
+shell = "echo hi"
+
+[steps.validate]
+backend = "claude"
+prompt = "Validate: {{ output }}"
+mode = "lenient"
+"#,
+        )
+        .unwrap();
+
+        let workflow = load_workflow(&workflow_path).await.unwrap();
+        let vc = workflow.steps[0].validate.as_ref().unwrap();
+        assert_eq!(vc.mode.as_deref(), Some("lenient"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_config_new_fields_default_to_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-new-field-defaults"
+
+[[steps]]
+name = "step1"
+shell = "echo hi"
+
+[steps.validate]
+backend = "claude"
+prompt = "p"
+"#,
+        )
+        .unwrap();
+
+        let workflow = load_workflow(&workflow_path).await.unwrap();
+        let vc = workflow.steps[0].validate.as_ref().unwrap();
+        assert!(vc.on_parse_error.is_none());
+        assert!(vc.mode.is_none());
     }
 
     #[test]

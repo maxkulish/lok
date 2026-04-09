@@ -1,14 +1,15 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-04-07
+**Last Updated**: 2026-04-08
 
 ## Summary
 
 | Phase | Tasks | Completed | Status |
 |-------|-------|-----------|--------|
 | Phase 2: Validation Pipeline | 3 | 3 | Complete |
+| Phase 2.5: Validation Resilience | 3 | 3 | Complete |
 | Phase 3: Failure Classification | 1 | 1 | Complete |
-| Phase 4: Backend Error Types & Retry | 3 | 1 | In Progress |
+| Phase 4: Backend Error Types & Retry | 3 | 3 | Complete |
 | Phase 5: Enrich QueryOutput | 1 | 0 | Planned |
 | Phase 6: Config Merging | 1 | 1 | Complete |
 | Phase 7: MiniJinja Templates | 2 | 2 | Complete |
@@ -23,6 +24,16 @@
 | [CLO-183](https://linear.app/cloud-ai/issue/CLO-183) | Implement heuristic validators (check field) for step validation | Done | CLO-182 |
 | [CLO-184](https://linear.app/cloud-ai/issue/CLO-184) | Implement LLM-based step validation (validate.backend + prompt) | Done | CLO-183 |
 
+## Phase 2.5: Validation Resilience
+
+Driven by Mentis pre-PR validation incident (2026-04-07): Haiku returned unparseable markdown causing fail-closed step errors. See `docs/plans/2026-04-07-clo-214-216-validation-resilience.md`.
+
+| Task | Title | Status | Dependencies |
+|------|-------|--------|--------------|
+| [CLO-214](https://linear.app/cloud-ai/issue/CLO-214) | Add validate.on_parse_error config (pass/skip/fail) | Done | CLO-184 |
+| [CLO-215](https://linear.app/cloud-ai/issue/CLO-215) | Add --explain-validation CLI flag for raw validator response | Done | CLO-184 |
+| [CLO-216](https://linear.app/cloud-ai/issue/CLO-216) | Support validate.mode = "lenient" for noise-cleanup validators | Done | CLO-184 |
+
 ## Phase 3: Failure Classification
 
 | Task | Title | Status | Dependencies |
@@ -34,8 +45,8 @@
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-202](https://linear.app/cloud-ai/issue/CLO-202) | Add BackendError enum with typed variants and is_retryable() | Done | - |
-| [CLO-206](https://linear.app/cloud-ai/issue/CLO-206) | Add RetryPolicy with exponential backoff, jitter, retry_after | Backlog | CLO-202 |
-| [CLO-208](https://linear.app/cloud-ai/issue/CLO-208) | Add RetryExecutor decorator wrapping Backend trait | Backlog | CLO-202, CLO-206 |
+| [CLO-206](https://linear.app/cloud-ai/issue/CLO-206) | Add RetryPolicy with exponential backoff, jitter, retry_after | Done | CLO-202 |
+| [CLO-208](https://linear.app/cloud-ai/issue/CLO-208) | Add RetryExecutor decorator wrapping Backend trait | Done | CLO-202, CLO-206 |
 
 ## Phase 5: Enrich QueryOutput
 
@@ -61,7 +72,7 @@
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-205](https://linear.app/cloud-ai/issue/CLO-205) | Implement EditParser with 3-format auto-detection | Done | - |
-| [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | Implement DiffApplier, Rollback, Verification, RetryLoop | Backlog | CLO-205 |
+| [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | Implement DiffApplier, Rollback, Verification, RetryLoop | In Progress | CLO-205 |
 | [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify pipeline into workflow step execution | Backlog | CLO-205, CLO-210, CLO-202 |
 
 ## Phase 9: Configurable Role Routing
