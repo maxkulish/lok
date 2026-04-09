@@ -63,9 +63,9 @@ phases:
     test_count: 412
     new_tests: 45
   pr:
-    status: in_progress
-    pr_url: null
-    pr_number: null
+    status: complete
+    pr_url: "https://github.com/maxkulish/lok/pull/12"
+    pr_number: 12
   complete:
     status: pending
     aggregation_files_updated: false
