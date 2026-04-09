@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-04-08
+**Last Updated**: 2026-04-09
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | DiffApplier + Rollback + Verification + RetryLoop | Spec | Phase 8 | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -14,12 +14,13 @@
 |----------|------|-------|--------------|
 | 1 | [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Enrich QueryOutput with model, usage, duration | CLO-202 (done) |
 | 2 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Configurable role routing with [roles]/[teams] config | CLO-203 (done) |
-| 3 | [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify into workflow execution | CLO-205, CLO-210 |
+| 3 | [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify into workflow execution | CLO-205 (done), CLO-210 (done) |
 
 ## Recently Completed
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | Implement DiffApplier, Rollback, Verification, RetryLoop | 2026-04-09 | 4 modules in apply_verify: DiffApplier (3-format apply), Rollback (reverse-order restore), Verification (bounded shell + process-group), RetryLoop (parse-apply-verify-rollback cycle); 45 new tests |
 | [CLO-216](https://linear.app/cloud-ai/issue/CLO-216) | Support validate.mode = "lenient" for noise-cleanup validators | 2026-04-08 | mode="lenient" bypasses parser; any non-empty response passes; reconciled with tests |
 | [CLO-215](https://linear.app/cloud-ai/issue/CLO-215) | Add --explain-validation CLI flag for raw validator response | 2026-04-08 | raw_response field on ValidationResult + CLI flag dump on parse failure |
 | [CLO-214](https://linear.app/cloud-ai/issue/CLO-214) | Add validate.on_parse_error config (pass/skip/fail) | 2026-04-08 | on_parse_error policy independent of on_error; reconciled with helper extraction + tests |
