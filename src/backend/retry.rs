@@ -33,16 +33,16 @@ impl RetryPolicy {
         if attempt == 0 {
             return Duration::from_secs(0);
         }
-        
+
         // Exponential backoff: base * 2^(attempt-1)
         let exp = 2_u32.pow(attempt as u32 - 1);
         let delay = self.base_delay * exp;
-        
+
         // Add jitter (±10%) to prevent thundering herd
         let mut rng = rand::thread_rng();
         let jitter = rng.gen_range(0.9..1.1);
         let delay_with_jitter = Duration::from_secs_f64(delay.as_secs_f64() * jitter);
-        
+
         delay_with_jitter.min(self.max_delay)
     }
 }
@@ -78,14 +78,24 @@ impl Backend for RetryExecutor {
             if attempt > 0 {
                 // Determine delay: respect server-provided retry_after if available,
                 // otherwise use our exponential backoff policy.
-                let delay = if let Some(BackendError::RateLimit { retry_after_ms: Some(ms), .. }) = last_error.as_ref() {
+                let delay = if let Some(BackendError::RateLimit {
+                    retry_after_ms: Some(ms),
+                    ..
+                }) = last_error.as_ref()
+                {
                     Duration::from_millis(*ms)
                 } else {
                     self.policy.get_delay(attempt)
                 };
 
-                eprintln!("  {} Retrying {} (attempt {}/{}) in {:?}...", 
-                    "↻".yellow(), self.inner.name(), attempt, self.policy.max_retries, delay);
+                eprintln!(
+                    "  {} Retrying {} (attempt {}/{}) in {:?}...",
+                    "↻".yellow(),
+                    self.inner.name(),
+                    attempt,
+                    self.policy.max_retries,
+                    delay
+                );
                 sleep(delay).await;
             }
 
@@ -98,9 +108,9 @@ impl Backend for RetryExecutor {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| BackendError::ExecutionFailed { 
-            message: "Retry loop exhausted without error".to_string(), 
-            exit_code: None 
+        Err(last_error.unwrap_or_else(|| BackendError::ExecutionFailed {
+            message: "Retry loop exhausted without error".to_string(),
+            exit_code: None,
         }))
     }
 
@@ -122,12 +132,23 @@ mod tests {
 
     #[async_trait]
     impl Backend for MockBackend {
-        fn name(&self) -> &str { "mock" }
-        fn is_available(&self) -> bool { true }
-        async fn query(&self, _: &str, _: &Path, _: Option<&str>) -> std::result::Result<QueryOutput, BackendError> {
+        fn name(&self) -> &str {
+            "mock"
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+        async fn query(
+            &self,
+            _: &str,
+            _: &Path,
+            _: Option<&str>,
+        ) -> std::result::Result<QueryOutput, BackendError> {
             let count = self.failure_count.fetch_add(1, Ordering::SeqCst);
             if count < self.max_failures {
-                Err(BackendError::Network { message: "transient".into() })
+                Err(BackendError::Network {
+                    message: "transient".into(),
+                })
             } else {
                 Ok(QueryOutput::from_text("success".into()))
             }
@@ -152,22 +173,43 @@ mod tests {
 
     #[async_trait]
     impl Backend for FixedErrorBackend {
-        fn name(&self) -> &str { "fixed-error" }
-        fn is_available(&self) -> bool { true }
-        async fn query(&self, _: &str, _: &Path, _: Option<&str>) -> std::result::Result<QueryOutput, BackendError> {
+        fn name(&self) -> &str {
+            "fixed-error"
+        }
+        fn is_available(&self) -> bool {
+            true
+        }
+        async fn query(
+            &self,
+            _: &str,
+            _: &Path,
+            _: Option<&str>,
+        ) -> std::result::Result<QueryOutput, BackendError> {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             // Clone the held error for each call
             let guard = self.error.lock().unwrap();
             let err = guard.as_ref().unwrap();
             Err(match err {
-                BackendError::Auth { message } => BackendError::Auth { message: message.clone() },
-                BackendError::RateLimit { message, retry_after_ms } => BackendError::RateLimit {
+                BackendError::Auth { message } => BackendError::Auth {
+                    message: message.clone(),
+                },
+                BackendError::RateLimit {
+                    message,
+                    retry_after_ms,
+                } => BackendError::RateLimit {
                     message: message.clone(),
                     retry_after_ms: *retry_after_ms,
                 },
-                BackendError::Parse { message } => BackendError::Parse { message: message.clone() },
-                BackendError::Network { message } => BackendError::Network { message: message.clone() },
-                _ => BackendError::ExecutionFailed { message: "unsupported".into(), exit_code: None },
+                BackendError::Parse { message } => BackendError::Parse {
+                    message: message.clone(),
+                },
+                BackendError::Network { message } => BackendError::Network {
+                    message: message.clone(),
+                },
+                _ => BackendError::ExecutionFailed {
+                    message: "unsupported".into(),
+                    exit_code: None,
+                },
             })
         }
     }
@@ -176,7 +218,7 @@ mod tests {
     async fn test_retry_success_after_failures() {
         let inner = Arc::new(MockBackend {
             failure_count: AtomicUsize::new(0),
-            max_failures: 2
+            max_failures: 2,
         });
         let policy = RetryPolicy {
             max_retries: 3,
@@ -193,7 +235,7 @@ mod tests {
     async fn test_retry_exhausted() {
         let inner = Arc::new(MockBackend {
             failure_count: AtomicUsize::new(0),
-            max_failures: 5
+            max_failures: 5,
         });
         let policy = RetryPolicy {
             max_retries: 2,
@@ -229,9 +271,21 @@ mod tests {
         let d1 = policy.get_delay(1);
         let d2 = policy.get_delay(2);
         let d3 = policy.get_delay(3);
-        assert!(d1 >= Duration::from_millis(90) && d1 <= Duration::from_millis(110), "d1 = {:?}", d1);
-        assert!(d2 >= Duration::from_millis(180) && d2 <= Duration::from_millis(220), "d2 = {:?}", d2);
-        assert!(d3 >= Duration::from_millis(360) && d3 <= Duration::from_millis(440), "d3 = {:?}", d3);
+        assert!(
+            d1 >= Duration::from_millis(90) && d1 <= Duration::from_millis(110),
+            "d1 = {:?}",
+            d1
+        );
+        assert!(
+            d2 >= Duration::from_millis(180) && d2 <= Duration::from_millis(220),
+            "d2 = {:?}",
+            d2
+        );
+        assert!(
+            d3 >= Duration::from_millis(360) && d3 <= Duration::from_millis(440),
+            "d3 = {:?}",
+            d3
+        );
     }
 
     #[test]

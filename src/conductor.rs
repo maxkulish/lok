@@ -182,8 +182,7 @@ Always explain your reasoning briefly before making tool calls."#,
                     .ok_or_else(|| anyhow::anyhow!("Backend not found: {}", backend_name))?;
 
                 let retry_policy = backend::get_retry_policy(backend_config, &self.config.defaults);
-                let backend =
-                    backend::create_backend(backend_name, backend_config, retry_policy)?;
+                let backend = backend::create_backend(backend_name, backend_config, retry_policy)?;
                 let result = backend.query(prompt, cwd, None).await?;
 
                 println!(

@@ -728,7 +728,8 @@ async fn run_llm_validation(
     };
 
     let retry_policy = backend::get_retry_policy(backend_config, &config.defaults);
-    let backend_instance = match backend::create_backend(backend_name, backend_config, retry_policy) {
+    let backend_instance = match backend::create_backend(backend_name, backend_config, retry_policy)
+    {
         Ok(b) => b,
         Err(e) => {
             return handle_infra_error(
@@ -5843,7 +5844,10 @@ prompt = "Validate: {{ output }}"
         assert_eq!(vr.validator, "llm:claude");
         assert_eq!(vr.elapsed_ms, 42);
         // CLO-215: raw_response is captured on parse failure
-        assert_eq!(vr.raw_response.as_deref(), Some("raw garbage from validator"));
+        assert_eq!(
+            vr.raw_response.as_deref(),
+            Some("raw garbage from validator")
+        );
         assert!(cleaned.is_none());
     }
 
@@ -5877,13 +5881,7 @@ prompt = "Validate: {{ output }}"
 
     #[test]
     fn test_apply_parse_error_policy_skip_drops_validation() {
-        let (vr, cleaned) = apply_parse_error_policy(
-            Some("skip"),
-            "bad",
-            "raw",
-            "llm:haiku",
-            5,
-        );
+        let (vr, cleaned) = apply_parse_error_policy(Some("skip"), "bad", "raw", "llm:haiku", 5);
         // skip means no validation result attached at all
         assert!(vr.is_none());
         assert!(cleaned.is_none());
@@ -5892,13 +5890,7 @@ prompt = "Validate: {{ output }}"
     #[test]
     fn test_apply_parse_error_policy_unknown_value_falls_back_to_fail() {
         // Unknown policy strings should NOT silently pass — they fail closed.
-        let (vr, _) = apply_parse_error_policy(
-            Some("yolo"),
-            "bad",
-            "raw",
-            "llm:claude",
-            1,
-        );
+        let (vr, _) = apply_parse_error_policy(Some("yolo"), "bad", "raw", "llm:claude", 1);
         let vr = vr.unwrap();
         assert!(!vr.passed);
         assert!(matches!(vr.failure_type, Some(FailureType::ValidatorError)));
@@ -5908,11 +5900,7 @@ prompt = "Validate: {{ output }}"
 
     #[test]
     fn test_apply_lenient_mode_non_empty_passes_with_cleaned_output() {
-        let (vr, cleaned) = apply_lenient_mode(
-            "  Some validator commentary  \n",
-            "llm:haiku",
-            12,
-        );
+        let (vr, cleaned) = apply_lenient_mode("  Some validator commentary  \n", "llm:haiku", 12);
         let vr = vr.expect("non-empty lenient response should produce a result");
         assert!(vr.passed);
         assert!(vr.failure_type.is_none());
@@ -5950,11 +5938,7 @@ prompt = "Validate: {{ output }}"
 
     #[test]
     fn test_apply_lenient_mode_preserves_internal_whitespace() {
-        let (_, cleaned) = apply_lenient_mode(
-            "  line one\nline two  ",
-            "llm:claude",
-            1,
-        );
+        let (_, cleaned) = apply_lenient_mode("  line one\nline two  ", "llm:claude", 1);
         // Outer trimming, but internal newline preserved
         assert_eq!(cleaned.as_deref(), Some("line one\nline two"));
     }
