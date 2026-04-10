@@ -14,15 +14,30 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                    PR Review Cycle                              │
 ├─────────────────────────────────────────────────────────────────┤
-│  1. Fetch PR reviews and comments                               │
+│  1. Fetch PR reviews and comments (with pagination)             │
 │  2. Analyze feedback (blocking vs suggestions)                  │
-│  3. Make code changes to address feedback                       │
-│  4. Commit changes with descriptive message                     │
-│  5. Reply to review comments                                    │
-│  6. Push to branch                                              │
-│  7. Repeat if new comments arrive                               │
+│  3. Detect stale comments (line changed since comment)          │
+│  4. Make code changes to address feedback                       │
+│  5. Commit changes with descriptive message                     │
+│  6. Push to branch (BEFORE replying)                            │
+│  7. Reply to EVERY comment (MANDATORY - track N/N)              │
+│  8. Repeat if new comments arrive                               │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+### MANDATORY: Reply to Every Comment
+
+**Every review comment MUST receive a reply.** This is not optional.
+No comment may be left without a response - whether the fix was applied, declined with rationale, or acknowledged. The PR review is not complete until all comments have replies posted via the GitHub API.
+
+| Decision | Required Reply |
+|----------|---------------|
+| Fixed | "Fixed in [SHA]. [what changed]" |
+| Declined | "Intentionally kept as-is: [rationale]" |
+| Question answered | "[explanation]. [reference to design doc if relevant]" |
+| Deferred | "Tracked as follow-up in [task/issue]. [reason for deferral]" |
+
+For `gemini-code-assist` comments, every reply MUST end with `/gemini review` on its own line to trigger re-validation.
 
 ---
 
@@ -72,16 +87,22 @@ Exit command.
 
 ### Step 3: Fetch Review Comments
 
-```bash
-# Get review comments (inline code comments)
-gh api repos/{owner}/{repo}/pulls/[number]/comments --jq '.[] | {id, path, line, body, user: .user.login, created_at}'
+**Use `--paginate` on all gh api calls** to ensure no comments are missed on PRs with many reviews (default page size is 30).
 
-# Get review threads
-gh api repos/{owner}/{repo}/pulls/[number]/reviews --jq '.[] | {id, state, body, user: .user.login}'
+```bash
+# Get review comments (inline code comments) - paginated
+gh api repos/{owner}/{repo}/pulls/[number]/comments --paginate \
+  --jq '.[] | {id, path, line, original_line, body, user: .user.login, created_at, commit_id: .original_commit_id}'
+
+# Get review threads - paginated
+gh api repos/{owner}/{repo}/pulls/[number]/reviews --paginate \
+  --jq '.[] | {id, state, body, user: .user.login}'
 
 # Get issue comments (general discussion)
 gh pr view [number] --json comments --jq '.comments[] | {id, body, author: .author.login}'
 ```
+
+**Note**: The `commit_id` and `original_line` fields are used for stale comment detection in Step 4.5.
 
 ### Step 4: Categorize Feedback
 
@@ -104,6 +125,26 @@ Group comments by type:
 - Style suggestions
 - "Nice to have" improvements
 - Positive feedback
+
+### Step 4.5: Detect Stale Comments
+
+For each inline comment, check if the referenced code has changed since the comment was posted:
+
+1. The comment's `original_commit_id` tells you what commit the reviewer saw
+2. Compare the file at that commit vs HEAD:
+   ```bash
+   git diff [original_commit_id]..HEAD -- [file_path]
+   ```
+3. If the diff includes changes around the commented line (within 5 lines), flag the comment as **potentially stale**
+
+**Stale comments are presented to the user but marked clearly:**
+```
+[STALE?] @reviewer on src/backend/retry.rs:45
+  "Consider adding jitter to retry delay"
+  Note: Lines 40-50 of this file changed in commit abc1234 after this comment.
+```
+
+The user decides whether stale comments still need action. Do not auto-skip them.
 
 ### Step 5: Display Review Summary
 
@@ -207,34 +248,63 @@ EOF
 )"
 ```
 
-### Step 8: Reply to Comments
+### Step 8: Push Changes
 
-For each addressed comment, post a reply:
-
-```bash
-# Reply to a review comment
-gh api repos/{owner}/{repo}/pulls/[number]/comments/[comment_id]/replies \
-  -f body="Fixed in [commit SHA]. [Brief explanation of change]"
-
-# Or mark as resolved if using GitHub's conversation feature
-```
-
-**IMPORTANT**: If the reviewer is `gemini-code-assist`, append `\n\n/gemini review` to every reply to trigger re-validation.
-
-Example replies:
-
-| Feedback Type | Reply Template |
-|---------------|----------------|
-| Bug fix | "Fixed in abc1234. Good catch!\n\n/gemini review" |
-| Suggestion implemented | "Great suggestion, implemented in abc1234\n\n/gemini review" |
-| Suggestion declined | "Considered this, but [reason]. Happy to discuss further.\n\n/gemini review" |
-| Clarification | "[Explanation]. Let me know if you have questions.\n\n/gemini review" |
-
-### Step 9: Push Changes
+Push BEFORE replying so the commit SHA is visible on GitHub when reviewers read your replies.
 
 ```bash
 git push origin feat/clo-XX-description
 ```
+
+### Step 9: Reply to EVERY Comment (MANDATORY)
+
+**This step is REQUIRED. Do not skip it. Do not proceed to Step 10 until every comment has a reply.**
+
+For EACH comment (fixed, declined, or question), post a reply via the GitHub API:
+
+```bash
+# Reply to a review comment
+gh api repos/{owner}/{repo}/pulls/[number]/comments/[comment_id]/replies \
+  -X POST -f body="Fixed in [commit SHA]. [Brief explanation of change]"
+```
+
+**Rules**:
+1. Every comment gets a reply - no exceptions
+2. Reference the commit SHA that contains the fix
+3. If declining a suggestion, explain why (reference design docs, ADRs, or project constraints)
+4. For `gemini-code-assist` comments: every reply MUST end with `/gemini review` on its own line
+5. For `copilot-pull-request-reviewer` comments: reply with fix details (no special trigger needed)
+6. Track reply count - the final summary must show `Replies Posted: N/N`
+
+**Reply templates by reviewer type**:
+
+| Reviewer | Decision | Reply Template |
+|----------|----------|----------------|
+| Human | Bug fix | "Fixed in abc1234. Good catch!" |
+| Human | Declined | "Intentionally kept as-is: [rationale]. Happy to discuss." |
+| `gemini-code-assist` | Fixed | "Fixed in abc1234. [details]\n\n/gemini review" |
+| `gemini-code-assist` | Declined | "Kept as-is: [reason]\n\n/gemini review" |
+| `copilot-pull-request-reviewer` | Fixed | "Fixed in abc1234. [details]" |
+| `copilot-pull-request-reviewer` | Declined | "Intentionally kept as-is: [rationale]" |
+
+**Batch replies** (for multiple comments):
+
+```bash
+COMMIT_SHA=$(git rev-parse --short HEAD)
+COMMENTS=(
+  "COMMENT_ID_1|Fixed: description of change"
+  "COMMENT_ID_2|Declined: rationale for keeping as-is"
+)
+
+for item in "${COMMENTS[@]}"; do
+  ID="${item%%|*}"
+  MSG="${item#*|}"
+  gh api repos/{owner}/{repo}/pulls/[number]/comments/${ID}/replies \
+    -X POST -f body="${MSG} (${COMMIT_SHA})"
+done
+```
+
+For `gemini-code-assist` comments, append `/gemini review` to each reply body.
 
 ### Step 10: Update Workflow State (if exists)
 
@@ -305,6 +375,9 @@ mcp__linear-server__create_comment(
 
 ### Step 13: Confirm to User
 
+**GATE**: Do not display this summary until ALL comments have replies posted.
+If any comment is missing a reply, go back to Step 9 and post it.
+
 ```
 ========================================
 REVIEW FEEDBACK ADDRESSED
@@ -319,8 +392,13 @@ Changes Made:
 Commits: [count]
 Pushed: Yes
 
-Comments Resolved: [count]
-Remaining: [count]
+Replies Posted: [N/N] (MUST be N/N - all comments replied to)
+- Comment [id]: [fixed/declined/answered] (@reviewer)
+- Comment [id]: [fixed/declined/answered] (@gemini-code-assist, with /gemini review)
+- Comment [id]: [fixed/declined/answered] (@copilot-pull-request-reviewer)
+- ...
+
+Stale Comments: [count skipped with user approval]
 
 Review Status:
 - @reviewer1: APPROVED
@@ -464,24 +542,12 @@ Your choice:
 
 ### Case 3: Stale Comments
 
-When comments are from old code:
+Stale comments are now detected automatically in Step 4.5. When a comment references code that has changed since the comment was posted, it is flagged with `[STALE?]` in the review summary.
 
-```
-NOTE: Comment may be stale
-
-@reviewer1's comment on src/websocket/handler.rs:45
-refers to code that has been significantly changed.
-
-The original line was: [old code]
-Current code is: [new code]
-
-Options:
-1. [resolved] - Mark as resolved (already addressed)
-2. [reply] - Reply explaining the change
-3. [review] - Re-review the current code
-
-Your choice:
-```
+The user decides how to handle stale comments:
+- **Already addressed**: Reply explaining the change resolves the concern
+- **Still relevant**: Address as normal
+- **No longer applicable**: Reply noting the code has been restructured
 
 ### Case 4: All Approved
 
@@ -716,6 +782,36 @@ Next steps:
 2. Check for new comments: /pr:review CLO-XX
 3. After approval: merge or continue workflow
 ```
+
+---
+
+## AI Code Review: copilot-pull-request-reviewer
+
+When GitHub Copilot is configured as a PR reviewer, it leaves inline code suggestions similar to gemini-code-assist but without severity levels.
+
+### Fetching copilot Comments
+
+```bash
+gh api repos/{owner}/{repo}/pulls/[number]/comments --paginate \
+  --jq '.[] | select(.user.login == "copilot-pull-request-reviewer") | {id, path, line, body}'
+```
+
+### Key Differences from gemini-code-assist
+
+| Aspect | gemini-code-assist | copilot-pull-request-reviewer |
+|--------|-------------------|-------------------------------|
+| Severity levels | Yes (`**Severity**: high/medium/low`) | No - treat all as medium |
+| Re-validation trigger | `/gemini review` in reply | None needed - auto re-reviews on push |
+| Suggestion format | Markdown with severity header | Markdown, often with code blocks |
+| Reply format | Must include `/gemini review` | Standard reply, no special suffix |
+
+### Handling copilot Feedback
+
+1. **Fetch comments** filtered by `copilot-pull-request-reviewer`
+2. **Treat all as medium priority** (no severity parsing needed)
+3. **Address issues** the same way as other review comments
+4. **Reply to each comment** with fix details (no `/gemini review` needed)
+5. Copilot automatically re-reviews when new commits are pushed
 
 ---
 
