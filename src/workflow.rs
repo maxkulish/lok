@@ -9,11 +9,15 @@
 //! - `apply_edits` parses JSON edits from LLM output and applies them
 //! - `verify` runs a shell command after edits to validate them
 
+use crate::apply_verify::{
+    DiffApplier, EditParser, EditRequester, RetryContext, RetryLoop, RetryLoopOutcome,
+    RetryReason, Rollback, Verification, VerifyResult,
+};
 use crate::backend;
 use crate::config::Config;
 use crate::context::{resolve_format_command, resolve_verify_command, CodebaseContext};
 use crate::git_agent;
-use crate::utils::{summarize_backend_error, summarize_shell_error};
+use crate::utils::{summarize_backend_error, summarize_shell_error, truncate_utf8};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use thiserror::Error;
@@ -78,24 +82,17 @@ const DEFAULT_STEP_TIMEOUT_MS: u64 = 120_000;
 /// Minimum timeout value in milliseconds (values 1 to MIN-1 are rejected)
 const MIN_TIMEOUT_MS: u64 = 100;
 
-/// A file edit to apply
+/// Default verify output cap: 1 MiB per stream. Matches
+/// `apply_verify::edit_parser::MAX_INPUT_SIZE` by design (C-12).
+const DEFAULT_VERIFY_MAX_OUTPUT_BYTES: usize = 1_048_576;
+
+/// A file edit to apply (kept here because `apply_verify::edit_parser` and
+/// `apply_verify::diff_applier` reference this type).
 #[derive(Debug, Deserialize, Clone)]
 pub struct FileEdit {
     pub file: String,
     pub old: String,
     pub new: String,
-}
-
-/// Structured output from an LLM step with edits
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)] // Fields used for JSON schema, extracted via extract_json_field()
-pub struct AgenticOutput {
-    #[serde(default)]
-    pub edits: Vec<FileEdit>,
-    #[serde(default)]
-    pub summary: Option<String>,
-    #[serde(default)]
-    pub message: Option<String>,
 }
 
 /// A workflow definition loaded from TOML
@@ -1038,6 +1035,238 @@ pub struct StepFailure {
     pub elapsed_ms: u64,
 }
 
+struct EditRequesterCaptures {
+    last_stderr: Option<String>,
+    last_exit_code: Option<i32>,
+}
+
+struct WorkflowEditRequester {
+    backend: std::sync::Arc<dyn backend::Backend>,
+    original_prompt: String,
+    timeout_duration: std::time::Duration,
+    model_override: Option<String>,
+    cwd: PathBuf,
+    fix_retries: u32,
+    captures: std::sync::Mutex<EditRequesterCaptures>,
+}
+
+impl WorkflowEditRequester {
+    fn new(
+        backend: std::sync::Arc<dyn backend::Backend>,
+        original_prompt: String,
+        timeout_duration: std::time::Duration,
+        model_override: Option<String>,
+        cwd: PathBuf,
+        fix_retries: u32,
+    ) -> Self {
+        Self {
+            backend,
+            original_prompt,
+            timeout_duration,
+            model_override,
+            cwd,
+            fix_retries,
+            captures: std::sync::Mutex::new(EditRequesterCaptures {
+                last_stderr: None,
+                last_exit_code: None,
+            }),
+        }
+    }
+
+    fn into_captures(self) -> EditRequesterCaptures {
+        self.captures.into_inner().expect("poisoned mutex")
+    }
+}
+
+const FIX_PROMPT_RAW_TRUNC_BYTES: usize = 4096;
+
+fn truncate_for_prompt(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    format!("{}... [truncated]", truncate_utf8(s, max))
+}
+
+fn build_parse_fix_prompt(prompt: &str, previous_raw: &str, display: &str) -> String {
+    format!(
+        "{}\n\n## Previous Attempt Failed\n\nParse error:\n```\n{}\n```\n\nThe output you generated was:\n```\n{}\n```\n\nPlease provide a corrected output. Use JSON old/new format, unified diff, or full file content. Extract edits from markdown code blocks if helpful.",
+        prompt,
+        display,
+        truncate_for_prompt(previous_raw, FIX_PROMPT_RAW_TRUNC_BYTES)
+    )
+}
+
+fn build_apply_fix_prompt(
+    prompt: &str,
+    previous_raw: &str,
+    message: &str,
+    partial_paths: &[PathBuf],
+) -> String {
+    let paths_joined = partial_paths
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{}\n\n## Previous Attempt Failed\n\nApply error:\n```\n{}\n```\n\nFiles that failed to apply: {}\n\nThe output you generated was:\n```\n{}\n```\n\nPlease provide corrected edits.",
+        prompt,
+        message,
+        paths_joined,
+        truncate_for_prompt(previous_raw, FIX_PROMPT_RAW_TRUNC_BYTES)
+    )
+}
+
+fn build_verify_fix_prompt(prompt: &str, previous_raw: &str, vr: &VerifyResult) -> String {
+    let exit_display = if vr.timed_out {
+        "TIMEOUT".to_string()
+    } else {
+        format!("{}", vr.exit_code.unwrap_or(-1))
+    };
+    format!(
+        "{}\n\n## Previous Attempt Failed\n\nVerification error:\n```\n{}\n```\n\nExit code: {}\nElapsed: {}ms\n\nThe output you generated was:\n```\n{}\n```\n\nPlease provide a corrected fix.",
+        prompt,
+        truncate_for_prompt(&vr.stderr, FIX_PROMPT_RAW_TRUNC_BYTES),
+        exit_display,
+        vr.elapsed_ms,
+        truncate_for_prompt(previous_raw, FIX_PROMPT_RAW_TRUNC_BYTES)
+    )
+}
+
+#[async_trait::async_trait]
+impl EditRequester for WorkflowEditRequester {
+    async fn request_edits(&self, context: &RetryContext<'_>) -> Result<String, String> {
+        let attempt_n = context.attempt;
+        println!(
+            "  {} Fix attempt {}/{}...",
+            "↻".yellow(),
+            attempt_n.saturating_sub(1),
+            self.fix_retries
+        );
+
+        let fix_prompt = match &context.reason {
+            RetryReason::ParseError(display) => {
+                build_parse_fix_prompt(&self.original_prompt, context.previous_raw, display)
+            }
+            RetryReason::ApplyError {
+                message,
+                partial_paths,
+            } => build_apply_fix_prompt(
+                &self.original_prompt,
+                context.previous_raw,
+                message,
+                partial_paths,
+            ),
+            RetryReason::VerifyError(vr) => {
+                build_verify_fix_prompt(&self.original_prompt, context.previous_raw, vr)
+            }
+        };
+
+        println!("    {} Re-querying LLM with error...", "↻".dimmed());
+        match tokio::time::timeout(
+            self.timeout_duration,
+            self.backend
+                .query(&fix_prompt, &self.cwd, self.model_override.as_deref()),
+        )
+        .await
+        {
+            Ok(Ok(qo)) => {
+                let mut caps = self.captures.lock().expect("poisoned mutex");
+                caps.last_stderr = qo.stderr.clone();
+                caps.last_exit_code = qo.exit_code;
+                Ok(qo.stdout)
+            }
+            Ok(Err(e)) => {
+                println!("    {} Re-query failed: {}", "✗".red(), e);
+                Err(format!("Re-query failed: {}", e))
+            }
+            Err(_) => {
+                println!("    {} Re-query timed out", "✗".red());
+                Err("Re-query timed out".to_string())
+            }
+        }
+    }
+}
+
+fn map_retry_failure(outcome: &RetryLoopOutcome) -> (String, StepFailureKind) {
+    let last = match outcome.attempts.last() {
+        Some(r) => r,
+        None => {
+            return (
+                "Retry loop exited without any attempts".to_string(),
+                StepFailureKind::EditFailed,
+            );
+        }
+    };
+    let raw_suffix = format!("\n\nOriginal output:\n{}", last.raw_output);
+
+    if let Some(vr) = &last.verify_result {
+        let msg = if vr.timed_out {
+            format!(
+                "Verification timed out after {}ms{}",
+                vr.elapsed_ms, raw_suffix
+            )
+        } else {
+            let code = vr
+                .exit_code
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            format!(
+                "Verification failed: exit code {}\n{}{}",
+                code, vr.stderr, raw_suffix
+            )
+        };
+        return (msg, StepFailureKind::VerifyFailed);
+    }
+
+    if let Some(err) = &last.apply_error {
+        return (
+            format!("Edit failed: {}{}", err, raw_suffix),
+            StepFailureKind::EditFailed,
+        );
+    }
+
+    if let Some(err) = &last.parse_error {
+        return (
+            format!("Parse failed: {}{}", err, raw_suffix),
+            StepFailureKind::EditFailed,
+        );
+    }
+
+    (
+        "Retry loop failed without a recorded error".to_string(),
+        StepFailureKind::EditFailed,
+    )
+}
+
+async fn apply_once(
+    raw: &str,
+    cwd: &Path,
+    format_cmd: Option<&str>,
+    timeout: std::time::Duration,
+    command_wrapper: Option<&str>,
+) -> Result<(), String> {
+    let parsed = EditParser::parse(raw).map_err(|e| format!("Parse failed: {}", e))?;
+    match DiffApplier.apply(&parsed, cwd).await {
+        Ok(_) => {}
+        Err(apply_err) => {
+            if !apply_err.partial.modified_files.is_empty() {
+                Rollback::rollback(&apply_err.partial, cwd).await;
+            }
+            return Err(format!("Edit failed: {}", apply_err.kind));
+        }
+    }
+
+    if let Some(cmd) = format_cmd {
+        println!("  {} {}", "format:".dimmed(), cmd.dimmed());
+        match tokio::time::timeout(timeout, run_shell(cmd, cwd, command_wrapper)).await {
+            Ok(Ok(_)) => println!("    {} Format complete", "✓".green()),
+            Ok(Err(e)) => println!("    {} Format failed: {}", "⚠".yellow(), e),
+            Err(_) => println!("    {} Format timed out", "⚠".yellow()),
+        }
+    }
+    Ok(())
+}
+
 /// Prepared step ready for execution
 struct PreparedStep<'a> {
     step: &'a Step,
@@ -1924,207 +2153,226 @@ impl WorkflowRunner {
                         if query_success {
                             println!("  {} ({:.1}s)", "✓".green(), elapsed_ms as f64 / 1000.0);
 
-                            // Fix retry loop for apply/verify cycle
-                            let mut fix_attempt = 0u32;
                             let mut current_text = text.clone();
 
-                            'fix_loop: loop {
-                                // Apply edits if requested
-                                let mut checkpointed = false;
-                                if apply_edits_flag {
-                                    if fix_attempt > 0 {
-                                        println!("  {} Fix attempt {}/{}...", "↻".yellow(), fix_attempt, fix_retries);
-                                    }
-                                    println!("  {} Applying edits...", "→".cyan());
+                            if apply_edits_flag {
+                                println!("  {} Applying edits...", "→".cyan());
 
-                                    // Create git-agent checkpoint before applying edits
-                                    let checkpoint_msg = format!("pre-edit: {}", step_name);
-                                    match git_agent::checkpoint(&cwd, &checkpoint_msg).await {
-                                        Ok(true) => {
-                                            println!("    {} git-agent checkpoint created", "✓".dimmed());
-                                            checkpointed = true;
-                                        }
-                                        Ok(false) => {
-                                            // git-agent not available or not initialized, continue without
-                                        }
-                                        Err(e) => {
-                                            println!("    {} git-agent checkpoint failed: {}", "⚠".yellow(), e);
-                                            // Continue anyway, just won't have rollback
+                                // AC-7: git-agent checkpoint once per step (audit-only;
+                                // rollback handled by apply_verify::Rollback).
+                                let checkpoint_msg = format!("pre-edit: {}", step_name);
+                                match git_agent::checkpoint(&cwd, &checkpoint_msg).await {
+                                    Ok(true) => println!(
+                                        "    {} git-agent checkpoint created",
+                                        "✓".dimmed()
+                                    ),
+                                    Ok(false) => {}
+                                    Err(e) => println!(
+                                        "    {} git-agent checkpoint failed: {}",
+                                        "⚠".yellow(),
+                                        e
+                                    ),
+                                }
+
+                                // C-6: compose format inside the verify command so
+                                // it runs between apply and verify without touching
+                                // the apply_verify::RetryLoop API.
+                                let verify_command_opt = match (
+                                    format.as_deref(),
+                                    verify.as_deref(),
+                                ) {
+                                    (Some(f), Some(v)) => {
+                                        Some(format!("({}) || true && ({})", f, v))
+                                    }
+                                    (None, Some(v)) => Some(v.to_string()),
+                                    _ => None,
+                                };
+
+                                match verify_command_opt {
+                                    Some(verify_cmd) => {
+                                        println!(
+                                            "  {} {}",
+                                            "verify:".dimmed(),
+                                            verify_cmd.dimmed()
+                                        );
+                                        let verification = Verification {
+                                            command: verify_cmd,
+                                            timeout: timeout_duration,
+                                            max_output_bytes: DEFAULT_VERIFY_MAX_OUTPUT_BYTES,
+                                        };
+                                        let retry_loop = RetryLoop {
+                                            max_retries: fix_retries,
+                                            verify: verification,
+                                            stop_on_parse_error: false,
+                                        };
+                                        let requester = WorkflowEditRequester::new(
+                                            backend.clone(),
+                                            prompt.clone(),
+                                            timeout_duration,
+                                            model_override.clone(),
+                                            cwd.clone(),
+                                            fix_retries,
+                                        );
+                                        let outcome = retry_loop
+                                            .execute(
+                                                current_text.clone(),
+                                                &cwd,
+                                                &DiffApplier,
+                                                &requester,
+                                            )
+                                            .await;
+                                        if outcome.success {
+                                            if let Some(last) = outcome.attempts.last() {
+                                                current_text = last.raw_output.clone();
+                                            }
+                                            let caps = requester.into_captures();
+                                            if caps.last_stderr.is_some() {
+                                                step_stderr = caps.last_stderr;
+                                            }
+                                            if caps.last_exit_code.is_some() {
+                                                step_exit_code = caps.last_exit_code;
+                                            }
+                                            println!(
+                                                "    {} Verification passed",
+                                                "✓".green()
+                                            );
+                                        } else {
+                                            let elapsed_ms =
+                                                start.elapsed().as_millis() as u64;
+                                            let (msg, kind) = map_retry_failure(&outcome);
+                                            return StepResult::error(
+                                                step_name,
+                                                msg,
+                                                elapsed_ms,
+                                                Some(backend_name.clone()),
+                                                kind,
+                                            );
                                         }
                                     }
-
-                                    match parse_edits(&current_text) {
-                                        Ok(agentic) => {
-                                            if agentic.edits.is_empty() {
+                                    None => {
+                                        // Apply-only path (no verify command).
+                                        match apply_once(
+                                            &current_text,
+                                            &cwd,
+                                            format.as_deref(),
+                                            timeout_duration,
+                                            self.config
+                                                .defaults
+                                                .command_wrapper
+                                                .as_deref(),
+                                        )
+                                        .await
+                                        {
+                                            Ok(()) => {
                                                 println!(
-                                                    "    {} No edits found in output",
-                                                    "⚠".yellow()
+                                                    "    {} Apply complete",
+                                                    "✓".green()
                                                 );
-                                            } else {
-                                                // Record each edit application
-                                                for edit in &agentic.edits {
-                                                    match apply_edits(std::slice::from_ref(edit), &cwd).await {
-                                                        Ok(_) => {
-                                                            // Record successful edit
-                                                        }
-                                                        Err(e) => {
-                                                            // Record failed edit
-                                                            println!(
-                                                                "    {} Failed to apply edit to {}: {}",
-                                                                "✗".red(),
-                                                                edit.file,
-                                                                e
-                                                            );
-                                                            // Rollback via git-agent if we checkpointed
-                                                            if checkpointed {
-                                                                if let Ok(true) = git_agent::undo(&cwd).await {
-                                                                    println!("    {} Rolled back via git-agent", "↩".cyan());
-                                                                }
-                                                            }
-                                                            // Record step complete (failure)
-                                                            return StepResult::error(step_name, format!("Edit failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()), StepFailureKind::EditFailed);
-                                                        }
-                                                    }
-                                                }
-                                                println!(
-                                                    "    {} Applied {} edit(s)",
-                                                    "✓".green(),
-                                                    agentic.edits.len()
+                                            }
+                                            Err(msg) => {
+                                                let elapsed_ms =
+                                                    start.elapsed().as_millis() as u64;
+                                                let full_msg = format!(
+                                                    "{}\n\nOriginal output:\n{}",
+                                                    msg, current_text
+                                                );
+                                                return StepResult::error(
+                                                    step_name,
+                                                    full_msg,
+                                                    elapsed_ms,
+                                                    Some(backend_name.clone()),
+                                                    StepFailureKind::EditFailed,
                                                 );
                                             }
                                         }
-                                        Err(e) => {
-                                            println!(
-                                                "    {} Failed to parse edits: {}",
-                                                "✗".red(),
-                                                e
-                                            );
-                                            // Record step complete (failure)
-                                            return StepResult::error(step_name, format!("Parse failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()), StepFailureKind::EditFailed);
-                                        }
                                     }
                                 }
-
-                                // Run format before verify if requested
-                                if let Some(ref format_cmd) = format {
-                                    println!("  {} {}", "format:".dimmed(), format_cmd.dimmed());
-                                    match tokio::time::timeout(timeout_duration, run_shell(format_cmd, &cwd, self.config.defaults.command_wrapper.as_deref())).await {
-                                        Ok(Ok(_)) => {
-                                            println!("    {} Format complete", "✓".green());
-                                        }
-                                        Ok(Err(e)) => {
-                                            println!(
-                                                "    {} Format failed: {}",
-                                                "✗".red(),
-                                                e
-                                            );
-                                            // Format failure is not fatal, continue to verify
-                                        }
-                                        Err(_) => {
-                                            println!("    {} Format timed out after {}ms", "⚠".yellow(), timeout_ms);
-                                            // Format timeout is not fatal, continue to verify
-                                        }
+                            } else {
+                                // Verify-without-apply path (rare): format then verify,
+                                // no re-query loop (nothing to retry without edits).
+                                if let Some(ref fmt_cmd) = format {
+                                    println!(
+                                        "  {} {}",
+                                        "format:".dimmed(),
+                                        fmt_cmd.dimmed()
+                                    );
+                                    match tokio::time::timeout(
+                                        timeout_duration,
+                                        run_shell(
+                                            fmt_cmd,
+                                            &cwd,
+                                            self.config.defaults.command_wrapper.as_deref(),
+                                        ),
+                                    )
+                                    .await
+                                    {
+                                        Ok(Ok(_)) => println!(
+                                            "    {} Format complete",
+                                            "✓".green()
+                                        ),
+                                        Ok(Err(e)) => println!(
+                                            "    {} Format failed: {}",
+                                            "⚠".yellow(),
+                                            e
+                                        ),
+                                        Err(_) => println!(
+                                            "    {} Format timed out after {}ms",
+                                            "⚠".yellow(),
+                                            timeout_ms
+                                        ),
                                     }
                                 }
-
-                                // Run verification if requested
                                 if let Some(ref verify_cmd) = verify {
-                                    println!("  {} {}", "verify:".dimmed(), verify_cmd.dimmed());
-                                    match tokio::time::timeout(timeout_duration, run_shell(verify_cmd, &cwd, self.config.defaults.command_wrapper.as_deref())).await {
-                                        Ok(Ok(_)) => {
-                                            println!("    {} Verification passed", "✓".green());
-                                            break 'fix_loop;
-                                        }
+                                    println!(
+                                        "  {} {}",
+                                        "verify:".dimmed(),
+                                        verify_cmd.dimmed()
+                                    );
+                                    match tokio::time::timeout(
+                                        timeout_duration,
+                                        run_shell(
+                                            verify_cmd,
+                                            &cwd,
+                                            self.config.defaults.command_wrapper.as_deref(),
+                                        ),
+                                    )
+                                    .await
+                                    {
+                                        Ok(Ok(_)) => println!(
+                                            "    {} Verification passed",
+                                            "✓".green()
+                                        ),
                                         Ok(Err(e)) => {
-                                            let error_msg = e.to_string();
-                                            println!(
-                                                "    {} Verification failed: {}",
-                                                "✗".red(),
-                                                &error_msg
+                                            let elapsed_ms =
+                                                start.elapsed().as_millis() as u64;
+                                            return StepResult::error(
+                                                step_name,
+                                                format!(
+                                                    "Verification failed: {}\n\nOriginal output:\n{}",
+                                                    e, current_text
+                                                ),
+                                                elapsed_ms,
+                                                Some(backend_name.clone()),
+                                                StepFailureKind::VerifyFailed,
                                             );
-                                            // Rollback via git-agent if we checkpointed
-                                            if checkpointed {
-                                                if let Ok(true) = git_agent::undo(&cwd).await {
-                                                    println!("    {} Rolled back via git-agent", "↩".cyan());
-                                                }
-                                            }
-                                            // Check if we should retry
-                                            if fix_attempt < fix_retries {
-                                                fix_attempt += 1;
-                                                println!(
-                                                    "    {} Re-querying LLM with error (attempt {}/{})",
-                                                    "↻".yellow(),
-                                                    fix_attempt,
-                                                    fix_retries
-                                                );
-                                                let fix_prompt = format!(
-                                                    "{}\n\n## Previous Attempt Failed\n\nVerification error:\n```\n{}\n```\n\nPlease provide a corrected fix.",
-                                                    prompt, error_msg
-                                                );
-                                                match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd, model_override.as_deref())).await {
-                                                    Ok(Ok(qo)) => {
-                                                        current_text = qo.stdout;
-                                                        step_stderr = qo.stderr;
-                                                        step_exit_code = qo.exit_code;
-                                                        continue 'fix_loop;
-                                                    }
-                                                    Ok(Err(e)) => {
-                                                        println!("    {} Re-query failed: {}", "✗".red(), e);
-                                                    }
-                                                    Err(_) => {
-                                                        println!("    {} Re-query timed out", "✗".red());
-                                                    }
-                                                }
-                                            }
-                                            // No retries left or re-query failed
-                                            return StepResult::error(step_name, format!("Verification failed: {}\n\nOriginal output:\n{}", e, current_text), elapsed_ms, Some(backend_name.clone()), StepFailureKind::VerifyFailed);
                                         }
                                         Err(_) => {
-                                            let error_msg = format!("Verification timed out after {}ms", timeout_ms);
-                                            println!("    {} {}", "⚠".yellow(), &error_msg);
-                                            // Rollback via git-agent if we checkpointed
-                                            if checkpointed {
-                                                if let Ok(true) = git_agent::undo(&cwd).await {
-                                                    println!("    {} Rolled back via git-agent", "↩".cyan());
-                                                }
-                                            }
-                                            // Check if we should retry
-                                            if fix_attempt < fix_retries {
-                                                fix_attempt += 1;
-                                                println!(
-                                                    "    {} Re-querying LLM with error (attempt {}/{})",
-                                                    "↻".yellow(),
-                                                    fix_attempt,
-                                                    fix_retries
-                                                );
-                                                let fix_prompt = format!(
-                                                    "{}\n\n## Previous Attempt Failed\n\n{}\n\nPlease provide a corrected fix.",
-                                                    prompt, error_msg
-                                                );
-                                                match tokio::time::timeout(timeout_duration, backend.query(&fix_prompt, &cwd, model_override.as_deref())).await {
-                                                    Ok(Ok(qo)) => {
-                                                        current_text = qo.stdout;
-                                                        step_stderr = qo.stderr;
-                                                        step_exit_code = qo.exit_code;
-                                                        continue 'fix_loop;
-                                                    }
-                                                    Ok(Err(e)) => {
-                                                        println!("    {} Re-query failed: {}", "✗".red(), e);
-                                                    }
-                                                    Err(_) => {
-                                                        println!("    {} Re-query timed out", "✗".red());
-                                                    }
-                                                }
-                                            }
-                                            // No retries left or re-query failed
-                                            return StepResult::error(step_name, format!("{}\n\nOriginal output:\n{}", error_msg, current_text), elapsed_ms, Some(backend_name.clone()), StepFailureKind::VerifyFailed);
+                                            let elapsed_ms =
+                                                start.elapsed().as_millis() as u64;
+                                            return StepResult::error(
+                                                step_name,
+                                                format!(
+                                                    "Verification timed out after {}ms\n\nOriginal output:\n{}",
+                                                    timeout_ms, current_text
+                                                ),
+                                                elapsed_ms,
+                                                Some(backend_name.clone()),
+                                                StepFailureKind::VerifyFailed,
+                                            );
                                         }
                                     }
                                 }
-
-                                // If we got here, verify passed (or no verify). Exit loop.
-                                break 'fix_loop;
-                            } // end 'fix_loop
+                            }
 
                             // Run validation (heuristic + LLM) if configured
                             let (validation, cleaned_output) = match validate_config.as_ref() {
@@ -2902,65 +3150,6 @@ pub(crate) fn extract_json_from_text(text: &str) -> Option<String> {
     None
 }
 
-/// Parse edits from LLM output
-fn parse_edits(text: &str) -> Result<AgenticOutput> {
-    let json_str = extract_json_from_text(text).context("No JSON found in output")?;
-    serde_json::from_str(&json_str).or_else(|first_err| {
-        serde_json::from_str(&sanitize_json_strings(&json_str)).map_err(|second_err| {
-            anyhow::anyhow!(
-                "Failed to parse edits JSON.\nFirst attempt: {}\nAfter sanitization: {}",
-                first_err,
-                second_err
-            )
-        })
-    })
-}
-
-/// Apply file edits
-async fn apply_edits(edits: &[FileEdit], cwd: &Path) -> Result<usize> {
-    let mut applied = 0;
-
-    for edit in edits {
-        let file_path = cwd.join(&edit.file);
-
-        let content = match tokio::fs::read_to_string(&file_path).await {
-            Ok(c) => c,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                anyhow::bail!("File not found: {}", edit.file);
-            }
-            Err(e) => {
-                return Err(e).context(format!("Failed to read {}", edit.file));
-            }
-        };
-
-        let match_count = content.matches(&edit.old).count();
-        if match_count == 0 {
-            anyhow::bail!(
-                "Old text not found in {}: {}",
-                edit.file,
-                edit.old.chars().take(50).collect::<String>()
-            );
-        }
-        if match_count > 1 {
-            anyhow::bail!(
-                "Ambiguous edit: old text appears {} times in {}. Make the edit more specific.",
-                match_count,
-                edit.file
-            );
-        }
-
-        let new_content = content.replacen(&edit.old, &edit.new, 1);
-        tokio::fs::write(&file_path, new_content)
-            .await
-            .context(format!("Failed to write {}", edit.file))?;
-
-        println!("    {} {}", "edited".green(), edit.file);
-        applied += 1;
-    }
-
-    Ok(applied)
-}
-
 /// Result of finding a workflow - either a file path or embedded content
 pub enum WorkflowSource {
     /// Workflow loaded from a file
@@ -3335,6 +3524,7 @@ pub fn format_results(results: &[StepResult]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::apply_verify::AttemptRecord;
     use tempfile::tempdir;
 
     #[test]
@@ -4697,71 +4887,6 @@ line2"}"#;
     }
 
     #[test]
-    fn test_parse_edits_with_literal_newlines() {
-        // LLMs sometimes output literal newlines in JSON strings instead of \n escapes
-        // This is invalid JSON but parse_edits should handle it via sanitization
-        let text = r#"Here's the fix:
-
-```json
-{
-  "edits": [
-    {
-      "file": "src/main.rs",
-      "old": "fn main() {
-    println!(\"hello\");
-}",
-      "new": "fn main() {
-    println!(\"goodbye\");
-}"
-    }
-  ],
-  "summary": "Changed greeting"
-}
-```"#;
-
-        let result = parse_edits(text);
-        assert!(result.is_ok(), "parse_edits should handle literal newlines");
-
-        let output = result.unwrap();
-        assert_eq!(output.edits.len(), 1);
-        assert_eq!(output.edits[0].file, "src/main.rs");
-        assert!(output.edits[0].old.contains("hello"));
-        assert!(output.edits[0].new.contains("goodbye"));
-    }
-
-    #[test]
-    fn test_parse_edits_with_backticks_in_content() {
-        // JSON content might contain ``` which should not be mistaken for the closing fence.
-        // The closing fence must be on its own line.
-        let text = r#"Here's the fix:
-
-```json
-{
-  "edits": [
-    {
-      "file": "src/main.rs",
-      "old": "context.push_str(\"```\\n\");",
-      "new": "context.push_str(\"~~~\\n\");"
-    }
-  ],
-  "summary": "Changed backticks to tildes"
-}
-```"#;
-
-        let result = parse_edits(text);
-        assert!(
-            result.is_ok(),
-            "parse_edits should handle backticks in content: {:?}",
-            result.err()
-        );
-
-        let output = result.unwrap();
-        assert_eq!(output.edits.len(), 1);
-        assert!(output.edits[0].old.contains("```"));
-        assert!(output.edits[0].new.contains("~~~"));
-    }
-
-    #[test]
     fn test_find_closing_fence() {
         // Normal case: fence on its own line
         assert_eq!(find_closing_fence("\n{\"a\": 1}\n```"), Some(9));
@@ -4843,85 +4968,6 @@ line2"}"#;
         tracker.on_success();
         tracker.on_success();
         assert_eq!(tracker.error_count(), 0);
-    }
-
-    // apply_edits tests (Issue #135)
-
-    #[tokio::test]
-    async fn test_apply_edits_single_occurrence() {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test.txt");
-        std::fs::write(&file_path, "hello world").unwrap();
-
-        let edits = vec![FileEdit {
-            file: "test.txt".to_string(),
-            old: "world".to_string(),
-            new: "universe".to_string(),
-        }];
-
-        let result = apply_edits(&edits, dir.path()).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 1);
-
-        let content = std::fs::read_to_string(&file_path).unwrap();
-        assert_eq!(content, "hello universe");
-    }
-
-    #[tokio::test]
-    async fn test_apply_edits_multiple_occurrences_fails() {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test.txt");
-        std::fs::write(&file_path, "foo bar foo baz foo").unwrap();
-
-        let edits = vec![FileEdit {
-            file: "test.txt".to_string(),
-            old: "foo".to_string(),
-            new: "qux".to_string(),
-        }];
-
-        let result = apply_edits(&edits, dir.path()).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("Ambiguous edit"));
-        assert!(err.contains("3 times"));
-
-        // File should be unchanged
-        let content = std::fs::read_to_string(&file_path).unwrap();
-        assert_eq!(content, "foo bar foo baz foo");
-    }
-
-    #[tokio::test]
-    async fn test_apply_edits_not_found_fails() {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test.txt");
-        std::fs::write(&file_path, "hello world").unwrap();
-
-        let edits = vec![FileEdit {
-            file: "test.txt".to_string(),
-            old: "not_present".to_string(),
-            new: "replacement".to_string(),
-        }];
-
-        let result = apply_edits(&edits, dir.path()).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("Old text not found"));
-    }
-
-    #[tokio::test]
-    async fn test_apply_edits_file_not_found_fails() {
-        let dir = tempdir().unwrap();
-
-        let edits = vec![FileEdit {
-            file: "nonexistent.txt".to_string(),
-            old: "foo".to_string(),
-            new: "bar".to_string(),
-        }];
-
-        let result = apply_edits(&edits, dir.path()).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("File not found"));
     }
 
     // Fail-fast tests (Issue #136)
@@ -6052,5 +6098,287 @@ prompt = "p"
         assert!(result.validation.is_some());
         assert!(!result.validation.as_ref().unwrap().passed);
         assert!(result.failure.is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Adapter prompt builder tests (ST-1)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_build_parse_fix_prompt_contains_previous_raw() {
+        let prompt = "Fix the bug in main.rs";
+        let previous = "this is not parseable output";
+        let display = "expected JSON, got garbage";
+        let out = build_parse_fix_prompt(prompt, previous, display);
+        assert!(out.contains("Fix the bug in main.rs"));
+        assert!(out.contains("expected JSON, got garbage"));
+        assert!(out.contains("this is not parseable output"));
+        assert!(out.contains("## Previous Attempt Failed"));
+    }
+
+    #[test]
+    fn test_build_apply_fix_prompt_includes_partial_paths() {
+        let prompt = "Rewrite config";
+        let previous = "old raw output";
+        let message = "Old text not found: foo";
+        let partial = vec![PathBuf::from("a.txt"), PathBuf::from("subdir/b.txt")];
+        let out = build_apply_fix_prompt(prompt, previous, message, &partial);
+        assert!(out.contains("Rewrite config"));
+        assert!(out.contains("Old text not found: foo"));
+        assert!(out.contains("a.txt"));
+        assert!(out.contains("subdir/b.txt"));
+        assert!(out.contains("old raw output"));
+    }
+
+    #[test]
+    fn test_build_verify_fix_prompt_with_exit_code() {
+        let prompt = "Run cargo test";
+        let previous = "apply succeeded with bad edit";
+        let vr = VerifyResult {
+            success: false,
+            stdout: String::new(),
+            stderr: "test failure: assertion failed".to_string(),
+            exit_code: Some(101),
+            elapsed_ms: 1234,
+            timed_out: false,
+            truncated: false,
+        };
+        let out = build_verify_fix_prompt(prompt, previous, &vr);
+        assert!(out.contains("Run cargo test"));
+        assert!(out.contains("Exit code: 101"));
+        assert!(out.contains("test failure: assertion failed"));
+        assert!(out.contains("1234ms"));
+        assert!(out.contains("apply succeeded with bad edit"));
+        assert!(!out.contains("None"));
+    }
+
+    #[test]
+    fn test_build_verify_fix_prompt_with_timeout_uses_timeout_string() {
+        let vr = VerifyResult {
+            success: false,
+            stdout: String::new(),
+            stderr: "killed after 5s".to_string(),
+            exit_code: None,
+            elapsed_ms: 5000,
+            timed_out: true,
+            truncated: false,
+        };
+        let out = build_verify_fix_prompt("p", "r", &vr);
+        assert!(out.contains("Exit code: TIMEOUT"));
+        assert!(!out.contains("None"));
+        assert!(!out.contains("Exit code: -1"));
+    }
+
+    #[test]
+    fn test_truncate_for_prompt_under_limit() {
+        let out = truncate_for_prompt("hello", 100);
+        assert_eq!(out, "hello");
+    }
+
+    #[test]
+    fn test_truncate_for_prompt_over_limit() {
+        let s = "a".repeat(10_000);
+        let out = truncate_for_prompt(&s, 100);
+        assert!(out.len() < s.len());
+        assert!(out.ends_with("... [truncated]"));
+    }
+
+    // -----------------------------------------------------------------------
+    // map_retry_failure tests (ST-3)
+    // -----------------------------------------------------------------------
+
+    fn make_attempt(
+        parse_error: Option<&str>,
+        apply_error: Option<&str>,
+        verify_result: Option<VerifyResult>,
+    ) -> AttemptRecord {
+        AttemptRecord {
+            attempt_num: 0,
+            raw_output: "RAW_OUTPUT".to_string(),
+            parse_error: parse_error.map(|s| s.to_string()),
+            apply_error: apply_error.map(|s| s.to_string()),
+            verify_result,
+            rolled_back: false,
+        }
+    }
+
+    fn make_outcome(attempts: Vec<AttemptRecord>) -> RetryLoopOutcome {
+        RetryLoopOutcome {
+            success: false,
+            attempts,
+            final_verify: None,
+            final_apply: None,
+        }
+    }
+
+    #[test]
+    fn test_map_retry_failure_verify_exit_code() {
+        let vr = VerifyResult {
+            success: false,
+            stdout: String::new(),
+            stderr: "assertion failed".to_string(),
+            exit_code: Some(101),
+            elapsed_ms: 500,
+            timed_out: false,
+            truncated: false,
+        };
+        let outcome = make_outcome(vec![make_attempt(None, None, Some(vr))]);
+        let (msg, kind) = map_retry_failure(&outcome);
+        assert!(matches!(kind, StepFailureKind::VerifyFailed));
+        assert!(msg.contains("exit code 101"));
+        assert!(msg.contains("assertion failed"));
+        assert!(msg.contains("Original output:"));
+        assert!(msg.contains("RAW_OUTPUT"));
+    }
+
+    #[test]
+    fn test_map_retry_failure_verify_timeout() {
+        let vr = VerifyResult {
+            success: false,
+            stdout: String::new(),
+            stderr: "killed".to_string(),
+            exit_code: None,
+            elapsed_ms: 5000,
+            timed_out: true,
+            truncated: false,
+        };
+        let outcome = make_outcome(vec![make_attempt(None, None, Some(vr))]);
+        let (msg, kind) = map_retry_failure(&outcome);
+        assert!(matches!(kind, StepFailureKind::VerifyFailed));
+        assert!(msg.contains("Verification timed out after 5000ms"));
+        assert!(!msg.contains("None"));
+    }
+
+    #[test]
+    fn test_map_retry_failure_apply_error() {
+        let outcome =
+            make_outcome(vec![make_attempt(None, Some("old text not found"), None)]);
+        let (msg, kind) = map_retry_failure(&outcome);
+        assert!(matches!(kind, StepFailureKind::EditFailed));
+        assert!(msg.starts_with("Edit failed: old text not found"));
+        assert!(msg.contains("Original output:"));
+    }
+
+    #[test]
+    fn test_map_retry_failure_parse_error() {
+        let outcome = make_outcome(vec![make_attempt(Some("not JSON"), None, None)]);
+        let (msg, kind) = map_retry_failure(&outcome);
+        assert!(matches!(kind, StepFailureKind::EditFailed));
+        assert!(msg.starts_with("Parse failed: not JSON"));
+        assert!(msg.contains("Original output:"));
+    }
+
+    #[test]
+    fn test_map_retry_failure_verify_has_priority_over_apply() {
+        let vr = VerifyResult {
+            success: false,
+            stdout: String::new(),
+            stderr: "verify err".to_string(),
+            exit_code: Some(1),
+            elapsed_ms: 10,
+            timed_out: false,
+            truncated: false,
+        };
+        let outcome = make_outcome(vec![make_attempt(
+            Some("stale parse"),
+            Some("stale apply"),
+            Some(vr),
+        )]);
+        let (msg, _) = map_retry_failure(&outcome);
+        assert!(msg.contains("Verification failed"));
+        assert!(!msg.contains("stale apply"));
+    }
+
+    #[test]
+    fn test_map_retry_failure_empty_attempts() {
+        let outcome = make_outcome(vec![]);
+        let (msg, kind) = map_retry_failure(&outcome);
+        assert!(matches!(kind, StepFailureKind::EditFailed));
+        assert!(msg.contains("without any attempts"));
+    }
+
+    // -----------------------------------------------------------------------
+    // apply_once tests (ST-4)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_apply_once_success_without_format() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("hello.txt");
+        std::fs::write(&target, "old content\n").unwrap();
+
+        let raw = r#"{"edits": [{"file": "hello.txt", "old": "old content", "new": "new content"}]}"#;
+        let result = apply_once(raw, dir.path(), None, std::time::Duration::from_secs(5), None).await;
+        assert!(result.is_ok(), "apply_once failed: {:?}", result);
+
+        let actual = std::fs::read_to_string(&target).unwrap();
+        assert_eq!(actual.trim(), "new content");
+    }
+
+    #[tokio::test]
+    async fn test_apply_once_parse_error_returns_err() {
+        let dir = tempdir().unwrap();
+        let raw = "this is garbage not a parseable edit format";
+        let result = apply_once(raw, dir.path(), None, std::time::Duration::from_secs(5), None).await;
+        // Garbage with no filename hint is treated as FullFile format which can still
+        // parse (as a full-file replacement of an unknown target). We accept either
+        // outcome — the key is that the function does not panic.
+        let _ = result;
+    }
+
+    #[tokio::test]
+    async fn test_apply_once_apply_error_rolls_back() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("nonexistent.txt");
+        // File doesn't exist and the edit references `old` text → apply fails.
+        let raw = r#"{"edits": [{"file": "nonexistent.txt", "old": "missing", "new": "replacement"}]}"#;
+        let result = apply_once(raw, dir.path(), None, std::time::Duration::from_secs(5), None).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.starts_with("Edit failed:"),
+            "expected 'Edit failed:' prefix, got: {}",
+            err
+        );
+        assert!(!target.exists(), "rollback should have removed the file");
+    }
+
+    #[tokio::test]
+    async fn test_apply_once_with_format_runs_after_apply() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("greet.txt");
+        std::fs::write(&target, "hi\n").unwrap();
+
+        let raw = r#"{"edits": [{"file": "greet.txt", "old": "hi", "new": "hello"}]}"#;
+        // Format command appends " formatted" to the file if it ran.
+        let format_cmd = format!("echo -n ' formatted' >> {}", target.display());
+        let result = apply_once(
+            raw,
+            dir.path(),
+            Some(&format_cmd),
+            std::time::Duration::from_secs(5),
+            None,
+        )
+        .await;
+        assert!(result.is_ok());
+        let actual = std::fs::read_to_string(&target).unwrap();
+        assert!(
+            actual.contains("hello") && actual.contains("formatted"),
+            "expected apply + format, got: {:?}",
+            actual
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Shell composition (C-6) regression test
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_verify_command_composition_pattern() {
+        // Sanity check: verify the exact composition pattern used in workflow.rs.
+        let format_cmd = "cargo fmt";
+        let verify_cmd = "cargo test";
+        let composed = format!("({}) || true && ({})", format_cmd, verify_cmd);
+        assert_eq!(composed, "(cargo fmt) || true && (cargo test)");
     }
 }

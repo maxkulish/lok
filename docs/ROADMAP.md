@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-04-09
+**Last Updated**: 2026-04-11
 
 ## Summary
 
@@ -73,7 +73,7 @@ Driven by Mentis pre-PR validation incident (2026-04-07): Haiku returned unparse
 |------|-------|--------|--------------|
 | [CLO-205](https://linear.app/cloud-ai/issue/CLO-205) | Implement EditParser with 3-format auto-detection | Done | - |
 | [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | Implement DiffApplier, Rollback, Verification, RetryLoop | Done | CLO-205 |
-| [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify pipeline into workflow step execution | Backlog | CLO-205, CLO-210, CLO-202 |
+| [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify pipeline into workflow step execution | In Progress | CLO-205, CLO-210, CLO-202 |
 
 ## Phase 9: Configurable Role Routing
 
