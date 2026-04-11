@@ -1,0 +1,145 @@
+task_id: CLO-211
+task_title: "Wire apply-verify pipeline into workflow step execution"
+task_url: "https://linear.app/cloud-ai/issue/CLO-211"
+task_type: specification
+created_at: "2026-04-11T17:20:16Z"
+
+workflow:
+  current_phase: pr
+  status: in_progress
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: "specs/2026-04-11-clo-211-wire-apply-verify-pipeline.md"
+    approved: true
+    approved_at: "2026-04-11T18:55:00Z"
+    review_completed: true
+    review_gemini: "docs/reviews/clo-211-spec-review-gemini.md"
+    review_ollama: "docs/reviews/clo-211-spec-review-ollama.md"
+    review_perplexity: null
+    review_synthesis: "docs/reviews/clo-211-spec-review-synthesis.md"
+    review_verdict: "NEEDS_REVISION"
+    review_applied: true
+    applied_suggestions:
+      - "C-6 vs MN-7 contradiction: resolved via shell composition (format) || true && (verify)"
+      - "Added context.previous_raw to all three ST-1 re-query prompt templates"
+      - "AC-7 documents deliberate git-agent checkpoint granularity change (per-step, not per-attempt)"
+      - "AC-7b + test 14b: Rollback::rollback() used even when git-agent available"
+      - "AC-8: env inheritance documented as no-code-change requirement"
+      - "AC-9/ST-3: exact message format strings with timeout branching to avoid None panic"
+      - "AC-9b: elapsed_ms preserved from outer start instant (legacy line 2163 pattern)"
+      - "AC-10/ST-6: explicit keep/delete table (FileEdit, extract_json_from_text, sanitize_json_strings kept)"
+      - "AC-11b + ST-4: apply_once helper for verify=None path"
+      - "AC-11c + C-9: stop_on_parse_error=false behavior change documented"
+      - "AC-13b + ST-4: format-without-verify path via inline run_shell"
+      - "C-10: fix_retries 1:1 mapping explicit with examples"
+      - "C-11: step.timeout=0 sentinel mapping to ~1 year Duration"
+      - "C-12: max_output_bytes=1MiB matches EditParser::MAX_INPUT_SIZE"
+      - "Tests 11b, 13b, 14b, 15 added plus stop_on_parse_error regression assertion in test 5"
+    flagged_suggestions:
+      - "C-9 stop_on_parse_error=false behavior change: E-5 escalation applies if any reviewer flags as risky for existing workflows"
+  implement:
+    status: complete
+    started_at: "2026-04-11T18:55:00Z"
+    completed_at: "2026-04-11T19:45:00Z"
+    sub_tasks:
+      ST-1: complete
+      ST-2: complete
+      ST-3: complete
+      ST-4: complete
+      ST-5: complete
+      ST-6: complete
+    implementation_notes:
+      - "ST-1: WorkflowEditRequester adapter added with previous_raw in all three prompt templates, timeout-safe VerifyResult formatting, Mutex captures for stderr/exit_code"
+      - "ST-2: Legacy 'fix_loop replaced with RetryLoop path (apply_edits=true + verify=Some), apply_once path (apply_edits=true + verify=None), and preserved legacy verify-without-apply path"
+      - "ST-2: Shell composition via (format) || true && (verify) for C-6 resolution"
+      - "ST-2: git-agent checkpoint once per step (AC-7 audit-only), Rollback::rollback() used throughout"
+      - "ST-3: map_retry_failure helper with timeout-safe VerifyResult formatting, verify > apply > parse error priority, 'Original output:' suffix preserved from legacy format"
+      - "ST-4: apply_once helper with EditParser → DiffApplier → Rollback on error → optional format via run_shell"
+      - "ST-5: 11 new unit tests (6 map_retry_failure, 4 apply_once, 1 shell composition) all passing"
+      - "ST-6: Deleted AgenticOutput struct, parse_edits, apply_edits, git_agent::undo, and 6 legacy tests (2 parse_edits + 4 apply_edits)"
+    verification:
+      cargo_check: clean
+      cargo_test: "432 passed; 0 failed (including 11 new tests)"
+      cargo_clippy: "1 pre-existing error in test_heuristic_contains_single_quote_char (not introduced by this change)"
+  pr:
+    status: in_progress
+    pr_url: "https://github.com/maxkulish/lok/pull/13"
+    pr_number: 13
+    branch: "feat/clo-211-apply-verify-pipeline"
+    created_at: "2026-04-11T19:50:00Z"
+  complete:
+    status: pending
+
+dependencies:
+  - task: CLO-205
+    status: done
+    description: "EditParser with 3-format auto-detection"
+  - task: CLO-210
+    status: done
+    description: "DiffApplier, Rollback, Verification, RetryLoop primitives"
+  - task: CLO-202
+    status: done
+    description: "BackendError enum for typed error reporting"
+
+inherited_context:
+  - source: CLO-210 deferred suggestion
+    note: "Env var inheritance in verify subprocess deferred to CLO-211 (workflow executor owns env story)"
+
+history:
+  - timestamp: "2026-04-11T17:20:16Z"
+    action: workflow_started
+    phase: entry
+    details: "Classified as specification task. Dependencies CLO-205, CLO-210, CLO-202 all complete. User confirmed specification workflow."
+  - timestamp: "2026-04-11T17:20:16Z"
+    action: project_sync_start
+    phase: entry
+    details: "Added to PROJECT.md Active Work (1/3), ROADMAP.md Phase 8 status In Progress, removed from DEPENDENCIES.md Unblocked & Ready"
+  - timestamp: "2026-04-11T17:20:16Z"
+    action: spec_draft_ready
+    phase: spec
+    details: "Wrote specs/2026-04-11-clo-211-wire-apply-verify-pipeline.md. 5 sections + 14 tests + 6 resolved open questions. Env var inheritance (deferred from CLO-210) resolved to parent-env-inherited. stop_on_parse_error=false is a behavior change from legacy code."
+  - timestamp: "2026-04-11T18:30:00Z"
+    action: spec_review_complete
+    phase: spec
+    details: "Gemini 3.1 Pro review verdict NEEDS_REVISION (C-6/MN-7 contradiction, missing previous_raw, git-agent granularity, timeout formatting). Ollama glm-5 review verdict APPROVE_WITH_SUGGESTIONS (apply-only path AC, elapsed_ms, CLI output, stop_on_parse_error regression, FileEdit retention). Consolidated synthesis: NEEDS_REVISION."
+  - timestamp: "2026-04-11T18:45:00Z"
+    action: spec_review_applied
+    phase: spec
+    details: "Applied 15 review suggestions across Problem Statement, AC (7b, 8, 9, 9b, 10, 11b, 11c, 13b), C (6 rewrite, 9 rewrite, 10, 11, 12), ST-1 (previous_raw in templates), ST-2 (full code example with shell composition), ST-3 (exact format strings), ST-4 (apply_once with format support), ST-5 (new tests 11b/13b/14b/15 + regression assertion), ST-6 (retention table), Open Questions (20 resolutions). 1 flagged item: C-9 behavior change pending user confirmation at checkpoint."
+  - timestamp: "2026-04-11T18:55:00Z"
+    action: spec_approved
+    phase: spec
+    details: "User approved spec at checkpoint (option 1). C-9 stop_on_parse_error=false behavior change accepted. Transitioning to implement phase. 6 sub-tasks tracked (ST-1 through ST-6) with dependency chain: ST-1 → ST-2 → {ST-3, ST-4} → ST-5 → ST-6."
+  - timestamp: "2026-04-11T19:15:00Z"
+    action: phase_completed
+    phase: implement
+    details: "ST-1 complete: WorkflowEditRequester adapter with 6 prompt-builder unit tests. Previous_raw injected in ParseError/ApplyError/VerifyError templates. VerifyResult timeout formatting branches on timed_out before exit_code to prevent None panics. Mutex-based captures for stderr/exit_code."
+  - timestamp: "2026-04-11T19:30:00Z"
+    action: phase_completed
+    phase: implement
+    details: "ST-2/ST-3/ST-4 complete: Legacy 'fix_loop replaced. Apply+verify path uses RetryLoop with shell-composed verify command (format || true && verify). Apply-only path uses apply_once helper. map_retry_failure maps RetryLoopOutcome to StepResult with legacy-compat format strings. git-agent checkpoint once per step (audit-only). Rollback::rollback replaces git_agent::undo throughout."
+  - timestamp: "2026-04-11T19:40:00Z"
+    action: phase_completed
+    phase: implement
+    details: "ST-5 complete: 11 new unit tests (6 map_retry_failure branches, 4 apply_once paths, 1 shell composition sanity check) all passing. Full suite: 426 unit + 6 integration tests pass. No regressions."
+  - timestamp: "2026-04-11T19:45:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "ST-6 complete: Deleted AgenticOutput struct, fn parse_edits, fn apply_edits, fn git_agent::undo, and 6 legacy tests. cargo check clean, cargo test 432 passed. Only pre-existing clippy issue unrelated to this change. Phase 8 of llm-mux port initiative complete. Transitioning to PR phase."
+  - timestamp: "2026-04-11T19:50:00Z"
+    action: pr_created
+    phase: pr
+    details: "PR #13 opened: https://github.com/maxkulish/lok/pull/13 (branch feat/clo-211-apply-verify-pipeline, commit a8d747e)."
+  - timestamp: "2026-04-11T20:15:00Z"
+    action: review_addressed
+    phase: pr
+    details: "Addressed 7 of 8 review comments from gemini-code-assist and copilot-pull-request-reviewer. Declined 1 (Gemini critical claim about Box<dyn Backend> - false positive, create_backend returns Arc<dyn Backend>, cargo test confirms). Fixes: (1) map_retry_failure rewritten to match ST-3 spec format strings with attempt_count, stderr 1KB + raw 4KB truncation, partial_paths via EditRequesterCaptures; (2) apply_once format timeout pinned to 120s constant; (3) apply_once returns ST-3-formatted errors; (4) command_wrapper now applied to verify_cmd via shared apply_command_wrapper helper (fixes Copilot regression); (5) Mutex poison recovery via unwrap_or_else(|e| e.into_inner()) in both into_captures and request_edits; (6) PROJECT.md CLO-211 phase updated Spec→PR. New tests: 3 additional map_retry_failure tests (attempt_count, 1KB stderr truncation, apply paths with/without). Full suite: 429 passed; 0 failed."

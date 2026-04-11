@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-04-09
+**Last Updated**: 2026-04-11
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify pipeline into workflow step execution | In Progress | PR | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -14,7 +14,6 @@
 |----------|------|-------|--------------|
 | 1 | [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Enrich QueryOutput with model, usage, duration | CLO-202 (done) |
 | 2 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Configurable role routing with [roles]/[teams] config | CLO-203 (done) |
-| 3 | [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify into workflow execution | CLO-205 (done), CLO-210 (done) |
 
 ## Recently Completed
 

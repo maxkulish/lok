@@ -218,31 +218,6 @@ pub async fn checkpoint(cwd: &Path, message: &str) -> Result<bool, String> {
     }
 }
 
-/// Undo to the previous checkpoint.
-/// Returns Ok(true) if undo was successful, Ok(false) if git-agent not ready.
-pub async fn undo(cwd: &Path) -> Result<bool, String> {
-    if !is_available().await {
-        return Ok(false);
-    }
-    if !is_initialized(cwd).await {
-        return Ok(false);
-    }
-
-    let output = Command::new("git-agent")
-        .args(["undo", "1"])
-        .current_dir(cwd)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run git-agent undo: {}", e))?;
-
-    if output.status.success() {
-        Ok(true)
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("git-agent undo failed: {}", stderr))
-    }
-}
-
 // Legacy constants for .agent/ worktree (new code uses .arf/)
 #[allow(dead_code)]
 const AGENT_BRANCH: &str = "agent-history";
