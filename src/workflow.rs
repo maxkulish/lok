@@ -1038,6 +1038,7 @@ pub struct StepFailure {
 struct EditRequesterCaptures {
     last_stderr: Option<String>,
     last_exit_code: Option<i32>,
+    last_apply_partial_paths: Option<Vec<PathBuf>>,
 }
 
 struct WorkflowEditRequester {
@@ -1069,16 +1070,21 @@ impl WorkflowEditRequester {
             captures: std::sync::Mutex::new(EditRequesterCaptures {
                 last_stderr: None,
                 last_exit_code: None,
+                last_apply_partial_paths: None,
             }),
         }
     }
 
     fn into_captures(self) -> EditRequesterCaptures {
-        self.captures.into_inner().expect("poisoned mutex")
+        self.captures
+            .into_inner()
+            .unwrap_or_else(|e| e.into_inner())
     }
 }
 
 const FIX_PROMPT_RAW_TRUNC_BYTES: usize = 4096;
+const STEP_ERR_RAW_TRUNC_BYTES: usize = 4096;
+const STEP_ERR_STDERR_TRUNC_BYTES: usize = 1024;
 
 fn truncate_for_prompt(s: &str, max: usize) -> String {
     if s.len() <= max {
@@ -1150,12 +1156,20 @@ impl EditRequester for WorkflowEditRequester {
             RetryReason::ApplyError {
                 message,
                 partial_paths,
-            } => build_apply_fix_prompt(
-                &self.original_prompt,
-                context.previous_raw,
-                message,
-                partial_paths,
-            ),
+            } => {
+                let mut caps = self
+                    .captures
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                caps.last_apply_partial_paths = Some(partial_paths.to_vec());
+                drop(caps);
+                build_apply_fix_prompt(
+                    &self.original_prompt,
+                    context.previous_raw,
+                    message,
+                    partial_paths,
+                )
+            }
             RetryReason::VerifyError(vr) => {
                 build_verify_fix_prompt(&self.original_prompt, context.previous_raw, vr)
             }
@@ -1170,7 +1184,10 @@ impl EditRequester for WorkflowEditRequester {
         .await
         {
             Ok(Ok(qo)) => {
-                let mut caps = self.captures.lock().expect("poisoned mutex");
+                let mut caps = self
+                    .captures
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 caps.last_stderr = qo.stderr.clone();
                 caps.last_exit_code = qo.exit_code;
                 Ok(qo.stdout)
@@ -1187,7 +1204,12 @@ impl EditRequester for WorkflowEditRequester {
     }
 }
 
-fn map_retry_failure(outcome: &RetryLoopOutcome) -> (String, StepFailureKind) {
+fn map_retry_failure(
+    outcome: &RetryLoopOutcome,
+    timeout_ms: u64,
+    partial_paths: Option<&[PathBuf]>,
+) -> (String, StepFailureKind) {
+    let attempt_count = outcome.attempts.len();
     let last = match outcome.attempts.last() {
         Some(r) => r,
         None => {
@@ -1197,13 +1219,14 @@ fn map_retry_failure(outcome: &RetryLoopOutcome) -> (String, StepFailureKind) {
             );
         }
     };
-    let raw_suffix = format!("\n\nOriginal output:\n{}", last.raw_output);
+    let raw_trunc = truncate_for_prompt(&last.raw_output, STEP_ERR_RAW_TRUNC_BYTES);
 
     if let Some(vr) = &last.verify_result {
+        let stderr_trunc = truncate_for_prompt(&vr.stderr, STEP_ERR_STDERR_TRUNC_BYTES);
         let msg = if vr.timed_out {
             format!(
-                "Verification timed out after {}ms{}",
-                vr.elapsed_ms, raw_suffix
+                "Verification timed out after {} attempts ({}ms limit).\n\nPartial stderr:\n{}",
+                attempt_count, timeout_ms, stderr_trunc
             )
         } else {
             let code = vr
@@ -1211,23 +1234,38 @@ fn map_retry_failure(outcome: &RetryLoopOutcome) -> (String, StepFailureKind) {
                 .map(|c| c.to_string())
                 .unwrap_or_else(|| "unknown".to_string());
             format!(
-                "Verification failed: exit code {}\n{}{}",
-                code, vr.stderr, raw_suffix
+                "Verification failed after {} attempts with exit code {}.\n\nStderr:\n{}",
+                attempt_count, code, stderr_trunc
             )
         };
         return (msg, StepFailureKind::VerifyFailed);
     }
 
     if let Some(err) = &last.apply_error {
+        let paths_joined = partial_paths
+            .map(|p| {
+                p.iter()
+                    .map(|pb| pb.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "(not captured)".to_string());
         return (
-            format!("Edit failed: {}{}", err, raw_suffix),
+            format!(
+                "Apply failed after {} attempts: {}\n\nFailed files: {}\n\nLast output:\n{}",
+                attempt_count, err, paths_joined, raw_trunc
+            ),
             StepFailureKind::EditFailed,
         );
     }
 
     if let Some(err) = &last.parse_error {
         return (
-            format!("Parse failed: {}{}", err, raw_suffix),
+            format!(
+                "Parse failed after {} attempts: {}\n\nLast output:\n{}",
+                attempt_count, err, raw_trunc
+            ),
             StepFailureKind::EditFailed,
         );
     }
@@ -1238,27 +1276,53 @@ fn map_retry_failure(outcome: &RetryLoopOutcome) -> (String, StepFailureKind) {
     )
 }
 
+const APPLY_ONCE_FORMAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 async fn apply_once(
     raw: &str,
     cwd: &Path,
     format_cmd: Option<&str>,
-    timeout: std::time::Duration,
     command_wrapper: Option<&str>,
 ) -> Result<(), String> {
-    let parsed = EditParser::parse(raw).map_err(|e| format!("Parse failed: {}", e))?;
+    let raw_trunc = truncate_for_prompt(raw, STEP_ERR_RAW_TRUNC_BYTES);
+    let parsed = EditParser::parse(raw).map_err(|e| {
+        format!(
+            "Parse failed after 1 attempts: {}\n\nLast output:\n{}",
+            e, raw_trunc
+        )
+    })?;
     match DiffApplier.apply(&parsed, cwd).await {
         Ok(_) => {}
         Err(apply_err) => {
+            let partial_paths: Vec<String> = apply_err
+                .partial
+                .modified_files
+                .iter()
+                .map(|f| f.path.display().to_string())
+                .collect();
             if !apply_err.partial.modified_files.is_empty() {
                 Rollback::rollback(&apply_err.partial, cwd).await;
             }
-            return Err(format!("Edit failed: {}", apply_err.kind));
+            let paths_joined = if partial_paths.is_empty() {
+                "(none)".to_string()
+            } else {
+                partial_paths.join(", ")
+            };
+            return Err(format!(
+                "Apply failed after 1 attempts: {}\n\nFailed files: {}\n\nLast output:\n{}",
+                apply_err.kind, paths_joined, raw_trunc
+            ));
         }
     }
 
     if let Some(cmd) = format_cmd {
         println!("  {} {}", "format:".dimmed(), cmd.dimmed());
-        match tokio::time::timeout(timeout, run_shell(cmd, cwd, command_wrapper)).await {
+        match tokio::time::timeout(
+            APPLY_ONCE_FORMAT_TIMEOUT,
+            run_shell(cmd, cwd, command_wrapper),
+        )
+        .await
+        {
             Ok(Ok(_)) => println!("    {} Format complete", "✓".green()),
             Ok(Err(e)) => println!("    {} Format failed: {}", "⚠".yellow(), e),
             Err(_) => println!("    {} Format timed out", "⚠".yellow()),
@@ -2190,13 +2254,20 @@ impl WorkflowRunner {
 
                                 match verify_command_opt {
                                     Some(verify_cmd) => {
+                                        let wrapped_verify_cmd = apply_command_wrapper(
+                                            &verify_cmd,
+                                            self.config
+                                                .defaults
+                                                .command_wrapper
+                                                .as_deref(),
+                                        );
                                         println!(
                                             "  {} {}",
                                             "verify:".dimmed(),
-                                            verify_cmd.dimmed()
+                                            wrapped_verify_cmd.dimmed()
                                         );
                                         let verification = Verification {
-                                            command: verify_cmd,
+                                            command: wrapped_verify_cmd,
                                             timeout: timeout_duration,
                                             max_output_bytes: DEFAULT_VERIFY_MAX_OUTPUT_BYTES,
                                         };
@@ -2221,11 +2292,11 @@ impl WorkflowRunner {
                                                 &requester,
                                             )
                                             .await;
+                                        let caps = requester.into_captures();
                                         if outcome.success {
                                             if let Some(last) = outcome.attempts.last() {
                                                 current_text = last.raw_output.clone();
                                             }
-                                            let caps = requester.into_captures();
                                             if caps.last_stderr.is_some() {
                                                 step_stderr = caps.last_stderr;
                                             }
@@ -2239,7 +2310,13 @@ impl WorkflowRunner {
                                         } else {
                                             let elapsed_ms =
                                                 start.elapsed().as_millis() as u64;
-                                            let (msg, kind) = map_retry_failure(&outcome);
+                                            let timeout_ms =
+                                                timeout_duration.as_millis() as u64;
+                                            let (msg, kind) = map_retry_failure(
+                                                &outcome,
+                                                timeout_ms,
+                                                caps.last_apply_partial_paths.as_deref(),
+                                            );
                                             return StepResult::error(
                                                 step_name,
                                                 msg,
@@ -2255,7 +2332,6 @@ impl WorkflowRunner {
                                             &current_text,
                                             &cwd,
                                             format.as_deref(),
-                                            timeout_duration,
                                             self.config
                                                 .defaults
                                                 .command_wrapper
@@ -2272,13 +2348,9 @@ impl WorkflowRunner {
                                             Err(msg) => {
                                                 let elapsed_ms =
                                                     start.elapsed().as_millis() as u64;
-                                                let full_msg = format!(
-                                                    "{}\n\nOriginal output:\n{}",
-                                                    msg, current_text
-                                                );
                                                 return StepResult::error(
                                                     step_name,
-                                                    full_msg,
+                                                    msg,
                                                     elapsed_ms,
                                                     Some(backend_name.clone()),
                                                     StepFailureKind::EditFailed,
@@ -2952,21 +3024,22 @@ struct ShellOutput {
 
 /// Run a shell command and return structured output with separated stdout/stderr.
 /// If wrapper is provided (e.g., "nix-shell --run '{cmd}'"), the command will be wrapped.
+fn apply_command_wrapper(cmd: &str, wrapper: Option<&str>) -> String {
+    match wrapper {
+        Some(w) => {
+            let escaped_cmd = if w.contains("'{cmd}'") {
+                cmd.replace('\'', "'\\''")
+            } else {
+                cmd.to_string()
+            };
+            w.replace("{cmd}", &escaped_cmd)
+        }
+        None => cmd.to_string(),
+    }
+}
+
 async fn run_shell(cmd: &str, cwd: &Path, wrapper: Option<&str>) -> Result<ShellOutput> {
-    // Apply wrapper if provided
-    let final_cmd = if let Some(w) = wrapper {
-        // If wrapper uses single quotes around {cmd}, escape single quotes in the command
-        // e.g., "nix-shell --run '{cmd}'" with cmd containing ' needs escaping
-        let escaped_cmd = if w.contains("'{cmd}'") {
-            // Escape single quotes for bash: ' -> '\''
-            cmd.replace("'", "'\\''")
-        } else {
-            cmd.to_string()
-        };
-        w.replace("{cmd}", &escaped_cmd)
-    } else {
-        cmd.to_string()
-    };
+    let final_cmd = apply_command_wrapper(cmd, wrapper);
 
     let child = Command::new("sh")
         .arg("-c")
@@ -6223,12 +6296,11 @@ prompt = "p"
             truncated: false,
         };
         let outcome = make_outcome(vec![make_attempt(None, None, Some(vr))]);
-        let (msg, kind) = map_retry_failure(&outcome);
+        let (msg, kind) = map_retry_failure(&outcome, 120_000, None);
         assert!(matches!(kind, StepFailureKind::VerifyFailed));
-        assert!(msg.contains("exit code 101"));
+        assert!(msg.contains("failed after 1 attempts with exit code 101"));
+        assert!(msg.contains("Stderr:"));
         assert!(msg.contains("assertion failed"));
-        assert!(msg.contains("Original output:"));
-        assert!(msg.contains("RAW_OUTPUT"));
     }
 
     #[test]
@@ -6243,29 +6315,42 @@ prompt = "p"
             truncated: false,
         };
         let outcome = make_outcome(vec![make_attempt(None, None, Some(vr))]);
-        let (msg, kind) = map_retry_failure(&outcome);
+        let (msg, kind) = map_retry_failure(&outcome, 5000, None);
         assert!(matches!(kind, StepFailureKind::VerifyFailed));
-        assert!(msg.contains("Verification timed out after 5000ms"));
+        assert!(msg.contains("timed out after 1 attempts (5000ms limit)"));
+        assert!(msg.contains("Partial stderr:"));
         assert!(!msg.contains("None"));
     }
 
     #[test]
-    fn test_map_retry_failure_apply_error() {
+    fn test_map_retry_failure_apply_error_with_paths() {
         let outcome =
             make_outcome(vec![make_attempt(None, Some("old text not found"), None)]);
-        let (msg, kind) = map_retry_failure(&outcome);
+        let paths = vec![PathBuf::from("foo.rs"), PathBuf::from("bar.rs")];
+        let (msg, kind) = map_retry_failure(&outcome, 120_000, Some(&paths));
         assert!(matches!(kind, StepFailureKind::EditFailed));
-        assert!(msg.starts_with("Edit failed: old text not found"));
-        assert!(msg.contains("Original output:"));
+        assert!(msg.starts_with("Apply failed after 1 attempts: old text not found"));
+        assert!(msg.contains("Failed files: foo.rs, bar.rs"));
+        assert!(msg.contains("Last output:"));
+        assert!(msg.contains("RAW_OUTPUT"));
+    }
+
+    #[test]
+    fn test_map_retry_failure_apply_error_without_paths() {
+        let outcome =
+            make_outcome(vec![make_attempt(None, Some("old text not found"), None)]);
+        let (msg, _) = map_retry_failure(&outcome, 120_000, None);
+        assert!(msg.contains("Failed files: (not captured)"));
     }
 
     #[test]
     fn test_map_retry_failure_parse_error() {
         let outcome = make_outcome(vec![make_attempt(Some("not JSON"), None, None)]);
-        let (msg, kind) = map_retry_failure(&outcome);
+        let (msg, kind) = map_retry_failure(&outcome, 120_000, None);
         assert!(matches!(kind, StepFailureKind::EditFailed));
-        assert!(msg.starts_with("Parse failed: not JSON"));
-        assert!(msg.contains("Original output:"));
+        assert!(msg.starts_with("Parse failed after 1 attempts: not JSON"));
+        assert!(msg.contains("Last output:"));
+        assert!(msg.contains("RAW_OUTPUT"));
     }
 
     #[test]
@@ -6284,15 +6369,53 @@ prompt = "p"
             Some("stale apply"),
             Some(vr),
         )]);
-        let (msg, _) = map_retry_failure(&outcome);
+        let (msg, _) = map_retry_failure(&outcome, 120_000, None);
         assert!(msg.contains("Verification failed"));
         assert!(!msg.contains("stale apply"));
     }
 
     #[test]
+    fn test_map_retry_failure_attempt_count_from_retries() {
+        let vr = VerifyResult {
+            success: false,
+            stdout: String::new(),
+            stderr: "e".to_string(),
+            exit_code: Some(1),
+            elapsed_ms: 10,
+            timed_out: false,
+            truncated: false,
+        };
+        let outcome = make_outcome(vec![
+            make_attempt(None, None, Some(vr.clone())),
+            make_attempt(None, None, Some(vr.clone())),
+            make_attempt(None, None, Some(vr)),
+        ]);
+        let (msg, _) = map_retry_failure(&outcome, 120_000, None);
+        assert!(msg.contains("after 3 attempts"));
+    }
+
+    #[test]
+    fn test_map_retry_failure_stderr_truncated_to_1kb() {
+        let huge_stderr = "x".repeat(10_000);
+        let vr = VerifyResult {
+            success: false,
+            stdout: String::new(),
+            stderr: huge_stderr,
+            exit_code: Some(1),
+            elapsed_ms: 10,
+            timed_out: false,
+            truncated: false,
+        };
+        let outcome = make_outcome(vec![make_attempt(None, None, Some(vr))]);
+        let (msg, _) = map_retry_failure(&outcome, 120_000, None);
+        assert!(msg.contains("[truncated]"));
+        assert!(msg.len() < 3_000);
+    }
+
+    #[test]
     fn test_map_retry_failure_empty_attempts() {
         let outcome = make_outcome(vec![]);
-        let (msg, kind) = map_retry_failure(&outcome);
+        let (msg, kind) = map_retry_failure(&outcome, 120_000, None);
         assert!(matches!(kind, StepFailureKind::EditFailed));
         assert!(msg.contains("without any attempts"));
     }
@@ -6308,7 +6431,7 @@ prompt = "p"
         std::fs::write(&target, "old content\n").unwrap();
 
         let raw = r#"{"edits": [{"file": "hello.txt", "old": "old content", "new": "new content"}]}"#;
-        let result = apply_once(raw, dir.path(), None, std::time::Duration::from_secs(5), None).await;
+        let result = apply_once(raw, dir.path(), None, None).await;
         assert!(result.is_ok(), "apply_once failed: {:?}", result);
 
         let actual = std::fs::read_to_string(&target).unwrap();
@@ -6319,7 +6442,7 @@ prompt = "p"
     async fn test_apply_once_parse_error_returns_err() {
         let dir = tempdir().unwrap();
         let raw = "this is garbage not a parseable edit format";
-        let result = apply_once(raw, dir.path(), None, std::time::Duration::from_secs(5), None).await;
+        let result = apply_once(raw, dir.path(), None, None).await;
         // Garbage with no filename hint is treated as FullFile format which can still
         // parse (as a full-file replacement of an unknown target). We accept either
         // outcome — the key is that the function does not panic.
@@ -6332,14 +6455,16 @@ prompt = "p"
         let target = dir.path().join("nonexistent.txt");
         // File doesn't exist and the edit references `old` text → apply fails.
         let raw = r#"{"edits": [{"file": "nonexistent.txt", "old": "missing", "new": "replacement"}]}"#;
-        let result = apply_once(raw, dir.path(), None, std::time::Duration::from_secs(5), None).await;
+        let result = apply_once(raw, dir.path(), None, None).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            err.starts_with("Edit failed:"),
-            "expected 'Edit failed:' prefix, got: {}",
+            err.starts_with("Apply failed after 1 attempts:"),
+            "expected ST-3 'Apply failed after 1 attempts' prefix, got: {}",
             err
         );
+        assert!(err.contains("Failed files:"));
+        assert!(err.contains("Last output:"));
         assert!(!target.exists(), "rollback should have removed the file");
     }
 
@@ -6352,14 +6477,7 @@ prompt = "p"
         let raw = r#"{"edits": [{"file": "greet.txt", "old": "hi", "new": "hello"}]}"#;
         // Format command appends " formatted" to the file if it ran.
         let format_cmd = format!("echo -n ' formatted' >> {}", target.display());
-        let result = apply_once(
-            raw,
-            dir.path(),
-            Some(&format_cmd),
-            std::time::Duration::from_secs(5),
-            None,
-        )
-        .await;
+        let result = apply_once(raw, dir.path(), Some(&format_cmd), None).await;
         assert!(result.is_ok());
         let actual = std::fs::read_to_string(&target).unwrap();
         assert!(

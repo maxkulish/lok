@@ -71,7 +71,11 @@ phases:
       cargo_test: "432 passed; 0 failed (including 11 new tests)"
       cargo_clippy: "1 pre-existing error in test_heuristic_contains_single_quote_char (not introduced by this change)"
   pr:
-    status: pending
+    status: in_progress
+    pr_url: "https://github.com/maxkulish/lok/pull/13"
+    pr_number: 13
+    branch: "feat/clo-211-apply-verify-pipeline"
+    created_at: "2026-04-11T19:50:00Z"
   complete:
     status: pending
 
@@ -131,3 +135,11 @@ history:
     action: implementation_complete
     phase: implement
     details: "ST-6 complete: Deleted AgenticOutput struct, fn parse_edits, fn apply_edits, fn git_agent::undo, and 6 legacy tests. cargo check clean, cargo test 432 passed. Only pre-existing clippy issue unrelated to this change. Phase 8 of llm-mux port initiative complete. Transitioning to PR phase."
+  - timestamp: "2026-04-11T19:50:00Z"
+    action: pr_created
+    phase: pr
+    details: "PR #13 opened: https://github.com/maxkulish/lok/pull/13 (branch feat/clo-211-apply-verify-pipeline, commit a8d747e)."
+  - timestamp: "2026-04-11T20:15:00Z"
+    action: review_addressed
+    phase: pr
+    details: "Addressed 7 of 8 review comments from gemini-code-assist and copilot-pull-request-reviewer. Declined 1 (Gemini critical claim about Box<dyn Backend> - false positive, create_backend returns Arc<dyn Backend>, cargo test confirms). Fixes: (1) map_retry_failure rewritten to match ST-3 spec format strings with attempt_count, stderr 1KB + raw 4KB truncation, partial_paths via EditRequesterCaptures; (2) apply_once format timeout pinned to 120s constant; (3) apply_once returns ST-3-formatted errors; (4) command_wrapper now applied to verify_cmd via shared apply_command_wrapper helper (fixes Copilot regression); (5) Mutex poison recovery via unwrap_or_else(|e| e.into_inner()) in both into_captures and request_edits; (6) PROJECT.md CLO-211 phase updated Spec→PR. New tests: 3 additional map_retry_failure tests (attempt_count, 1KB stderr truncation, apply paths with/without). Full suite: 429 passed; 0 failed."
