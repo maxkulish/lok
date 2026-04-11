@@ -6,7 +6,7 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify pipeline into workflow step execution | In Progress | PR | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -19,6 +19,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify pipeline into workflow step execution | 2026-04-11 | RetryLoop replaces legacy fix_loop with shell-composed (format) \|\| true && (verify); command_wrapper applied to composed cmd; apply_once helper for verify=None; ST-3 spec error format strings with 4KB raw/1KB stderr truncation; Mutex poison recovery; 14 new tests, 429 total |
 | [CLO-210](https://linear.app/cloud-ai/issue/CLO-210) | Implement DiffApplier, Rollback, Verification, RetryLoop | 2026-04-09 | 4 modules in apply_verify: DiffApplier (3-format apply), Rollback (reverse-order restore), Verification (bounded shell + process-group), RetryLoop (parse-apply-verify-rollback cycle); 45 new tests |
 | [CLO-216](https://linear.app/cloud-ai/issue/CLO-216) | Support validate.mode = "lenient" for noise-cleanup validators | 2026-04-08 | mode="lenient" bypasses parser; any non-empty response passes; reconciled with tests |
 | [CLO-215](https://linear.app/cloud-ai/issue/CLO-215) | Add --explain-validation CLI flag for raw validator response | 2026-04-08 | raw_response field on ValidationResult + CLI flag dump on parse failure |

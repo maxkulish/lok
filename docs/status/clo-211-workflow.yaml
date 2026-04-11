@@ -5,8 +5,8 @@ task_type: specification
 created_at: "2026-04-11T17:20:16Z"
 
 workflow:
-  current_phase: pr
-  status: in_progress
+  current_phase: complete
+  status: complete
 
 phases:
   discovery:
@@ -71,13 +71,19 @@ phases:
       cargo_test: "432 passed; 0 failed (including 11 new tests)"
       cargo_clippy: "1 pre-existing error in test_heuristic_contains_single_quote_char (not introduced by this change)"
   pr:
-    status: in_progress
+    status: complete
     pr_url: "https://github.com/maxkulish/lok/pull/13"
     pr_number: 13
     branch: "feat/clo-211-apply-verify-pipeline"
     created_at: "2026-04-11T19:50:00Z"
+    merged_at: "2026-04-11T19:37:46Z"
+    merge_commit: "3a43fc7c393d09a19a9b2486f3d09a332b63850a"
+    reviews_addressed: 8
   complete:
-    status: pending
+    status: complete
+    completed_at: "2026-04-11T20:30:00Z"
+    aggregation_files_updated: true
+    linear_status: "Done"
 
 dependencies:
   - task: CLO-205
@@ -143,3 +149,19 @@ history:
     action: review_addressed
     phase: pr
     details: "Addressed 7 of 8 review comments from gemini-code-assist and copilot-pull-request-reviewer. Declined 1 (Gemini critical claim about Box<dyn Backend> - false positive, create_backend returns Arc<dyn Backend>, cargo test confirms). Fixes: (1) map_retry_failure rewritten to match ST-3 spec format strings with attempt_count, stderr 1KB + raw 4KB truncation, partial_paths via EditRequesterCaptures; (2) apply_once format timeout pinned to 120s constant; (3) apply_once returns ST-3-formatted errors; (4) command_wrapper now applied to verify_cmd via shared apply_command_wrapper helper (fixes Copilot regression); (5) Mutex poison recovery via unwrap_or_else(|e| e.into_inner()) in both into_captures and request_edits; (6) PROJECT.md CLO-211 phase updated Spec→PR. New tests: 3 additional map_retry_failure tests (attempt_count, 1KB stderr truncation, apply paths with/without). Full suite: 429 passed; 0 failed."
+  - timestamp: "2026-04-11T20:20:00Z"
+    action: review_replies_posted
+    phase: pr
+    details: "Posted 8/8 replies via gh api. 4 gemini-code-assist (all with /gemini review trailer): 3068456046 declined as false positive, 3068456055/3068456057/3068456059 fixed. 4 copilot-pull-request-reviewer: 3068458492 command_wrapper fixed, 3068458498/3068458506 mutex poison fixed, 3068458512 PROJECT.md phase fixed."
+  - timestamp: "2026-04-11T19:37:46Z"
+    action: pr_merged
+    phase: pr
+    details: "PR #13 merged to main via merge commit 3a43fc7c393d09a19a9b2486f3d09a332b63850a."
+  - timestamp: "2026-04-11T20:30:00Z"
+    action: project_sync_complete
+    phase: complete
+    details: "PROJECT.md: CLO-211 moved from Active Work to Recently Completed. ROADMAP.md: status Done, Phase 8 (3/3 Complete). DEPENDENCIES.md: no changes (CLO-211 was not blocking any task)."
+  - timestamp: "2026-04-11T20:30:00Z"
+    action: workflow_complete
+    phase: complete
+    details: "Task CLO-211 fully completed. Linear state Done, PR merged, aggregation files updated, status files finalized."
