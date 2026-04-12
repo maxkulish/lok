@@ -46,6 +46,9 @@ phases:
     status: complete
   pr:
     status: in_progress
+    pr_url: "https://github.com/maxkulish/lok/pull/14"
+    pr_number: 14
+    branch: "feat/clo-207-enrich-query-output"
   complete:
     status: pending
 
