@@ -3,7 +3,7 @@
 **Linear Task**: https://linear.app/cloud-ai/issue/CLO-212
 **Design Document**: docs/design-docs/clo-212-role-routing-config.md
 **Created**: 2026-04-12
-**Overall Progress**: 33% (10/30 tasks completed)
+**Overall Progress**: 100% (30/30 tasks completed)
 
 ---
 
@@ -107,77 +107,77 @@ This task replaces lok's hardcoded keyword-to-backend mappings in `src/delegatio
 
 ### Phase 3: Strategy Definitions (Conductor handles execution)
 
-- [ ] Add integration notes to `src/delegation.rs`
+- [x] Add integration notes to `src/delegation.rs`
   - Document how Conductor interprets `RoutingStrategy` from `Resolution`
   - `First` -> try backends in order, return first success; terminal errors short-circuit
   - `Fallback` -> try in order with transient error handling (429, 500, timeout -> next; 401, 400 -> short-circuit)
   - `Parallel` -> `FuturesUnordered` + `AtomicUsize`; return when `min_success` succeed; cancel remaining
   - `timeout_secs` -> wrap each invocation in `tokio::time::timeout`
 
-- [ ] Verify existing `min_deps_success` pattern in codebase can be reused for `Parallel`
+- [x] Verify existing `min_deps_success` pattern in codebase can be reused for `Parallel`
 
-- [ ] Add integration test: Conductor receives `Resolution` and executes with correct strategy
+- [x] Add integration test: Conductor receives `Resolution` and executes with correct strategy
 
 ### Phase 4: CLI Integration
 
-- [ ] Add `--team <name>` flag to `lok smart` command
+- [x] Add `--team <name>` flag to `lok smart` command
   - Accept optional team name argument
   - Pass team to `RoleResolver::resolve()` via `team_override` param
 
-- [ ] Add `--explain` flag to `lok smart` command
+- [x] Add `--explain` flag to `lok smart` command
   - After resolution, print role, team, backends, strategy
   - Only prints when flag is provided
 
-- [ ] Add `--team <name>` and `--explain` flags to `lok spawn` command
+- [x] Add `--team <name>` and `--explain` flags to `lok spawn` command
 
-- [ ] Add `--explain` flag to `lok team` command
+- [x] Add `--explain` flag to `lok team` command
   - `team` command always uses team from config; `--explain` shows resolution
 
-- [ ] Wire `RoleResolver` into command execution context
+- [x] Wire `RoleResolver` into command execution context
   - Instantiate once at startup (not per-call)
   - Share across `smart`, `team`, `spawn` commands
 
 ### Phase 5: Delegator Integration and Migration
 
-- [ ] Refactor `src/delegation.rs`
+- [x] Refactor `src/delegation.rs`
   - `RoleResolver` becomes primary path for configured roles
   - `Delegator` preserved as keyword fallback for unconfigured roles
   - When `RoleResolver::resolve()` returns `Err(RoleNotFound)`, fall back to `Delegator`
 
-- [ ] Verify default config (no `[roles]`) produces identical behavior to current `Delegator::new()`
+- [x] Verify default config (no `[roles]`) produces identical behavior to current `Delegator::new()`
   - Write test: run existing `delegation.rs` inputs through `RoleResolver::from_config(Config::default())`
   - Assert same backend recommendations
 
-- [ ] Wire `RoutingStrategy` from `Resolution` into Conductor's existing execution paths
+- [x] Wire `RoutingStrategy` from `Resolution` into Conductor's existing execution paths
   - Map `RoutingStrategy::First` to existing `First` consensus path
   - Map `RoutingStrategy::Fallback` to sequential fallback execution
   - Map `RoutingStrategy::Parallel` to parallel execution with quorum
 
-- [ ] Add migration note: hardcoded profiles from `delegation.rs` will move to default config in follow-up
+- [x] Add migration note: hardcoded profiles from `delegation.rs` will move to default config in follow-up
 
-- [ ] Write integration test: end-to-end with custom `lok.toml` containing `[roles]` section
+- [x] Write integration test: end-to-end with custom `lok.toml` containing `[roles]` section
 
 ### Phase 6: Testing and Validation
 
-- [ ] Run `cargo test role` - verify all role module tests pass
+- [x] Run `cargo test role` - verify all role module tests pass
 
-- [ ] Run `cargo test delegation` - verify delegation tests still pass
+- [x] Run `cargo test delegation` - verify delegation tests still pass
 
-- [ ] Run `cargo clippy` - address any warnings
+- [x] Run `cargo clippy` - address any warnings
 
-- [ ] Manual test: create `lok.toml` with custom `[roles]` and verify routing works
+- [x] Manual test: create `lok.toml` with custom `[roles]` and verify routing works
 
 ### Phase 7: Finalization
 
-- [ ] Create commit with conventional commit message: `feat(CLO-212): add configurable role routing with roles/teams config`
+- [x] Create commit with conventional commit message: `feat(CLO-212): add configurable role routing with roles/teams config`
 
-- [ ] Push branch: `git push -u origin feat/clo-212-role-routing-config`
+- [x] Push branch: `git push -u origin feat/clo-212-role-routing-config`
 
-- [ ] Create PR via `gh pr create`
+- [x] Create PR via `gh pr create`
   - Title: `feat(CLO-212): add configurable role routing with [roles]/[teams] config`
   - Body: summary of changes, test plan, link to Linear issue
 
-- [ ] Request review from team
+- [x] Request review from team
 
 ---
 

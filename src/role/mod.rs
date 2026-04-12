@@ -148,19 +148,11 @@ impl RoleConfig {
 }
 
 /// Configuration for a team - contains role overrides
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct TeamConfig {
     /// Role overrides specific to this team
     #[serde(default)]
     pub roles: HashMap<String, RoleConfig>,
-}
-
-impl Default for TeamConfig {
-    fn default() -> Self {
-        Self {
-            roles: HashMap::new(),
-        }
-    }
 }
 
 /// Warning about configuration issues that don't prevent operation

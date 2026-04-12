@@ -221,6 +221,14 @@ enum Commands {
         /// Working directory for the query
         #[arg(short, long, default_value = ".")]
         dir: PathBuf,
+
+        /// Team to use for role resolution (overrides defaults.team)
+        #[arg(short, long)]
+        team: Option<String>,
+
+        /// Explain why backends were selected (show resolution details)
+        #[arg(long)]
+        explain: bool,
     },
 
     /// Run task with team mode (smart delegation + optional debate)
@@ -235,6 +243,10 @@ enum Commands {
         /// Enable debate mode (get second opinions)
         #[arg(long)]
         debate: bool,
+
+        /// Explain why backends were selected (show resolution details)
+        #[arg(long)]
+        explain: bool,
     },
 
     /// Check which backends are available and ready
@@ -252,6 +264,14 @@ enum Commands {
         /// Manually specify agents (format: "name:description")
         #[arg(short, long)]
         agent: Option<Vec<String>>,
+
+        /// Team to use for role resolution (overrides defaults.team)
+        #[arg(short, long)]
+        team: Option<String>,
+
+        /// Explain why backends were selected (show resolution details)
+        #[arg(long)]
+        explain: bool,
     },
 
     /// Run or manage workflows (multi-step pipelines)
@@ -535,62 +555,122 @@ async fn main() -> Result<()> {
             let delegator = delegation::Delegator::new();
             println!("{}", delegator.explain(&task));
         }
-        Commands::Smart { prompt, dir } => {
-            let delegator = delegation::Delegator::new();
-            let recommendations = delegator.recommend(&prompt);
+        Commands::Smart {
+            prompt,
+            dir,
+            team,
+            explain,
+        } => {
+            // Create RoleResolver from config
+            let resolver = role::RoleResolver::new(
+                config.roles.clone(),
+                config.teams.clone(),
+                config.defaults.team.clone(),
+            );
 
-            // Try each recommended backend in order until one is available
-            let mut selected_backend = None;
-            for rec in &recommendations {
-                if backend::get_backends(&config, Some(&rec.name)).is_ok() {
-                    selected_backend = Some(rec.name.as_str());
-                    break;
+            // Get available backends
+            let available_backends: Vec<String> = config.backends.keys().cloned().collect();
+
+            // Try to resolve role "smart" (or fallback to delegator if not configured)
+            let resolution = match resolver.resolve("smart", team.as_deref(), &available_backends) {
+                Ok(res) => res,
+                Err(role::RoleResolutionError::RoleNotFound { .. }) => {
+                    // Fall back to delegator for unconfigured roles
+                    let delegator = delegation::Delegator::new();
+                    let recommendations = delegator.recommend(&prompt);
+
+                    // Explain the recommendation if requested
+                    if explain {
+                        println!("{}", delegator.explain(&prompt));
+                        println!();
+                    }
+
+                    // Try each recommended backend in order until one is available
+                    let mut selected_backends = Vec::new();
+                    for rec in &recommendations {
+                        if backend::get_backends(&config, Some(&rec.name)).is_ok() {
+                            selected_backends.push(rec.name.clone());
+                            break; // Take only the first available
+                        }
+                    }
+
+                    role::Resolution::new("smart")
+                        .with_backends(selected_backends)
+                        .with_strategy(role::RoutingStrategy::First)
                 }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Role resolution failed: {}", e));
+                }
+            };
+
+            // Show resolution details if explain flag is set
+            if explain {
+                println!("{} Role resolution:", "smart:".cyan().bold());
+                println!("  Role: {}", resolution.role);
+                if let Some(t) = &resolution.team {
+                    println!("  Team: {}", t);
+                }
+                println!(
+                    "  Source: {}",
+                    if resolution.from_team_override {
+                        "team override"
+                    } else {
+                        "global config"
+                    }
+                );
+                println!("  Strategy: {:?}", resolution.strategy);
+                println!(
+                    "  Backends: [{}]",
+                    resolution.backends.join(", ")
+                );
+                println!();
             }
 
-            match selected_backend {
-                Some(backend_name) => {
-                    println!(
-                        "{} Using {} for this task",
-                        "smart:".cyan().bold(),
-                        backend_name.to_uppercase().green()
-                    );
-                    println!();
+            let backends = if resolution.backends.is_empty() {
+                println!(
+                    "{} No configured backends available, using all",
+                    "smart:".yellow()
+                );
+                backend::get_backends(&config, None)?
+            } else {
+                println!(
+                    "{} Using configured backends: [{}]",
+                    "smart:".cyan().bold(),
+                    resolution.backends.join(", ").green()
+                );
+                println!();
+                backend::get_backends(
+                    &config,
+                    Some(&resolution.backends.join(",")),
+                )?
+            };
 
-                    let backends = backend::get_backends(&config, Some(backend_name))?;
+            if cli.verbose {
+                backend::print_verbose_header(&prompt, &backends, &dir);
+            }
 
-                    if cli.verbose {
-                        backend::print_verbose_header(&prompt, &backends, &dir);
-                    }
+            let results = backend::run_query(&backends, &prompt, &dir, &config).await?;
+            output::print_results(&results);
 
-                    let results = backend::run_query(&backends, &prompt, &dir, &config).await?;
-                    output::print_results(&results);
-
-                    if cli.verbose {
-                        backend::print_verbose_timing(&results);
-                    }
-                }
-                None => {
-                    println!(
-                        "{} No recommended backend available, using all",
-                        "smart:".yellow()
-                    );
-                    let backends = backend::get_backends(&config, None)?;
-
-                    if cli.verbose {
-                        backend::print_verbose_header(&prompt, &backends, &dir);
-                    }
-
-                    let results = backend::run_query(&backends, &prompt, &dir, &config).await?;
-                    output::print_results(&results);
-
-                    if cli.verbose {
-                        backend::print_verbose_timing(&results);
-                    }
-                }
+            if cli.verbose {
+                backend::print_verbose_timing(&results);
             }
         }
-        Commands::Team { task, dir, debate } => {
+        Commands::Team {
+            task,
+            dir,
+            debate,
+            explain,
+        } => {
+            if explain {
+                println!("{} Team mode resolution:", "team:".cyan().bold());
+                if let Some(t) = &config.defaults.team {
+                    println!("  Default team: {}", t);
+                } else {
+                    println!("  No default team configured");
+                }
+                println!();
+            }
             let team = team::Team::new(&config, &dir)?;
             let result = team.execute(&task, debate).await?;
             println!();
@@ -665,7 +745,25 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Commands::Spawn { task, dir, agent } => {
+        Commands::Spawn {
+            task,
+            dir,
+            agent,
+            team,
+            explain,
+        } => {
+            if explain {
+                println!("{} Spawn mode resolution:", "spawn:".cyan().bold());
+                if let Some(t) = &team {
+                    println!("  Team override: {}", t);
+                } else if let Some(t) = &config.defaults.team {
+                    println!("  Default team: {}", t);
+                } else {
+                    println!("  No team configured");
+                }
+                println!();
+            }
+            let _team_override = team; // Will be used when spawn integrates with RoleResolver
             let spawner = spawn::Spawn::new(&config, &dir).await?;
 
             // Parse manual agents if provided
