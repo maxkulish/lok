@@ -7,6 +7,7 @@ mod ollama;
 mod retry;
 
 #[cfg(feature = "bedrock")]
+#[allow(unused_imports)]
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
 pub use retry::{RetryExecutor, RetryPolicy};
@@ -96,31 +97,126 @@ impl From<anyhow::Error> for BackendError {
     }
 }
 
-/// Structured output from a backend query, capturing stdout, stderr, and exit code.
+/// Token usage metadata reported by LLM backends, used for cost tracking and observability.
+///
+/// Counts are `u32` (max ~4 billion), which is sufficient for any realistic LLM context.
+/// `total_tokens` is computed via saturating addition to avoid overflow panics on pathological inputs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TokenUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+impl TokenUsage {
+    /// Construct a `TokenUsage` from prompt and completion counts, computing `total_tokens`
+    /// via `saturating_add` so that `u32::MAX + 1` clamps to `u32::MAX` instead of panicking.
+    pub fn new(prompt_tokens: u32, completion_tokens: u32) -> Self {
+        Self {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens: prompt_tokens.saturating_add(completion_tokens),
+        }
+    }
+}
+
+/// Structured output from a backend query.
+///
+/// Carries the raw text channels (`stdout`, `stderr`, `exit_code`) plus metadata about
+/// which backend produced the output, how long it took, which model responded, and
+/// optional token usage / parsed JSON.
+///
+/// ## Duration semantics
+///
+/// `duration` is the backend's internal wall-clock measurement from the start of `query()`
+/// to its return. It is distinct from `QueryResult.elapsed_ms`, which is measured by
+/// `run_query_with_config` around the entire task spawn (including tokio task overhead
+/// and progress-bar updates). The two may differ by a few milliseconds; both are valid
+/// views of "how long the query took".
+///
+/// When a `RetryExecutor` wraps a backend, the returned `duration` reflects the final
+/// successful attempt only, NOT the cumulative retry time. Callers wanting total retry
+/// time should measure externally.
+///
+/// `structured` is NOT auto-populated by constructors. Callers that need parsed JSON
+/// should invoke `workflow::extract_json_from_text(&output.stdout)` and pass the result
+/// through `with_structured()`. This avoids silent failures on markdown-fenced JSON
+/// (the common CLI case) and keeps extraction logic in one place.
+// New fields (duration, structured, backend) are populated but not yet consumed
+// by workflow.rs / template/context.rs - that migration is scoped as a follow-up.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct QueryOutput {
     pub stdout: String,
     pub stderr: Option<String>,
     pub exit_code: Option<i32>,
+    pub model: Option<String>,
+    pub duration: Duration,
+    pub usage: Option<TokenUsage>,
+    pub structured: Option<serde_json::Value>,
+    pub backend: String,
 }
 
 impl QueryOutput {
     /// Create output for API backends (no process I/O).
-    pub fn from_text(text: String) -> Self {
+    ///
+    /// `backend` and `duration` are required to enforce the always-populated invariant;
+    /// there is intentionally no `Default` impl for `QueryOutput`.
+    pub fn from_text(text: String, backend: impl Into<String>, duration: Duration) -> Self {
         Self {
             stdout: text,
             stderr: None,
             exit_code: None,
+            model: None,
+            duration,
+            usage: None,
+            structured: None,
+            backend: backend.into(),
         }
     }
 
     /// Create output for CLI backends with full process data.
-    pub fn from_process(stdout: String, stderr: String, exit_code: i32) -> Self {
+    ///
+    /// `backend` and `duration` are required to enforce the always-populated invariant.
+    pub fn from_process(
+        stdout: String,
+        stderr: String,
+        exit_code: i32,
+        backend: impl Into<String>,
+        duration: Duration,
+    ) -> Self {
         Self {
             stdout,
             stderr: Some(stderr).filter(|s| !s.is_empty()),
             exit_code: Some(exit_code),
+            model: None,
+            duration,
+            usage: None,
+            structured: None,
+            backend: backend.into(),
         }
+    }
+
+    /// Builder setter for `model`. Accepts `Option<...>` so that chaining with API
+    /// response fields (already `Option<String>`) compiles without `if let` guards.
+    pub fn with_model(mut self, model: Option<impl Into<String>>) -> Self {
+        self.model = model.map(Into::into);
+        self
+    }
+
+    /// Builder setter for `usage`. Accepts `Option<TokenUsage>` to match the optional
+    /// nature of token reporting (not all backends / responses include usage data).
+    pub fn with_usage(mut self, usage: Option<TokenUsage>) -> Self {
+        self.usage = usage;
+        self
+    }
+
+    /// Builder setter for `structured`. Callers populate this explicitly after running
+    /// their preferred JSON extraction (typically `workflow::extract_json_from_text`).
+    #[allow(dead_code)]
+    pub fn with_structured(mut self, structured: Option<serde_json::Value>) -> Self {
+        self.structured = structured;
+        self
     }
 }
 
@@ -168,7 +264,7 @@ pub fn create_backend(
             let rt = tokio::runtime::Handle::current();
             let config = config.clone();
             rt.block_on(async {
-                Ok(Arc::new(bedrock::BedrockBackend::new(&config).await?) as Arc<dyn Backend>)
+                anyhow::Ok(Arc::new(bedrock::BedrockBackend::new(&config).await?) as Arc<dyn Backend>)
             })?
         }
         #[cfg(not(feature = "bedrock"))]
@@ -450,10 +546,15 @@ mod tests {
 
     #[test]
     fn test_query_output_from_text() {
-        let output = QueryOutput::from_text("hello world".to_string());
+        let output = QueryOutput::from_text("hello world".to_string(), "test", Duration::ZERO);
         assert_eq!(output.stdout, "hello world");
         assert!(output.stderr.is_none());
         assert!(output.exit_code.is_none());
+        assert_eq!(output.backend, "test");
+        assert_eq!(output.duration, Duration::ZERO);
+        assert!(output.model.is_none());
+        assert!(output.usage.is_none());
+        assert!(output.structured.is_none());
     }
 
     #[test]
@@ -462,15 +563,24 @@ mod tests {
             "stdout content".to_string(),
             "stderr content".to_string(),
             0,
+            "test",
+            Duration::ZERO,
         );
         assert_eq!(output.stdout, "stdout content");
         assert_eq!(output.stderr, Some("stderr content".to_string()));
         assert_eq!(output.exit_code, Some(0));
+        assert_eq!(output.backend, "test");
     }
 
     #[test]
     fn test_query_output_from_process_empty_stderr_normalized() {
-        let output = QueryOutput::from_process("stdout".to_string(), "".to_string(), 0);
+        let output = QueryOutput::from_process(
+            "stdout".to_string(),
+            "".to_string(),
+            0,
+            "test",
+            Duration::ZERO,
+        );
         assert_eq!(output.stdout, "stdout");
         assert!(output.stderr.is_none());
         assert_eq!(output.exit_code, Some(0));
@@ -478,10 +588,113 @@ mod tests {
 
     #[test]
     fn test_query_output_from_process_empty_stdout() {
-        let output = QueryOutput::from_process("".to_string(), "".to_string(), 0);
+        let output = QueryOutput::from_process(
+            "".to_string(),
+            "".to_string(),
+            0,
+            "test",
+            Duration::ZERO,
+        );
         assert_eq!(output.stdout, "");
         assert!(output.stderr.is_none());
         assert_eq!(output.exit_code, Some(0));
+    }
+
+    #[test]
+    fn test_token_usage_new_computes_total() {
+        let usage = TokenUsage::new(10, 20);
+        assert_eq!(usage.prompt_tokens, 10);
+        assert_eq!(usage.completion_tokens, 20);
+        assert_eq!(usage.total_tokens, 30);
+    }
+
+    #[test]
+    fn test_token_usage_new_saturates_on_overflow() {
+        let usage = TokenUsage::new(u32::MAX, 1);
+        assert_eq!(usage.prompt_tokens, u32::MAX);
+        assert_eq!(usage.completion_tokens, 1);
+        assert_eq!(usage.total_tokens, u32::MAX);
+    }
+
+    #[test]
+    fn test_token_usage_default_zero() {
+        let usage = TokenUsage::default();
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+        assert_eq!(usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn test_query_output_from_text_populates_backend_and_duration() {
+        let output =
+            QueryOutput::from_text("ok".to_string(), "claude", Duration::from_millis(100));
+        assert_eq!(output.backend, "claude");
+        assert_eq!(output.duration, Duration::from_millis(100));
+        assert!(output.structured.is_none());
+    }
+
+    #[test]
+    fn test_query_output_from_process_populates_backend_and_duration() {
+        let output = QueryOutput::from_process(
+            "stdout".to_string(),
+            "".to_string(),
+            0,
+            "gemini",
+            Duration::from_millis(250),
+        );
+        assert_eq!(output.backend, "gemini");
+        assert_eq!(output.duration, Duration::from_millis(250));
+        assert!(output.structured.is_none());
+    }
+
+    #[test]
+    fn test_query_output_with_model_some() {
+        let output = QueryOutput::from_text("ok".to_string(), "claude", Duration::ZERO)
+            .with_model(Some("sonnet"));
+        assert_eq!(output.model, Some("sonnet".to_string()));
+    }
+
+    #[test]
+    fn test_query_output_with_model_none() {
+        let output = QueryOutput::from_text("ok".to_string(), "claude", Duration::ZERO)
+            .with_model(None::<String>);
+        assert!(output.model.is_none());
+    }
+
+    #[test]
+    fn test_query_output_with_usage_some() {
+        let output = QueryOutput::from_text("ok".to_string(), "claude", Duration::ZERO)
+            .with_usage(Some(TokenUsage::new(5, 10)));
+        assert_eq!(
+            output.usage,
+            Some(TokenUsage {
+                prompt_tokens: 5,
+                completion_tokens: 10,
+                total_tokens: 15,
+            })
+        );
+    }
+
+    #[test]
+    fn test_query_output_with_usage_none() {
+        let output = QueryOutput::from_text("ok".to_string(), "claude", Duration::ZERO)
+            .with_usage(None);
+        assert!(output.usage.is_none());
+    }
+
+    #[test]
+    fn test_query_output_with_structured_some() {
+        let value = serde_json::json!({"a": 1});
+        let output = QueryOutput::from_text("ok".to_string(), "claude", Duration::ZERO)
+            .with_structured(Some(value.clone()));
+        assert_eq!(output.structured, Some(value));
+    }
+
+    #[test]
+    fn test_query_output_with_structured_none() {
+        let output = QueryOutput::from_text("ok".to_string(), "claude", Duration::ZERO)
+            .with_structured(None);
+        assert!(output.structured.is_none());
     }
 
     #[test]

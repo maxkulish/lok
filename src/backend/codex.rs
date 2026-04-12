@@ -3,11 +3,13 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Instant;
 use tokio::process::Command;
 
 pub struct CodexBackend {
     command: String,
     args: Vec<String>,
+    default_model: Option<String>,
 }
 
 impl CodexBackend {
@@ -28,7 +30,11 @@ impl CodexBackend {
             config.args.clone()
         };
 
-        Ok(Self { command, args })
+        Ok(Self {
+            command,
+            args,
+            default_model: config.model.clone(),
+        })
     }
 
     fn parse_output(&self, output: &str) -> String {
@@ -65,10 +71,17 @@ impl super::Backend for CodexBackend {
         cwd: &Path,
         model: Option<&str>,
     ) -> std::result::Result<super::QueryOutput, super::BackendError> {
+        let start = Instant::now();
+
+        let effective_model: Option<String> = model
+            .filter(|m| !m.is_empty())
+            .map(String::from)
+            .or_else(|| self.default_model.clone());
+
         let mut cmd = Command::new(&self.command);
         cmd.args(&self.args);
 
-        if let Some(m) = model.filter(|m| !m.is_empty()) {
+        if let Some(m) = effective_model.as_ref() {
             cmd.arg("--model").arg(m);
         }
 
@@ -110,7 +123,10 @@ impl super::Backend for CodexBackend {
             parsed_stdout,
             stderr_str,
             exit_code,
-        ))
+            "codex",
+            start.elapsed(),
+        )
+        .with_model(effective_model))
     }
 
     fn is_available(&self) -> bool {

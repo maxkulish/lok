@@ -5,6 +5,9 @@ use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_sdk_bedrockruntime::Client;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::time::Instant;
+
+use super::TokenUsage;
 
 pub struct BedrockBackend {
     client: Client,
@@ -54,13 +57,25 @@ pub enum ContentBlock {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct BedrockResponse {
     pub content: Vec<ResponseBlock>,
     pub stop_reason: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub usage: Option<BedrockUsage>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct BedrockUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
+#[allow(dead_code)]
 pub enum ResponseBlock {
     #[serde(rename = "text")]
     Text { text: String },
@@ -85,6 +100,7 @@ impl BedrockBackend {
         Ok(Self { client, model_id })
     }
 
+    #[allow(dead_code)]
     pub async fn invoke_with_messages(
         &self,
         system: Option<&str>,
@@ -142,6 +158,8 @@ impl super::Backend for BedrockBackend {
         _cwd: &Path,
         model: Option<&str>,
     ) -> std::result::Result<super::QueryOutput, super::BackendError> {
+        let start = Instant::now();
+
         let messages = vec![Message {
             role: "user".to_string(),
             content: MessageContent::Text(prompt.to_string()),
@@ -156,15 +174,30 @@ impl super::Backend for BedrockBackend {
 
         let text = response
             .content
-            .into_iter()
+            .iter()
             .filter_map(|block| match block {
-                ResponseBlock::Text { text } => Some(text),
+                ResponseBlock::Text { text } => Some(text.clone()),
                 _ => None,
             })
             .collect::<Vec<_>>()
             .join("\n");
 
-        Ok(super::QueryOutput::from_text(text))
+        let usage = response
+            .usage
+            .as_ref()
+            .map(|u| TokenUsage::new(u.input_tokens, u.output_tokens));
+
+        // Fall back to the requested effective model if Bedrock response omits model field.
+        let model = response
+            .model
+            .clone()
+            .or_else(|| Some(effective_model_id.to_string()));
+
+        Ok(
+            super::QueryOutput::from_text(text, "bedrock", start.elapsed())
+                .with_model(model)
+                .with_usage(usage),
+        )
     }
 
     fn is_available(&self) -> bool {
@@ -176,5 +209,40 @@ impl super::Backend for BedrockBackend {
                 std::env::var("HOME").unwrap_or_default()
             ))
             .exists()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bedrock_response_deserialize_with_usage() {
+        let json = r#"{
+            "content": [{"type": "text", "text": "hello"}],
+            "stop_reason": "end_turn",
+            "model": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "usage": {"input_tokens": 55, "output_tokens": 66}
+        }"#;
+        let parsed: BedrockResponse = serde_json::from_str(json).expect("should parse");
+        assert_eq!(parsed.content.len(), 1);
+        assert_eq!(
+            parsed.model.as_deref(),
+            Some("us.anthropic.claude-sonnet-4-20250514-v1:0")
+        );
+        let usage = parsed.usage.expect("usage should be present");
+        assert_eq!(usage.input_tokens, 55);
+        assert_eq!(usage.output_tokens, 66);
+    }
+
+    #[test]
+    fn test_bedrock_response_deserialize_without_usage() {
+        let json = r#"{
+            "content": [{"type": "text", "text": "hello"}],
+            "stop_reason": "end_turn"
+        }"#;
+        let parsed: BedrockResponse = serde_json::from_str(json).expect("should parse");
+        assert!(parsed.model.is_none());
+        assert!(parsed.usage.is_none());
     }
 }
