@@ -3,12 +3,14 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Instant;
 use tokio::process::Command;
 
 pub struct GeminiBackend {
     command: String,
     args: Vec<String>,
     skip_lines: usize,
+    default_model: Option<String>,
 }
 
 impl GeminiBackend {
@@ -25,6 +27,7 @@ impl GeminiBackend {
             command,
             args,
             skip_lines: config.skip_lines,
+            default_model: config.model.clone(),
         })
     }
 
@@ -49,11 +52,17 @@ impl super::Backend for GeminiBackend {
         cwd: &Path,
         model: Option<&str>,
     ) -> std::result::Result<super::QueryOutput, super::BackendError> {
+        let start = Instant::now();
+
         // Gemini CLI requires stdin to be a pipe (not null/tty), so we use shell
         // to pipe empty input: echo '' | npx @google/gemini-cli 'prompt'
         let escaped_prompt = prompt.replace("'", "'\\''");
-        let model_flag = model
+        let effective_model: Option<String> = model
             .filter(|m| !m.is_empty())
+            .map(String::from)
+            .or_else(|| self.default_model.clone());
+        let model_flag = effective_model
+            .as_ref()
             .map(|m| format!(" --model '{}'", m.replace("'", "'\\''")))
             .unwrap_or_default();
         let shell_cmd = format!(
@@ -103,7 +112,10 @@ impl super::Backend for GeminiBackend {
             parsed_stdout,
             stderr_str,
             exit_code,
-        ))
+            "gemini",
+            start.elapsed(),
+        )
+        .with_model(effective_model))
     }
 
     fn is_available(&self) -> bool {

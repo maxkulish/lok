@@ -52,7 +52,7 @@ Driven by Mentis pre-PR validation incident (2026-04-07): Haiku returned unparse
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Extend QueryOutput with model, duration, usage, structured, backend | Backlog | CLO-202 |
+| [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Extend QueryOutput with model, duration, usage, structured, backend | In Progress | CLO-202 |
 
 ## Phase 6: Config Merging
 

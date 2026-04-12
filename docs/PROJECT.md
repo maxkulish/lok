@@ -6,14 +6,13 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Extend QueryOutput with model, duration, usage, structured, backend | In Progress | Phase 5 | - |
 
 ## Up Next (Prioritized Backlog)
 
 | Priority | Task | Title | Dependencies |
 |----------|------|-------|--------------|
-| 1 | [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Enrich QueryOutput with model, usage, duration | CLO-202 (done) |
-| 2 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Configurable role routing with [roles]/[teams] config | CLO-203 (done) |
+| 1 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Configurable role routing with [roles]/[teams] config | CLO-203 (done) |
 
 ## Recently Completed
 

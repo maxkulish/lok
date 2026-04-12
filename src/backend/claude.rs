@@ -6,9 +6,10 @@ use serde::Deserialize;
 use std::env;
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Instant;
 use tokio::process::Command;
 
-use super::BackendError;
+use super::{BackendError, TokenUsage};
 
 /// Claude backend mode - API or CLI
 #[derive(Clone)]
@@ -33,11 +34,21 @@ pub struct ClaudeBackend {
 #[derive(Deserialize)]
 struct ClaudeResponse {
     content: Vec<ContentBlock>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    usage: Option<ClaudeUsage>,
 }
 
 #[derive(Deserialize)]
 struct ContentBlock {
     text: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ClaudeUsage {
+    input_tokens: u32,
+    output_tokens: u32,
 }
 
 impl ClaudeBackend {
@@ -96,7 +107,9 @@ impl ClaudeBackend {
         system: &str,
         prompt: &str,
         model_override: Option<&str>,
-    ) -> std::result::Result<String, BackendError> {
+    ) -> std::result::Result<super::QueryOutput, BackendError> {
+        let start = Instant::now();
+
         let (api_key, default_model, client) = match &self.mode {
             ClaudeMode::Api {
                 api_key,
@@ -138,7 +151,7 @@ impl ClaudeBackend {
                 if e.is_timeout() {
                     BackendError::Timeout {
                         message: format!("Claude API request timed out: {}", e),
-                        elapsed_ms: 0,
+                        elapsed_ms: start.elapsed().as_millis() as u64,
                     }
                 } else if e.is_connect() {
                     BackendError::Network {
@@ -157,18 +170,27 @@ impl ClaudeBackend {
             return Err(classify_http_error(status, &body));
         }
 
-        let response: ClaudeResponse = response.json().await.map_err(|e| BackendError::Parse {
+        let parsed: ClaudeResponse = response.json().await.map_err(|e| BackendError::Parse {
             message: format!("Failed to parse Claude response: {}", e),
         })?;
 
-        let text = response
+        let text = parsed
             .content
             .into_iter()
             .filter_map(|block| block.text)
             .collect::<Vec<_>>()
             .join("\n");
 
-        Ok(text)
+        let usage = parsed
+            .usage
+            .map(|u| TokenUsage::new(u.input_tokens, u.output_tokens));
+        // Fall back to requested effective model if the API omits it (unlikely, but keeps
+        // the output's model field populated with something meaningful).
+        let model = parsed.model.or_else(|| Some(effective_model.to_string()));
+
+        Ok(super::QueryOutput::from_text(text, "claude", start.elapsed())
+            .with_model(model)
+            .with_usage(usage))
     }
 
     async fn query_cli(
@@ -177,6 +199,8 @@ impl ClaudeBackend {
         cwd: &Path,
         model_override: Option<&str>,
     ) -> Result<super::QueryOutput> {
+        let start = Instant::now();
+
         let (command, default_model) = match &self.mode {
             ClaudeMode::Cli { command, model } => (command, model),
             ClaudeMode::Api { .. } => anyhow::bail!("CLI mode required for this operation"),
@@ -184,14 +208,15 @@ impl ClaudeBackend {
 
         let effective_model = model_override
             .filter(|m| !m.is_empty())
-            .or(default_model.as_deref());
+            .map(String::from)
+            .or_else(|| default_model.clone());
 
         let mut cmd = Command::new(command);
         cmd.arg("-p") // print mode
             .arg("--output-format")
             .arg("text");
 
-        if let Some(m) = effective_model {
+        if let Some(m) = effective_model.as_ref() {
             cmd.arg("--model").arg(m);
         }
 
@@ -219,7 +244,10 @@ impl ClaudeBackend {
             stdout.trim().to_string(),
             stderr_str,
             exit_code,
-        ))
+            "claude",
+            start.elapsed(),
+        )
+        .with_model(effective_model))
     }
 }
 
@@ -260,10 +288,8 @@ impl super::Backend for ClaudeBackend {
     ) -> std::result::Result<super::QueryOutput, BackendError> {
         match &self.mode {
             ClaudeMode::Api { .. } => {
-                let text = self
-                    .query_api("You are a helpful assistant.", prompt, model)
-                    .await?;
-                Ok(super::QueryOutput::from_text(text))
+                self.query_api("You are a helpful assistant.", prompt, model)
+                    .await
             }
             ClaudeMode::Cli { .. } => self
                 .query_cli(prompt, cwd, model)
@@ -277,5 +303,37 @@ impl super::Backend for ClaudeBackend {
             ClaudeMode::Api { api_key, .. } => !api_key.expose_secret().is_empty(),
             ClaudeMode::Cli { command, .. } => which::which(command).is_ok(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_claude_response_deserialize_with_usage() {
+        let json = r#"{
+            "content": [{"type": "text", "text": "hello"}],
+            "model": "claude-sonnet-4-20250514",
+            "usage": {"input_tokens": 12, "output_tokens": 34}
+        }"#;
+        let parsed: ClaudeResponse = serde_json::from_str(json).expect("should parse");
+        assert_eq!(parsed.content.len(), 1);
+        assert_eq!(parsed.content[0].text.as_deref(), Some("hello"));
+        assert_eq!(parsed.model.as_deref(), Some("claude-sonnet-4-20250514"));
+        let usage = parsed.usage.expect("usage should be present");
+        assert_eq!(usage.input_tokens, 12);
+        assert_eq!(usage.output_tokens, 34);
+    }
+
+    #[test]
+    fn test_claude_response_deserialize_without_usage() {
+        let json = r#"{
+            "content": [{"type": "text", "text": "hello"}]
+        }"#;
+        let parsed: ClaudeResponse = serde_json::from_str(json).expect("should parse");
+        assert_eq!(parsed.content.len(), 1);
+        assert!(parsed.model.is_none());
+        assert!(parsed.usage.is_none());
     }
 }

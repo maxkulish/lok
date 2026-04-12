@@ -150,7 +150,11 @@ mod tests {
                     message: "transient".into(),
                 })
             } else {
-                Ok(QueryOutput::from_text("success".into()))
+                Ok(QueryOutput::from_text(
+                    "success".into(),
+                    "mock",
+                    Duration::from_millis(0),
+                ))
             }
         }
     }

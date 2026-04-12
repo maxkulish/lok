@@ -1,0 +1,87 @@
+task_id: CLO-207
+task_title: "Extend QueryOutput with model, duration, usage, structured, backend"
+task_url: "https://linear.app/cloud-ai/issue/CLO-207"
+task_type: specification
+created_at: "2026-04-11T00:00:00Z"
+
+workflow:
+  current_phase: pr
+  status: in_progress
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: "specs/2026-04-11-clo-207-enrich-query-output.md"
+    approved: true
+    review_completed: true
+    review_gemini: "docs/reviews/clo-207-spec-review-gemini.md"
+    review_ollama: "docs/reviews/clo-207-spec-review-ollama.md"
+    review_synthesis: "docs/reviews/clo-207-spec-review-synthesis.md"
+    review_verdict: "APPROVE_WITH_SUGGESTIONS"
+    review_applied: true
+    applied_suggestions:
+      - "Dropped auto-parse of structured in constructors (Ollama HIGH); added with_structured() builder instead; avoids markdown-fenced false negatives and duplication with workflow::extract_json_from_text"
+      - "Changed with_model/with_usage signatures to accept Option<...> so chaining with API response Option<String> fields compiles without if-let guards (Gemini HIGH)"
+      - "Added explicit response struct updates as sub-items under each backend sub-task: ClaudeResponse.model+usage, ChatResponse.model+prompt_eval_count+eval_count, BedrockResponse.model+usage (Ollama HIGH)"
+      - "Split ClaudeBackend sub-task into 2a (API mode with ClaudeResponse + HTTP usage parsing) and 2b (CLI mode with effective model from override-or-config) (Ollama MEDIUM)"
+      - "Populate effective model for Gemini and Codex when model_override present (Gemini HIGH) — aligns with effective-model invariant"
+      - "Ollama model fallback to effective requested model when API omits model field (Gemini MEDIUM) — mirrors Bedrock pattern"
+      - "Documented RetryExecutor duration semantics: reflects only successful attempt, NOT cumulative retry time (Ollama MEDIUM)"
+      - "Documented QueryResult.elapsed_ms vs QueryOutput.duration coexistence in module-level doc comment (Ollama MEDIUM)"
+      - "Explicitly scoped OUT downstream consumer migration (workflow.rs, template/context.rs) to keep CLO-207 focused on struct extension (Ollama MEDIUM)"
+      - "No Default impl for QueryOutput — would undermine always-populated invariants on backend/duration fields (Ollama LOW)"
+      - "Added evaluation tests for None cases in builders: test_query_output_with_model_none, test_query_output_with_usage_none, test_query_output_with_structured_none (Gemini LOW)"
+      - "Added test_token_usage_default_zero for TokenUsage::default() (Ollama LOW)"
+      - "Added test_ollama_response_deserialize_partial_counts edge case (new coverage)"
+      - "Added test_claude_response_deserialize_without_usage edge case for older API versions (new coverage)"
+    flagged_suggestions: []
+  implement:
+    status: complete
+  pr:
+    status: in_progress
+    pr_url: "https://github.com/maxkulish/lok/pull/14"
+    pr_number: 14
+    branch: "feat/clo-207-enrich-query-output"
+  complete:
+    status: pending
+
+history:
+  - timestamp: "2026-04-11T00:00:00Z"
+    action: workflow_started
+    phase: spec
+    details: "Initialized specification workflow for CLO-207 (Phase 5: Enrich QueryOutput). Well-scoped single-phase task - extend QueryOutput struct with model/duration/usage/structured/backend fields, add TokenUsage struct, update 5 backends (claude, gemini, ollama, codex, bedrock). Dependencies: CLO-202 complete. No blockers."
+  - timestamp: "2026-04-11T00:01:00Z"
+    action: project_sync_start
+    phase: spec
+    details: "Added to Active Work in PROJECT.md, ROADMAP.md status -> In Progress, removed from Unblocked & Ready in DEPENDENCIES.md. WIP 1/3."
+  - timestamp: "2026-04-11T00:02:00Z"
+    action: spec_draft_complete
+    phase: spec
+    details: "Spec written to specs/2026-04-11-clo-207-enrich-query-output.md. Scope M, 9 sub-tasks, 14 evaluation tests. Extends QueryOutput with 5 new fields (model/duration/usage/structured/backend), adds TokenUsage struct, updates 5 backends (claude/gemini/ollama/codex/bedrock) with Instant::now duration measurement and builder-pattern field setters."
+  - timestamp: "2026-04-11T00:03:00Z"
+    action: spec_review_complete
+    phase: spec
+    details: "lok spec-review pipeline ran successfully. Gemini 3.1 Pro verdict: APPROVE_WITH_SUGGESTIONS (4 actionable items). Codex-via-Ollama glm-5:cloud verdict: APPROVE_WITH_SUGGESTIONS (9 actionable items). Consensus: APPROVE_WITH_SUGGESTIONS. Reviews written to docs/reviews/clo-207-spec-review-{gemini,ollama,synthesis}.md."
+  - timestamp: "2026-04-11T00:04:00Z"
+    action: spec_review_applied
+    phase: spec
+    details: "Applied 14 non-contradicting review items to spec: dropped auto-parse of structured (added with_structured builder), changed builder signatures to accept Option, split ClaudeBackend into API/CLI sub-tasks (2a/2b), made response struct field additions explicit, populated effective model for CLI backends (Gemini/Codex), added Ollama model fallback, documented RetryExecutor duration semantics and QueryResult coexistence, scoped out downstream consumer migration, banned Default impl on QueryOutput, added None builder tests + default zero test + partial counts edge case. No user conflicts — all items were additive/refinement. Scope expanded from 9 to 10 sub-tasks, 14 to 20 evaluation tests."
+  - timestamp: "2026-04-11T00:05:00Z"
+    action: spec_approved
+    phase: spec
+    details: "User approved spec. Transitioning to implement phase (skipping plan — spec decomposition is the plan). 10 sub-tasks in dependency order: 1 (QueryOutput struct + TokenUsage) first, then 2a/2b/3/4/5/6 (backends) in parallel, then 7/8/9 (tests + retry mock)."
+  - timestamp: "2026-04-12T00:00:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "All 10 sub-tasks complete. Extended QueryOutput with model/duration/usage/structured/backend fields, added TokenUsage struct with saturating_add. Updated 5 backends: claude (API+CLI), gemini, ollama, codex, bedrock. 18 new tests (11 mod.rs, 2 claude, 3 ollama, 2 bedrock). Fixed pre-existing bedrock build error (anyhow::Ok type annotation). 445 tests pass, clippy clean, bedrock feature builds."
+  - timestamp: "2026-04-12T00:01:00Z"
+    action: review_addressed
+    phase: pr
+    details: "Addressed 3 review comments (2 copilot, 1 gemini-code-assist). Fixed: added TokenUsage::saturating_add() method + test, changed bedrock text.clone() to text.as_str(). Declined: gemini builder signature suggestion (intentional per spec review). Pushed 83f206b. Replies: 3/3."
