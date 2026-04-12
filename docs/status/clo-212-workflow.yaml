@@ -61,7 +61,7 @@ phases:
     pr_url: "https://github.com/maxkulish/lok/pull/15"
     pr_number: 15
     ci_passed: true
-    reviews_addressed: 1
+    reviews_addressed: 2
   complete:
     status: pending
 
@@ -169,3 +169,7 @@ history:
     action: review_addressed
     phase: pr
     details: "Addressed 4 gemini-code-assist comments: strategy execution wired up, with_team accepts Option, --role flag added to Smart, Spawn team override wired up. Commit d3bdd8c."
+  - timestamp: "2026-04-12T18:15:00Z"
+    action: review_addressed
+    phase: pr
+    details: "Addressed 5 copilot-pull-request-reviewer comments: deny_unknown_fields on RoleConfig/TeamConfig, available_backends from runtime check, design doc TOML schema fix, 2 stale comments acknowledged. Commit 9e0138e."
