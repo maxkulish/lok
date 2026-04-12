@@ -9,6 +9,7 @@ mod debate;
 mod delegation;
 mod git_agent;
 mod output;
+mod role;
 mod spawn;
 mod tasks;
 mod team;

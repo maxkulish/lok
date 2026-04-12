@@ -17,6 +17,10 @@ pub struct Config {
     pub backends: HashMap<String, BackendConfig>,
     #[serde(default)]
     pub tasks: HashMap<String, TaskConfig>,
+    #[serde(default)]
+    pub roles: HashMap<String, crate::role::RoleConfig>,
+    #[serde(default)]
+    pub teams: HashMap<String, crate::role::TeamConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -34,6 +38,9 @@ pub struct Defaults {
     /// The {cmd} placeholder will be replaced with the actual command
     #[serde(default)]
     pub command_wrapper: Option<String>,
+    /// Default team for role resolution (can be overridden via CLI --team flag)
+    #[serde(default)]
+    pub team: Option<String>,
 }
 
 fn default_parallel() -> bool {
@@ -60,6 +67,7 @@ impl Default for Defaults {
             max_retries: default_retries(),
             retry_delay_ms: default_retry_delay_ms(),
             command_wrapper: None,
+            team: None,
         }
     }
 }
@@ -252,6 +260,8 @@ impl Default for Config {
             cache: crate::cache::CacheConfig::default(),
             backends,
             tasks,
+            roles: HashMap::new(),
+            teams: HashMap::new(),
         }
     }
 }

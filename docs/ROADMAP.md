@@ -79,4 +79,4 @@ Driven by Mentis pre-PR validation incident (2026-04-07): Haiku returned unparse
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Add configurable role routing with [roles]/[teams] config | Backlog | CLO-203 |
+| [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Add configurable role routing with [roles]/[teams] config | In Progress | CLO-203 |

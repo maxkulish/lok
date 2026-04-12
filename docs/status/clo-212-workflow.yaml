@@ -1,0 +1,116 @@
+task_id: CLO-212
+title: "Add configurable role routing with [roles]/[teams] config"
+task_type: development
+linear_url: "https://linear.app/cloud-ai/issue/CLO-212/add-configurable-role-routing-with-rolesteams-config"
+branch: feat/clo-212-role-routing-config
+
+workflow:
+  current_phase: implement
+  status: in_progress
+  started_at: "2026-04-12T00:00:00Z"
+
+phases:
+  discovery:
+    status: complete
+    skip_reason: null
+    problem_framed: true
+    prd_exists: true
+    prd_file: "docs/prds/prd-llm-mux-port.md"
+    prd_created: false
+    discovery_report: "docs/prds/discovery-report-2026-04-12-clo-212.md"
+    discovery_debt: 4
+    baseline_score: 69
+    approaches_identified: 1
+    approach_chosen: "Config-Driven Role Routing with Clean Separation - RoutingStrategy separate from ConsensusStrategy, Delegator as fallback, team activation via CLI, regular TOML schema"
+    approved: true
+  design:
+    status: complete
+    design_doc: docs/design-docs/clo-212-role-routing-config.md
+    draft_ready: true
+    discovery_context_used: true
+    review_gemini: docs/reviews/clo-212-review-gemini.md
+    review_ollama: docs/reviews/clo-212-review-ollama.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_applied: true
+    finalized: true
+    flagged_suggestions: []
+    applied_suggestions:
+      - "Added RoleResolutionError enum with RoleNotFound, NoBackendsAvailable, ValidationError variants"
+      - "Added timeout_secs to Parallel and Fallback strategies; documented early termination for Parallel"
+      - "Added explicit error semantics for Fallback: transient errors trigger next backend, terminal errors short-circuit"
+      - "Clarified that RoleResolver returns Resolution but Conductor handles execution (routing stays pure/testable)"
+      - "Added team_override parameter to RoleResolver::resolve(); CLI --team flag overrides [defaults.team]"
+      - "Added timeout_secs to TOML schema example and Resolution struct"
+      - "Added is_empty() method to Resolution"
+      - "Updated Acceptance Criteria and Evaluation table to match new API"
+      - "Updated Phase 1/3 implementation plan items to reflect routing/execution separation"
+      - "Resolved all 3 open questions: --team flag overrides config, caller handles empty backends via error, unknown backends produce ValidationWarning"
+      - "Team overrides can define custom roles not in global config (teams can define their own specific roles)"
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-212-role-routing-config.md
+    approved: true
+  implement:
+    status: in_progress
+  pr:
+    status: pending
+  complete:
+    status: pending
+
+dependencies:
+  - CLO-203 (Done - config merge layer)
+
+history:
+  - timestamp: "2026-04-12T00:00:00Z"
+    action: workflow_started
+    phase: discovery
+    details: "Initialized development workflow for CLO-212. Dependency CLO-203 complete."
+  - timestamp: "2026-04-12T00:01:00Z"
+    action: discovery_started
+    phase: discovery
+    details: "Discovery phase started. PRD already exists at docs/prds/prd-llm-mux-port.md (Phase 6)."
+  - timestamp: "2026-04-12T00:02:00Z"
+    action: problem_framed
+    phase: discovery
+    details: "Problem framing approved. Hardcoded delegation -> configurable role routing with teams/roles config."
+  - timestamp: "2026-04-12T00:03:00Z"
+    action: discovery_report_complete
+    phase: discovery
+    details: "Discovery report produced. 4 killer assumptions, 69% baseline score. Key findings: separate RoutingStrategy from ConsensusStrategy, define team activation via CLI, regularize TOML schema."
+  - timestamp: "2026-04-12T00:04:00Z"
+    action: discovery_approved
+    phase: discovery
+    details: "Approach approved: Config-Driven Role Routing with Clean Separation. Proceeding to design phase."
+  - timestamp: "2026-04-12T13:35:00Z"
+    action: design_started
+    phase: design
+    details: "Design doc creation started. Using discovery report and chosen approach as context."
+  - timestamp: "2026-04-12T13:40:00Z"
+    action: design_draft_ready
+    phase: design
+    details: "Design doc drafted and saved. Running AI review (Gemini + Ollama)."
+  - timestamp: "2026-04-12T13:45:00Z"
+    action: design_review_complete
+    phase: design
+    details: "AI review complete. Both Gemini and Ollama returned APPROVE_WITH_SUGGESTIONS. Key issues: missing error types, timeout semantics, routing/execution separation clarified."
+  - timestamp: "2026-04-12T13:46:00Z"
+    action: review_applied
+    phase: design
+    details: "Auto-applied 11 suggestions from both reviews. Resolved all 3 open questions. Design updated with RoleResolutionError, timeout_secs, team_override param, and routing/execution separation."
+  - timestamp: "2026-04-12T13:50:00Z"
+    action: design_finalized
+    phase: design
+    details: "Design approved and finalized. Proceeding to plan phase."
+  - timestamp: "2026-04-12T14:00:00Z"
+    action: plan_created
+    phase: plan
+    details: "Implementation plan created at docs/plans/clo-212-role-routing-config.md. 30 tasks across 7 phases."
+  - timestamp: "2026-04-12T14:05:00Z"
+    action: plan_approved
+    phase: plan
+    details: "Plan approved. User requested stop before implementation."
+  - timestamp: "2026-04-12T14:05:00Z"
+    action: workflow_paused
+    phase: implement
+    details: "Workflow paused at implement phase. Ready to resume with /task:orchestrate CLO-212."
