@@ -14,7 +14,7 @@
 | Phase 6: Config Merging | 1 | 1 | Complete |
 | Phase 7: MiniJinja Templates | 2 | 2 | Complete |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
-| Phase 9: Configurable Role Routing | 1 | 0 | Planned |
+| Phase 9: Configurable Role Routing | 1 | 1 | Complete |
 
 ## Phase 2: Validation Pipeline
 
@@ -79,4 +79,4 @@ Driven by Mentis pre-PR validation incident (2026-04-07): Haiku returned unparse
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Add configurable role routing with [roles]/[teams] config | In Progress | CLO-203 |
+| [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Add configurable role routing with [roles]/[teams] config | Done | CLO-203 |

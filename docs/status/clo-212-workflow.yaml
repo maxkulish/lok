@@ -5,9 +5,10 @@ linear_url: "https://linear.app/cloud-ai/issue/CLO-212/add-configurable-role-rou
 branch: feat/clo-212-role-routing-config
 
 workflow:
-  current_phase: pr
-  status: in_progress
+  current_phase: complete
+  status: complete
   started_at: "2026-04-12T00:00:00Z"
+  completed_at: "2026-04-12T19:06:22Z"
 
 phases:
   discovery:
@@ -57,13 +58,16 @@ phases:
       - "f704e0f feat(CLO-212): add role routing core types and resolution logic"
       - "b11f462 feat(CLO-212): add CLI integration and delegator fallback"
   pr:
-    status: in_progress
+    status: complete
     pr_url: "https://github.com/maxkulish/lok/pull/15"
     pr_number: 15
     ci_passed: true
     reviews_addressed: 2
+    approved: true
   complete:
-    status: pending
+    status: complete
+    aggregation_files_updated: true
+    merged_at: "2026-04-12T19:06:22Z"
 
 dependencies:
   - CLO-203 (Done - config merge layer)
@@ -173,3 +177,15 @@ history:
     action: review_addressed
     phase: pr
     details: "Addressed 5 copilot-pull-request-reviewer comments: deny_unknown_fields on RoleConfig/TeamConfig, available_backends from runtime check, design doc TOML schema fix, 2 stale comments acknowledged. Commit 9e0138e."
+  - timestamp: "2026-04-12T19:06:22Z"
+    action: pr_merged
+    phase: pr
+    details: "PR #15 merged to main. Merge commit d4467559."
+  - timestamp: "2026-04-12T19:07:00Z"
+    action: project_sync_complete
+    phase: complete
+    details: "Aggregation files updated: PROJECT.md, ROADMAP.md, DEPENDENCIES.md. Linear CLO-212 marked Done."
+  - timestamp: "2026-04-12T19:07:00Z"
+    action: workflow_complete
+    phase: complete
+    details: "Task CLO-212 fully completed. 9 review comments addressed across 2 rounds (gemini-code-assist + copilot)."
