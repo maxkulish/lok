@@ -61,6 +61,7 @@ phases:
     pr_url: "https://github.com/maxkulish/lok/pull/15"
     pr_number: 15
     ci_passed: true
+    reviews_addressed: 1
   complete:
     status: pending
 
@@ -164,3 +165,7 @@ history:
     action: pr_created
     phase: pr
     details: "PR #15 created: https://github.com/maxkulish/lok/pull/15"
+  - timestamp: "2026-04-12T17:59:00Z"
+    action: review_addressed
+    phase: pr
+    details: "Addressed 4 gemini-code-assist comments: strategy execution wired up, with_team accepts Option, --role flag added to Smart, Spawn team override wired up. Commit d3bdd8c."
