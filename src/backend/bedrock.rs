@@ -176,7 +176,7 @@ impl super::Backend for BedrockBackend {
             .content
             .iter()
             .filter_map(|block| match block {
-                ResponseBlock::Text { text } => Some(text.clone()),
+                ResponseBlock::Text { text } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()

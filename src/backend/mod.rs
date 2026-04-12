@@ -118,6 +118,14 @@ impl TokenUsage {
             total_tokens: prompt_tokens.saturating_add(completion_tokens),
         }
     }
+
+    #[allow(dead_code)]
+    pub fn saturating_add(&self, other: &Self) -> Self {
+        Self::new(
+            self.prompt_tokens.saturating_add(other.prompt_tokens),
+            self.completion_tokens.saturating_add(other.completion_tokens),
+        )
+    }
 }
 
 /// Structured output from a backend query.
@@ -622,6 +630,22 @@ mod tests {
         assert_eq!(usage.prompt_tokens, 0);
         assert_eq!(usage.completion_tokens, 0);
         assert_eq!(usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn test_token_usage_saturating_add() {
+        let a = TokenUsage::new(100, 200);
+        let b = TokenUsage::new(50, 75);
+        let sum = a.saturating_add(&b);
+        assert_eq!(sum.prompt_tokens, 150);
+        assert_eq!(sum.completion_tokens, 275);
+        assert_eq!(sum.total_tokens, 425);
+
+        let big = TokenUsage::new(u32::MAX, u32::MAX);
+        let overflow = big.saturating_add(&TokenUsage::new(1, 1));
+        assert_eq!(overflow.prompt_tokens, u32::MAX);
+        assert_eq!(overflow.completion_tokens, u32::MAX);
+        assert_eq!(overflow.total_tokens, u32::MAX);
     }
 
     #[test]
