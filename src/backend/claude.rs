@@ -188,9 +188,11 @@ impl ClaudeBackend {
         // the output's model field populated with something meaningful).
         let model = parsed.model.or_else(|| Some(effective_model.to_string()));
 
-        Ok(super::QueryOutput::from_text(text, "claude", start.elapsed())
-            .with_model(model)
-            .with_usage(usage))
+        Ok(
+            super::QueryOutput::from_text(text, "claude", start.elapsed())
+                .with_model(model)
+                .with_usage(usage),
+        )
     }
 
     async fn query_cli(
