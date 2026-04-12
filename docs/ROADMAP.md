@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-04-11
+**Last Updated**: 2026-04-12
 
 ## Summary
 
@@ -10,7 +10,7 @@
 | Phase 2.5: Validation Resilience | 3 | 3 | Complete |
 | Phase 3: Failure Classification | 1 | 1 | Complete |
 | Phase 4: Backend Error Types & Retry | 3 | 3 | Complete |
-| Phase 5: Enrich QueryOutput | 1 | 0 | Planned |
+| Phase 5: Enrich QueryOutput | 1 | 1 | Complete |
 | Phase 6: Config Merging | 1 | 1 | Complete |
 | Phase 7: MiniJinja Templates | 2 | 2 | Complete |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
@@ -52,7 +52,7 @@ Driven by Mentis pre-PR validation incident (2026-04-07): Haiku returned unparse
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Extend QueryOutput with model, duration, usage, structured, backend | In Progress | CLO-202 |
+| [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Extend QueryOutput with model, duration, usage, structured, backend | Done | CLO-202 |
 
 ## Phase 6: Config Merging
 
