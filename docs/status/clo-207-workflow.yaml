@@ -81,3 +81,7 @@ history:
     action: implementation_complete
     phase: implement
     details: "All 10 sub-tasks complete. Extended QueryOutput with model/duration/usage/structured/backend fields, added TokenUsage struct with saturating_add. Updated 5 backends: claude (API+CLI), gemini, ollama, codex, bedrock. 18 new tests (11 mod.rs, 2 claude, 3 ollama, 2 bedrock). Fixed pre-existing bedrock build error (anyhow::Ok type annotation). 445 tests pass, clippy clean, bedrock feature builds."
+  - timestamp: "2026-04-12T00:01:00Z"
+    action: review_addressed
+    phase: pr
+    details: "Addressed 3 review comments (2 copilot, 1 gemini-code-assist). Fixed: added TokenUsage::saturating_add() method + test, changed bedrock text.clone() to text.as_str(). Declined: gemini builder signature suggestion (intentional per spec review). Pushed 83f206b. Replies: 3/3."
