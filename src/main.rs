@@ -619,10 +619,7 @@ async fn main() -> Result<()> {
                     }
                 );
                 println!("  Strategy: {:?}", resolution.strategy);
-                println!(
-                    "  Backends: [{}]",
-                    resolution.backends.join(", ")
-                );
+                println!("  Backends: [{}]", resolution.backends.join(", "));
                 println!();
             }
 
@@ -639,10 +636,7 @@ async fn main() -> Result<()> {
                     resolution.backends.join(", ").green()
                 );
                 println!();
-                backend::get_backends(
-                    &config,
-                    Some(&resolution.backends.join(",")),
-                )?
+                backend::get_backends(&config, Some(&resolution.backends.join(",")))?
             };
 
             if cli.verbose {

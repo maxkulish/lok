@@ -123,7 +123,8 @@ impl TokenUsage {
     pub fn saturating_add(&self, other: &Self) -> Self {
         Self::new(
             self.prompt_tokens.saturating_add(other.prompt_tokens),
-            self.completion_tokens.saturating_add(other.completion_tokens),
+            self.completion_tokens
+                .saturating_add(other.completion_tokens),
         )
     }
 }
@@ -596,13 +597,8 @@ mod tests {
 
     #[test]
     fn test_query_output_from_process_empty_stdout() {
-        let output = QueryOutput::from_process(
-            "".to_string(),
-            "".to_string(),
-            0,
-            "test",
-            Duration::ZERO,
-        );
+        let output =
+            QueryOutput::from_process("".to_string(), "".to_string(), 0, "test", Duration::ZERO);
         assert_eq!(output.stdout, "");
         assert!(output.stderr.is_none());
         assert_eq!(output.exit_code, Some(0));
@@ -650,8 +646,7 @@ mod tests {
 
     #[test]
     fn test_query_output_from_text_populates_backend_and_duration() {
-        let output =
-            QueryOutput::from_text("ok".to_string(), "claude", Duration::from_millis(100));
+        let output = QueryOutput::from_text("ok".to_string(), "claude", Duration::from_millis(100));
         assert_eq!(output.backend, "claude");
         assert_eq!(output.duration, Duration::from_millis(100));
         assert!(output.structured.is_none());
@@ -701,8 +696,8 @@ mod tests {
 
     #[test]
     fn test_query_output_with_usage_none() {
-        let output = QueryOutput::from_text("ok".to_string(), "claude", Duration::ZERO)
-            .with_usage(None);
+        let output =
+            QueryOutput::from_text("ok".to_string(), "claude", Duration::ZERO).with_usage(None);
         assert!(output.usage.is_none());
     }
 

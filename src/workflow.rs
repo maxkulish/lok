@@ -10,8 +10,8 @@
 //! - `verify` runs a shell command after edits to validate them
 
 use crate::apply_verify::{
-    DiffApplier, EditParser, EditRequester, RetryContext, RetryLoop, RetryLoopOutcome,
-    RetryReason, Rollback, Verification, VerifyResult,
+    DiffApplier, EditParser, EditRequester, RetryContext, RetryLoop, RetryLoopOutcome, RetryReason,
+    Rollback, Verification, VerifyResult,
 };
 use crate::backend;
 use crate::config::Config;
@@ -1157,10 +1157,7 @@ impl EditRequester for WorkflowEditRequester {
                 message,
                 partial_paths,
             } => {
-                let mut caps = self
-                    .captures
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
+                let mut caps = self.captures.lock().unwrap_or_else(|e| e.into_inner());
                 caps.last_apply_partial_paths = Some(partial_paths.to_vec());
                 drop(caps);
                 build_apply_fix_prompt(
@@ -1184,10 +1181,7 @@ impl EditRequester for WorkflowEditRequester {
         .await
         {
             Ok(Ok(qo)) => {
-                let mut caps = self
-                    .captures
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
+                let mut caps = self.captures.lock().unwrap_or_else(|e| e.into_inner());
                 caps.last_stderr = qo.stderr.clone();
                 caps.last_exit_code = qo.exit_code;
                 Ok(qo.stdout)
@@ -6324,8 +6318,7 @@ prompt = "p"
 
     #[test]
     fn test_map_retry_failure_apply_error_with_paths() {
-        let outcome =
-            make_outcome(vec![make_attempt(None, Some("old text not found"), None)]);
+        let outcome = make_outcome(vec![make_attempt(None, Some("old text not found"), None)]);
         let paths = vec![PathBuf::from("foo.rs"), PathBuf::from("bar.rs")];
         let (msg, kind) = map_retry_failure(&outcome, 120_000, Some(&paths));
         assert!(matches!(kind, StepFailureKind::EditFailed));
@@ -6337,8 +6330,7 @@ prompt = "p"
 
     #[test]
     fn test_map_retry_failure_apply_error_without_paths() {
-        let outcome =
-            make_outcome(vec![make_attempt(None, Some("old text not found"), None)]);
+        let outcome = make_outcome(vec![make_attempt(None, Some("old text not found"), None)]);
         let (msg, _) = map_retry_failure(&outcome, 120_000, None);
         assert!(msg.contains("Failed files: (not captured)"));
     }
@@ -6430,7 +6422,8 @@ prompt = "p"
         let target = dir.path().join("hello.txt");
         std::fs::write(&target, "old content\n").unwrap();
 
-        let raw = r#"{"edits": [{"file": "hello.txt", "old": "old content", "new": "new content"}]}"#;
+        let raw =
+            r#"{"edits": [{"file": "hello.txt", "old": "old content", "new": "new content"}]}"#;
         let result = apply_once(raw, dir.path(), None, None).await;
         assert!(result.is_ok(), "apply_once failed: {:?}", result);
 
@@ -6454,7 +6447,8 @@ prompt = "p"
         let dir = tempdir().unwrap();
         let target = dir.path().join("nonexistent.txt");
         // File doesn't exist and the edit references `old` text → apply fails.
-        let raw = r#"{"edits": [{"file": "nonexistent.txt", "old": "missing", "new": "replacement"}]}"#;
+        let raw =
+            r#"{"edits": [{"file": "nonexistent.txt", "old": "missing", "new": "replacement"}]}"#;
         let result = apply_once(raw, dir.path(), None, None).await;
         assert!(result.is_err());
         let err = result.unwrap_err();

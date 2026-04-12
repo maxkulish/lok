@@ -38,6 +38,7 @@ impl Default for RoutingStrategy {
 
 /// Errors that can occur during role resolution
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum RoleResolutionError {
     /// The requested role was not found in configuration
     RoleNotFound { role: String },
@@ -93,11 +94,13 @@ impl Resolution {
     }
 
     /// Returns the list of backend IDs
+    #[allow(dead_code)]
     pub fn backend_ids(&self) -> Vec<String> {
         self.backends.clone()
     }
 
     /// Returns true if no backends are configured
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.backends.is_empty()
     }
@@ -139,6 +142,7 @@ pub struct RoleConfig {
 
 impl RoleConfig {
     /// Create a new role config with the given backends
+    #[allow(dead_code)]
     pub fn new(backends: Vec<String>) -> Self {
         Self {
             backends,
@@ -157,6 +161,7 @@ pub struct TeamConfig {
 
 /// Warning about configuration issues that don't prevent operation
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct ValidationWarning {
     /// The role that has the issue
     pub role: String,
@@ -280,6 +285,7 @@ impl RoleResolver {
     /// - min_success >= 1 on Parallel strategy
     /// - min_success <= backends.len() on Parallel strategy
     /// - Unknown backend references (returned as warnings, not errors)
+    #[allow(dead_code)]
     pub fn validate(
         &self,
         known_backends: &[String],
@@ -386,7 +392,10 @@ mod tests {
     #[test]
     fn test_routing_strategy_default_is_fallback() {
         let strategy: RoutingStrategy = Default::default();
-        assert!(matches!(strategy, RoutingStrategy::Fallback { timeout_secs: None }));
+        assert!(matches!(
+            strategy,
+            RoutingStrategy::Fallback { timeout_secs: None }
+        ));
     }
 
     #[test]
@@ -405,7 +414,10 @@ mod tests {
             role: "bad".to_string(),
             message: "invalid config".to_string(),
         };
-        assert_eq!(err.to_string(), "Validation error for role 'bad': invalid config");
+        assert_eq!(
+            err.to_string(),
+            "Validation error for role 'bad': invalid config"
+        );
     }
 
     #[test]
@@ -467,7 +479,11 @@ mod tests {
         );
 
         let resolver = RoleResolver::new(roles, HashMap::new(), None);
-        let available = vec!["codex".to_string(), "claude".to_string(), "gemini".to_string()];
+        let available = vec![
+            "codex".to_string(),
+            "claude".to_string(),
+            "gemini".to_string(),
+        ];
 
         let result = resolver.resolve("code-review", None, &available);
         assert!(result.is_ok());
@@ -484,7 +500,10 @@ mod tests {
         let available = vec!["codex".to_string()];
 
         let result = resolver.resolve("unknown-role", None, &available);
-        assert!(matches!(result, Err(RoleResolutionError::RoleNotFound { .. })));
+        assert!(matches!(
+            result,
+            Err(RoleResolutionError::RoleNotFound { .. })
+        ));
     }
 
     #[test]
@@ -499,7 +518,10 @@ mod tests {
         let available = vec!["codex".to_string(), "claude".to_string()];
 
         let result = resolver.resolve("test-role", None, &available);
-        assert!(matches!(result, Err(RoleResolutionError::NoBackendsAvailable { .. })));
+        assert!(matches!(
+            result,
+            Err(RoleResolutionError::NoBackendsAvailable { .. })
+        ));
     }
 
     #[test]
@@ -523,7 +545,11 @@ mod tests {
         );
 
         let resolver = RoleResolver::new(roles, teams, None);
-        let available = vec!["codex".to_string(), "claude".to_string(), "gemini".to_string()];
+        let available = vec![
+            "codex".to_string(),
+            "claude".to_string(),
+            "gemini".to_string(),
+        ];
 
         // Without team override, should use global role
         let result = resolver.resolve("review", None, &available).unwrap();
@@ -531,7 +557,9 @@ mod tests {
         assert!(!result.from_team_override);
 
         // With team override, should use team config
-        let result = resolver.resolve("review", Some("security-team"), &available).unwrap();
+        let result = resolver
+            .resolve("review", Some("security-team"), &available)
+            .unwrap();
         assert_eq!(result.backends, vec!["claude", "gemini"]);
         assert!(result.from_team_override);
     }
@@ -551,10 +579,7 @@ mod tests {
         );
 
         let mut teams = HashMap::new();
-        teams.insert(
-            "default-team".to_string(),
-            TeamConfig { roles: team_roles },
-        );
+        teams.insert("default-team".to_string(), TeamConfig { roles: team_roles });
 
         let resolver = RoleResolver::new(roles, teams, Some("default-team".to_string()));
         let available = vec!["codex".to_string(), "claude".to_string()];
@@ -576,7 +601,9 @@ mod tests {
         let mut teams = HashMap::new();
         teams.insert(
             "default-team".to_string(),
-            TeamConfig { roles: team_roles.clone() },
+            TeamConfig {
+                roles: team_roles.clone(),
+            },
         );
         teams.insert(
             "override-team".to_string(),
@@ -587,7 +614,9 @@ mod tests {
         let available = vec!["gemini".to_string()];
 
         // Explicit override should take precedence over default
-        let result = resolver.resolve("review", Some("override-team"), &available).unwrap();
+        let result = resolver
+            .resolve("review", Some("override-team"), &available)
+            .unwrap();
         assert_eq!(result.team, Some("override-team".to_string()));
     }
 
@@ -601,16 +630,15 @@ mod tests {
         );
 
         let mut teams = HashMap::new();
-        teams.insert(
-            "custom-team".to_string(),
-            TeamConfig { roles: team_roles },
-        );
+        teams.insert("custom-team".to_string(), TeamConfig { roles: team_roles });
 
         let resolver = RoleResolver::new(HashMap::new(), teams, None);
         let available = vec!["ollama".to_string()];
 
         // Custom role should be found via team override
-        let result = resolver.resolve("custom-role", Some("custom-team"), &available).unwrap();
+        let result = resolver
+            .resolve("custom-role", Some("custom-team"), &available)
+            .unwrap();
         assert_eq!(result.backends, vec!["ollama"]);
         assert!(result.from_team_override);
     }
@@ -634,7 +662,9 @@ mod tests {
 
         assert!(warnings.is_empty());
         assert_eq!(errors.len(), 1);
-        assert!(matches!(&errors[0], RoleResolutionError::ValidationError { role, .. } if role == "test"));
+        assert!(
+            matches!(&errors[0], RoleResolutionError::ValidationError { role, .. } if role == "test")
+        );
     }
 
     #[test]
@@ -690,7 +720,8 @@ mod tests {
         );
 
         let resolver = RoleResolver::new(roles, HashMap::new(), None);
-        let (warnings, errors) = resolver.validate(&["b1".to_string(), "b2".to_string(), "b3".to_string()]);
+        let (warnings, errors) =
+            resolver.validate(&["b1".to_string(), "b2".to_string(), "b3".to_string()]);
 
         assert!(warnings.is_empty());
         assert!(errors.is_empty());
