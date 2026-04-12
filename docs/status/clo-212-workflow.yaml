@@ -58,6 +58,9 @@ phases:
       - "b11f462 feat(CLO-212): add CLI integration and delegator fallback"
   pr:
     status: in_progress
+    pr_url: "https://github.com/maxkulish/lok/pull/15"
+    pr_number: 15
+    ci_passed: true
   complete:
     status: pending
 
@@ -149,3 +152,15 @@ history:
     action: pushed_to_remote
     phase: pr
     details: "Pushed branch feat/clo-212-role-routing-config to origin"
+  - timestamp: "2026-04-12T17:15:00Z"
+    action: pre_flight_fix_applied
+    phase: pr
+    details: "Fixed cargo fmt formatting issues and added #[allow(dead_code)] for public API items not yet used in production code"
+  - timestamp: "2026-04-12T17:18:00Z"
+    action: pre_flight_checks_passed
+    phase: pr
+    details: "All pre-flight checks passed: cargo fmt, cargo clippy -D warnings, cargo test (472 tests)"
+  - timestamp: "2026-04-12T17:23:00Z"
+    action: pr_created
+    phase: pr
+    details: "PR #15 created: https://github.com/maxkulish/lok/pull/15"
