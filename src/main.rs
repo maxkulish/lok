@@ -226,6 +226,10 @@ enum Commands {
         #[arg(short, long)]
         team: Option<String>,
 
+        /// Role to resolve from [roles] config (default: "smart")
+        #[arg(short, long, default_value = "smart")]
+        role: String,
+
         /// Explain why backends were selected (show resolution details)
         #[arg(long)]
         explain: bool,
@@ -559,6 +563,7 @@ async fn main() -> Result<()> {
             prompt,
             dir,
             team,
+            role,
             explain,
         } => {
             // Create RoleResolver from config
@@ -571,8 +576,8 @@ async fn main() -> Result<()> {
             // Get available backends
             let available_backends: Vec<String> = config.backends.keys().cloned().collect();
 
-            // Try to resolve role "smart" (or fallback to delegator if not configured)
-            let resolution = match resolver.resolve("smart", team.as_deref(), &available_backends) {
+            // Try to resolve the requested role (or fallback to delegator if not configured)
+            let resolution = match resolver.resolve(&role, team.as_deref(), &available_backends) {
                 Ok(res) => res,
                 Err(role::RoleResolutionError::RoleNotFound { .. }) => {
                     // Fall back to delegator for unconfigured roles
@@ -594,7 +599,7 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    role::Resolution::new("smart")
+                    role::Resolution::new(&role)
                         .with_backends(selected_backends)
                         .with_strategy(role::RoutingStrategy::First)
                 }
@@ -643,7 +648,27 @@ async fn main() -> Result<()> {
                 backend::print_verbose_header(&prompt, &backends, &dir);
             }
 
-            let results = backend::run_query(&backends, &prompt, &dir, &config).await?;
+            // Apply resolved strategy to execution config
+            let mut strategy_config = config.clone();
+            match &resolution.strategy {
+                role::RoutingStrategy::Parallel { timeout_secs, .. } => {
+                    strategy_config.defaults.parallel = true;
+                    if let Some(t) = timeout_secs {
+                        strategy_config.defaults.timeout = *t;
+                    }
+                }
+                role::RoutingStrategy::First | role::RoutingStrategy::Fallback { .. } => {
+                    strategy_config.defaults.parallel = false;
+                    if let role::RoutingStrategy::Fallback {
+                        timeout_secs: Some(t),
+                    } = &resolution.strategy
+                    {
+                        strategy_config.defaults.timeout = *t;
+                    }
+                }
+            }
+
+            let results = backend::run_query(&backends, &prompt, &dir, &strategy_config).await?;
             output::print_results(&results);
 
             if cli.verbose {
@@ -746,21 +771,52 @@ async fn main() -> Result<()> {
             team,
             explain,
         } => {
+            // Resolve spawn role via RoleResolver to get preferred backends
+            let resolver = role::RoleResolver::new(
+                config.roles.clone(),
+                config.teams.clone(),
+                config.defaults.team.clone(),
+            );
+            let available_backends: Vec<String> = config.backends.keys().cloned().collect();
+            let spawn_resolution = resolver.resolve("spawn", team.as_deref(), &available_backends);
+
             if explain {
                 println!("{} Spawn mode resolution:", "spawn:".cyan().bold());
-                if let Some(t) = &team {
-                    println!("  Team override: {}", t);
-                } else if let Some(t) = &config.defaults.team {
-                    println!("  Default team: {}", t);
-                } else {
-                    println!("  No team configured");
+                match &spawn_resolution {
+                    Ok(res) => {
+                        if let Some(t) = &res.team {
+                            println!("  Team: {}", t);
+                        }
+                        println!(
+                            "  Source: {}",
+                            if res.from_team_override {
+                                "team override"
+                            } else {
+                                "global config"
+                            }
+                        );
+                        println!("  Backends: [{}]", res.backends.join(", "));
+                    }
+                    Err(_) => {
+                        if let Some(t) = &team {
+                            println!("  Team override: {} (no spawn role configured)", t);
+                        } else if let Some(t) = &config.defaults.team {
+                            println!("  Default team: {} (no spawn role configured)", t);
+                        } else {
+                            println!("  No team configured, using delegator fallback");
+                        }
+                    }
                 }
                 println!();
             }
-            let _team_override = team; // Will be used when spawn integrates with RoleResolver
+
             let spawner = spawn::Spawn::new(&config, &dir).await?;
 
-            // Parse manual agents if provided
+            // Parse manual agents if provided, assigning resolved backends
+            let preferred_backend = spawn_resolution
+                .ok()
+                .and_then(|r| r.backends.first().cloned());
+
             let manual_agents = agent.map(|agents| {
                 agents
                     .iter()
@@ -769,7 +825,7 @@ async fn main() -> Result<()> {
                             Some(spawn::AgentTask {
                                 name: name.trim().to_string(),
                                 description: desc.trim().to_string(),
-                                backend: None,
+                                backend: preferred_backend.clone(),
                             })
                         } else {
                             eprintln!("Invalid agent format: {}. Use 'name:description'", a);

@@ -106,8 +106,9 @@ impl Resolution {
     }
 
     /// Set the team context
-    pub fn with_team(mut self, team: impl Into<String>) -> Self {
-        self.team = Some(team.into());
+    #[allow(dead_code)]
+    pub fn with_team(mut self, team: Option<impl Into<String>>) -> Self {
+        self.team = team.map(|t| t.into());
         self
     }
 
@@ -264,7 +265,7 @@ impl RoleResolver {
         }
 
         let resolution = Resolution::new(role)
-            .with_team(active_team.clone().unwrap_or_default())
+            .with_team(active_team.clone())
             .with_backends(filtered_backends)
             .with_strategy(role_config.strategy.clone());
 
@@ -423,7 +424,7 @@ mod tests {
     #[test]
     fn test_resolution_builder() {
         let res = Resolution::new("test-role")
-            .with_team("my-team")
+            .with_team(Some("my-team"))
             .with_backends(vec!["backend1".to_string(), "backend2".to_string()])
             .with_strategy(RoutingStrategy::Parallel {
                 min_success: 2,
