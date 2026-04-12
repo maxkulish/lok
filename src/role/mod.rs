@@ -133,6 +133,7 @@ impl Resolution {
 
 /// Configuration for a role - maps role names to backends and strategies
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct RoleConfig {
     /// List of backend IDs to use for this role
     pub backends: Vec<String>,
@@ -154,6 +155,7 @@ impl RoleConfig {
 
 /// Configuration for a team - contains role overrides
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct TeamConfig {
     /// Role overrides specific to this team
     #[serde(default)]

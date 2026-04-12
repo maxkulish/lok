@@ -179,22 +179,20 @@ impl std::fmt::Display for RoleResolutionError {
 # Global role definitions
 [roles.code_review]
 backends = ["claude", "gemini"]
-strategy = "fallback"  # first, parallel, fallback
+strategy = { Fallback = {} }
 
 [roles.security_audit]
 backends = ["gemini", "claude"]
-strategy = "parallel"
-min_success = 1
-timeout_secs = 30  # optional per-role timeout
+strategy = { Parallel = { min_success = 1, timeout_secs = 30 } }
 
 # Team-specific overrides (project-level ./lok.toml)
 [teams.frontend.roles.code_review]
-backends = ["claude"]  # override: frontend team uses only claude for code review
-strategy = "first"
+backends = ["claude"]
+strategy = { First = {} }
 
 # Defaults
-[defaults]
-team = null  # null = no team override active; CLI --team flag overrides this for a single call
+# Omit [defaults.team] or leave unset for no team override;
+# CLI --team flag overrides this for a single call
 ```
 
 **Step 4: `RoleResolver::resolve()` with two-tier lookup and team override**

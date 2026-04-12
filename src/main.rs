@@ -573,8 +573,10 @@ async fn main() -> Result<()> {
                 config.defaults.team.clone(),
             );
 
-            // Get available backends
-            let available_backends: Vec<String> = config.backends.keys().cloned().collect();
+            // Get runtime-available backends (filters out disabled/unavailable)
+            let available_backends: Vec<String> = backend::get_backends(&config, None)
+                .map(|bs| bs.iter().map(|b| b.name().to_string()).collect())
+                .unwrap_or_default();
 
             // Try to resolve the requested role (or fallback to delegator if not configured)
             let resolution = match resolver.resolve(&role, team.as_deref(), &available_backends) {
@@ -777,7 +779,9 @@ async fn main() -> Result<()> {
                 config.teams.clone(),
                 config.defaults.team.clone(),
             );
-            let available_backends: Vec<String> = config.backends.keys().cloned().collect();
+            let available_backends: Vec<String> = backend::get_backends(&config, None)
+                .map(|bs| bs.iter().map(|b| b.name().to_string()).collect())
+                .unwrap_or_default();
             let spawn_resolution = resolver.resolve("spawn", team.as_deref(), &available_backends);
 
             if explain {
