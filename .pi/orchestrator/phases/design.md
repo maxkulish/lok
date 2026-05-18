@@ -45,6 +45,29 @@ History events required: `design_draft_ready`,
 `design_assumptions_surfaced`, `design_review_complete`,
 `design_human_review_complete`, `design_finalized`.
 
+## Status discipline (READ FIRST)
+
+The `design` phase has 7 required exit-state fields. The orchestrator
+validates them only when `phases.design.status` is set to `"complete"`.
+Until then, the phase is in progress and partial state is expected.
+
+Concretely:
+
+- **Steps 1, 1.5, 2, 3, 4 - keep `status: "in_progress"`.** Each step
+  populates one or more fields and emits one history event. Do NOT set
+  `status: "complete"` in any of these calls.
+- **Step 5 - and ONLY Step 5 - sets `status: "complete"`.** At that
+  point all 6 supporting flags (`design_doc`, `draft_ready`,
+  `assumptions_surfaced`, `review_completed`, `human_review_completed`,
+  `finalized`) must already be populated from prior steps, and all 5
+  required history events must already exist.
+
+If you call `update_workflow_state` with `status: "complete"` before
+those fields/events exist, the orchestrator emits "Cannot mark phase
+complete - missing exit-state requirements: ...". That is the gate
+working as intended; the fix is to set `status` back to `"in_progress"`
+and finish the remaining steps, not to retry the same call.
+
 ## Step 0 - Consult prior lessons
 
 Before drafting, grep `.pi/lessons/` for rules that apply to the

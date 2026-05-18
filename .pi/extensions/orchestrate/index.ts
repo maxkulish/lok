@@ -468,6 +468,10 @@ function validatePhase(state: WorkflowState): { valid: boolean; errors: string[]
   const errors: string[] = [];
   const phaseData = state.phases?.[currentPhase as keyof typeof state.phases];
 
+  if ((phaseData as any)?.status !== "complete") {
+    return { valid: true, errors: [] };
+  }
+
   for (const field of config.requiredFields) {
     const value = phaseData?.[field as keyof typeof phaseData];
     if (value === undefined || value === null || value === "") {
@@ -475,12 +479,10 @@ function validatePhase(state: WorkflowState): { valid: boolean; errors: string[]
     }
   }
 
-  if ((phaseData as any)?.status === "complete") {
-    const historyActions = new Set(state.history?.map((entry) => entry.action) || []);
-    for (const event of config.historyEvents) {
-      if (!historyActions.has(event)) {
-        errors.push(`Missing required history event: ${event}`);
-      }
+  const historyActions = new Set(state.history?.map((entry) => entry.action) || []);
+  for (const event of config.historyEvents) {
+    if (!historyActions.has(event)) {
+      errors.push(`Missing required history event: ${event}`);
     }
   }
 
@@ -905,7 +907,12 @@ export default function (pi: ExtensionAPI) {
 
       const validation = validatePhase(state);
       if (!validation.valid) {
-        notifyCtx(pi, ctx, `Validation Failed: ${validation.errors.join(", ")}`, "error");
+        notifyCtx(
+          pi,
+          ctx,
+          `Cannot mark phase complete - missing exit-state requirements: ${validation.errors.join(", ")}. Set status back to "in_progress" and populate the missing fields/events first.`,
+          "error",
+        );
       }
 
       updateRuntimeUi(ctx, {
