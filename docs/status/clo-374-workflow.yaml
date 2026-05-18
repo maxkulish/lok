@@ -21,10 +21,10 @@ linear:
   priority: Medium
   branch_actual: feat/clo-374-per-step-sandbox-routing
 workflow:
-  current_phase: pr
-  status: active
+  current_phase: complete
+  status: complete
   created_at: '2026-05-18T20:42:11.318Z'
-  updated_at: '2026-05-18T22:22:03.940Z'
+  updated_at: '2026-05-18T22:39:30.366Z'
 phases:
   discovery:
     status: complete
@@ -93,7 +93,7 @@ phases:
     validation_synthesis_report: docs/reviews/CLO-374-validation-synthesis.md
     validation_synthesis_verdict: PASS
   pr:
-    status: in_progress
+    status: complete
     commits:
       - cf3421f
       - 25d151a
@@ -107,8 +107,17 @@ phases:
     pr_number: 20
     pr_url: https://github.com/maxkulish/lok/pull/20
     ci_passed: true
+    reviews_addressed: true
+    merge_commit: 850fa7ae4e72babce9cced0dcda3161183983b30
+    merged_at: '2026-05-18T22:37:20Z'
   complete:
-    status: pending
+    status: complete
+    merge_commit: 850fa7ae4e72babce9cced0dcda3161183983b30
+    merged_at: '2026-05-18T22:37:20Z'
+    aggregation_files_updated: false
+    lessons_file: .pi/lessons/clo-374-sandbox-routing-lessons.md
+    lessons_learned:
+      - L1 - Shell command construction must escape all components, not just the prompt
 history:
   - timestamp: '2026-05-18T20:42:11.318Z'
     action: workflow_started
@@ -228,5 +237,41 @@ history:
     action: ci_passed
     phase: pr
     details: No CI pipeline configured. Pre-flight gate green locally (490 tests, fmt + clippy clean).
+  - timestamp: '2026-05-18T22:36:02.861Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      1 thread resolved (gemini-code-assist shell escaping fix); reply posted with /gemini review trailer verified; bot
+      approved fix in subsequent review. No new unresolved threads.
+  - timestamp: '2026-05-18T22:36:37.395Z'
+    action: pr_complete
+    phase: pr
+    details: PR phase complete. ci_passed=true, reviews_addressed=true, pre-merge re-fetch passed.
+  - timestamp: '2026-05-18T22:36:39.881Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-05-18T22:38:00.195Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #20 merged. Merge commit 850fa7ae. Remote branch deleted.'
+  - timestamp: '2026-05-18T22:38:03.221Z'
+    action: pr_merged
+    phase: pr
+    details: Merge commit 850fa7ae
+  - timestamp: '2026-05-18T22:38:19.363Z'
+    action: project_sync_complete
+    phase: complete
+    details: No PROJECT.md/ROADMAP.md/DEPENDENCIES.md files exist at repo root. Skipping project sync.
+  - timestamp: '2026-05-18T22:39:27.293Z'
+    action: lessons_extracted
+    phase: complete
+    details: >-
+      1 lesson recorded. File: .pi/lessons/clo-374-sandbox-routing-lessons.md — L1: Shell command construction must
+      escape all components, not just the prompt.
+  - timestamp: '2026-05-18T22:39:30.366Z'
+    action: workflow_complete
+    phase: complete
+    details: 'Task CLO-374 fully completed. PR #20 merged (850fa7ae). Branch deleted. Linear status: Done. 1 lesson extracted.'
 task_title: Per-step sandbox routing for Codex and Gemini backends (FR-21)
 task_url: https://linear.app/cloud-ai/issue/CLO-374/per-step-sandbox-routing-for-codex-and-gemini-backends-fr-21
