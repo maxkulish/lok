@@ -12,6 +12,7 @@ pub struct Team {
     backends: Vec<Arc<dyn Backend>>,
     delegator: Delegator,
     cwd: std::path::PathBuf,
+    config: Config,
 }
 
 impl Team {
@@ -21,6 +22,7 @@ impl Team {
             backends,
             delegator: Delegator::new(),
             cwd: cwd.to_path_buf(),
+            config: config.clone(),
         })
     }
 
@@ -79,12 +81,13 @@ impl Team {
 
         // Query primary
         println!("{} Querying {}...", "→".cyan(), primary.name.to_uppercase());
-        let primary_result = primary_backend
-            .query(crate::backend::StepContext::from_prompt(
-                task, &self.cwd, None,
-            ))
-            .await?
-            .stdout;
+        let primary_ctx = backend::step_context_for_backend(
+            task,
+            &self.cwd,
+            &self.config,
+            primary_backend.name(),
+        );
+        let primary_result = primary_backend.query(primary_ctx).await?.stdout;
 
         println!();
         println!(
@@ -123,12 +126,14 @@ impl Team {
                     other_profile.name.to_uppercase()
                 );
 
-                match other_backend
-                    .query(crate::backend::StepContext::from_prompt(
-                        &prompt, &self.cwd, None,
-                    ))
-                    .await
-                {
+                let other_ctx = backend::step_context_for_backend(
+                    &prompt,
+                    &self.cwd,
+                    &self.config,
+                    other_backend.name(),
+                );
+
+                match other_backend.query(other_ctx).await {
                     Ok(query_output) => {
                         println!();
                         println!(

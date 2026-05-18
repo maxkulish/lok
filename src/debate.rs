@@ -227,10 +227,10 @@ impl<'a> Debate<'a> {
 
             println!("  {} thinking...", backend.name().dimmed());
 
-            match backend
-                .query(backend::StepContext::from_prompt(&prompt, &self.cwd, None))
-                .await
-            {
+            let ctx =
+                backend::step_context_for_backend(&prompt, &self.cwd, self.config, backend.name());
+
+            match backend.query(ctx).await {
                 Ok(query_output) => {
                     new_positions.push(Position {
                         backend: backend.name().to_string(),
