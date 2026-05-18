@@ -760,15 +760,12 @@ async fn run_llm_validation(
     };
 
     let model_override = validate_config.model.as_deref();
+    let ctx = backend::StepContext::from_prompt(&prompt, cwd, model_override);
     let query_result = match validate_config.timeout_ms {
         Some(timeout) => {
             match tokio::time::timeout(
                 std::time::Duration::from_millis(timeout),
-                backend_instance.query(backend::StepContext::from_prompt(
-                    &prompt,
-                    cwd,
-                    model_override,
-                )),
+                backend_instance.query(ctx),
             )
             .await
             {
@@ -779,15 +776,7 @@ async fn run_llm_validation(
                 }),
             }
         }
-        None => {
-            backend_instance
-                .query(backend::StepContext::from_prompt(
-                    &prompt,
-                    cwd,
-                    model_override,
-                ))
-                .await
-        }
+        None => backend_instance.query(ctx).await,
     };
 
     match query_result {
@@ -1192,16 +1181,12 @@ impl EditRequester for WorkflowEditRequester {
         };
 
         println!("    {} Re-querying LLM with error...", "↻".dimmed());
-        match tokio::time::timeout(
-            self.timeout_duration,
-            self.backend.query(backend::StepContext::from_prompt(
-                &fix_prompt,
-                &self.cwd,
-                self.model_override.as_deref(),
-            )),
-        )
-        .await
-        {
+        let ctx = backend::StepContext::from_prompt(
+            &fix_prompt,
+            &self.cwd,
+            self.model_override.as_deref(),
+        );
+        match tokio::time::timeout(self.timeout_duration, self.backend.query(ctx)).await {
             Ok(Ok(qo)) => {
                 let mut caps = self.captures.lock().unwrap_or_else(|e| e.into_inner());
                 caps.last_stderr = qo.stderr.clone();
@@ -1758,7 +1743,12 @@ impl WorkflowRunner {
                                         }
                                     };
 
-                                    match tokio::time::timeout(timeout_duration, backend.query(backend::StepContext::from_prompt(&iter_prompt, &cwd, model_override.as_deref()))).await {
+                                    let ctx = backend::StepContext::from_prompt(
+                                        &iter_prompt,
+                                        &cwd,
+                                        model_override.as_deref(),
+                                    );
+                                    match tokio::time::timeout(timeout_duration, backend.query(ctx)).await {
                                         Ok(Ok(qo)) => {
                                             iter_output = qo.stdout;
                                             iter_usage = qo.usage;
@@ -1975,7 +1965,12 @@ impl WorkflowRunner {
                                     if !backend.is_available() {
                                         return (bn.clone(), Err(format!("Backend {} not available", bn)));
                                     }
-                                    match tokio::time::timeout(timeout_dur, backend.query(backend::StepContext::from_prompt(&prompt, &cwd, model_override.as_deref()))).await {
+                                    let ctx = backend::StepContext::from_prompt(
+                                        &prompt,
+                                        &cwd,
+                                        model_override.as_deref(),
+                                    );
+                                    match tokio::time::timeout(timeout_dur, backend.query(ctx)).await {
                                         Ok(Ok(qo)) => (bn.clone(), Ok((qo.stdout, qo.usage))),
                                         Ok(Err(e)) => (bn.clone(), Err(e.to_string())),
                                         Err(_) => (bn.clone(), Err(format!("Timeout after {}s", timeout_dur.as_secs()))),
@@ -2079,7 +2074,8 @@ impl WorkflowRunner {
                                     if let Some(synth_config) = config.backends.get(synth_backend_name) {
                                         let retry_policy = backend::get_retry_policy(synth_config, &config.defaults);
                                         if let Ok(synth_backend) = backend::create_backend(synth_backend_name, synth_config, retry_policy) {
-                                            match tokio::time::timeout(timeout_duration, synth_backend.query(backend::StepContext::from_prompt(&synth_prompt, &cwd, None))).await {
+                                            let ctx = backend::StepContext::from_prompt(&synth_prompt, &cwd, None);
+                                            match tokio::time::timeout(timeout_duration, synth_backend.query(ctx)).await {
                                                 Ok(Ok(qo)) => {
                                                     let synthesized = qo.stdout;
                                                     if let Some(u) = qo.usage {
@@ -2218,7 +2214,12 @@ impl WorkflowRunner {
 
                             // Record backend query
 
-                            match tokio::time::timeout(timeout_duration, backend.query(backend::StepContext::from_prompt(&prompt, &cwd, model_override.as_deref()))).await {
+                            let ctx = backend::StepContext::from_prompt(
+                                &prompt,
+                                &cwd,
+                                model_override.as_deref(),
+                            );
+                            match tokio::time::timeout(timeout_duration, backend.query(ctx)).await {
                                 Ok(Ok(qo)) => {
                                     text = qo.stdout;
                                     step_stderr = qo.stderr;
