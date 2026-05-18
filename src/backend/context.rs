@@ -136,7 +136,7 @@ mod tests {
         assert_eq!(mode, SandboxMode::DangerFullAccess);
 
         // Round-trip serialize + deserialize
-        let serialized = serde_json::to_value(&SandboxMode::ReadOnly).unwrap();
+        let serialized = serde_json::to_value(SandboxMode::ReadOnly).unwrap();
         assert_eq!(serialized, serde_json::json!("read-only"));
     }
 }

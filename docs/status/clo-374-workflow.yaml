@@ -21,10 +21,10 @@ linear:
   priority: Medium
   branch_actual: feat/clo-374-per-step-sandbox-routing
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-05-18T20:42:11.318Z'
-  updated_at: '2026-05-18T22:17:39.586Z'
+  updated_at: '2026-05-18T22:18:37.570Z'
 phases:
   discovery:
     status: complete
@@ -199,5 +199,9 @@ history:
     details: >-
       Gemini approval-mode names verified against live gemini --help: plan, auto_edit, yolo all confirmed. Codex review
       must-fix items already satisfied (Config::default() already had correct args). Pre-merge gate green (490 tests).
+  - timestamp: '2026-05-18T22:18:37.570Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
 task_title: Per-step sandbox routing for Codex and Gemini backends (FR-21)
 task_url: https://linear.app/cloud-ai/issue/CLO-374/per-step-sandbox-routing-for-codex-and-gemini-backends-fr-21
