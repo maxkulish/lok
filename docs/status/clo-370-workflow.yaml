@@ -5,9 +5,10 @@ linear_url: "https://linear.app/cloud-ai/issue/CLO-370/add-usage-field-to-stepre
 branch: feat/clo-370-step
 
 workflow:
-  current_phase: implement
-  status: in_progress
+  current_phase: complete
+  status: complete
   started_at: "2026-05-18T00:00:00Z"
+  completed_at: "2026-05-18T17:04:45Z"
 
 phases:
   discovery:
@@ -24,11 +25,18 @@ phases:
     review_completed: true
     review_notes: "Self-reviewed against PRD §FR-25a. Reconciled PRD drift at sites 1788/2109 (QueryOutput already discarded — aggregate via TokenUsage::saturating_add). BackendResponse extended with usage field for consensus aggregation."
   implement:
-    status: in_progress
+    status: complete
+    tests_passing: true
+    clippy_clean: true
   pr:
-    status: pending
+    status: complete
+    pr_url: "https://github.com/maxkulish/lok/pull/16"
+    pr_number: 16
+    reviews_addressed: 1
+    merge_commit: "b1adedbaef9e37570d96325c4adc2e8a8c5d9fb8"
+    merged_at: "2026-05-18T17:04:45Z"
   complete:
-    status: pending
+    status: complete
 
 source_prd: "docs/prds/prd-phase-2-predictable-cli-execution-v5.md"
 source_section: "§FR-25a, §9 release plan step 1"
@@ -52,3 +60,23 @@ history:
     action: spec_approved
     phase: spec
     details: "Spec written at specs/2026-05-18-clo-370-stepresult-usage-field.md. Drift reconciliation: sites 1788 (for_each) and 2109 (consensus) need TokenUsage aggregation since QueryOutput is destructured early; BackendResponse extended with usage field; 26 test sites need mechanical usage:None addition."
+  - timestamp: "2026-05-18T00:00:00Z"
+    action: implementation_complete
+    phase: implement
+    details: "All 6 sites wired (struct, error fn, single-backend, consensus + synthesis aggregation, for_each iteration aggregation, shell). consensus.rs gained aggregate_usage helper; BackendResponse extended with usage field. 27 test/helper StepResult literals updated with usage:None. 2 new unit tests added (round-trip + error path). 468 unit + 6 integration tests pass. Pre-existing clippy errors on the branch (config.rs needless borrows, main.rs sort_by, retry_loop.rs useless format, workflow.rs tautological assert) fixed minimally to unblock acceptance criterion #5."
+  - timestamp: "2026-05-18T00:00:00Z"
+    action: pr_created
+    phase: pr
+    details: "PR #16 opened: https://github.com/maxkulish/lok/pull/16"
+  - timestamp: "2026-05-18T16:59:00Z"
+    action: review_addressed
+    phase: pr
+    details: "Addressed 2 gemini-code-assist medium-priority comments (in-place &mut Option aggregation pattern at workflow.rs:1765 and :2069). Commit 2d748d8 pushed. Both comments replied with /gemini review trailer (2/2)."
+  - timestamp: "2026-05-18T17:04:45Z"
+    action: pr_merged
+    phase: pr
+    details: "PR #16 merged to main as b1adedb. Squash merge."
+  - timestamp: "2026-05-18T17:05:00Z"
+    action: workflow_complete
+    phase: complete
+    details: "CLO-370 workflow complete. Spec → implement → PR → merge."
