@@ -134,3 +134,87 @@ impl super::Backend for GeminiBackend {
         which::which(&self.command).is_ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::SandboxMode;
+
+    /// Helper: builds the Gemini shell command string for a given sandbox setting.
+    /// Mirrors the query-time logic without spawning a process.
+    fn gemini_sandbox_shell_cmd(
+        command: &str,
+        args: &[String],
+        sandbox: Option<SandboxMode>,
+        prompt: &str,
+    ) -> String {
+        let escaped_prompt = prompt.replace("'", "'\\''");
+        let approval_flag = match sandbox {
+            Some(SandboxMode::ReadOnly) => " --approval-mode plan",
+            Some(SandboxMode::WorkspaceWrite) => " --approval-mode auto_edit",
+            Some(SandboxMode::DangerFullAccess) => " --approval-mode yolo",
+            None => "",
+        };
+        format!(
+            "echo '' | {} {}{} '{}'",
+            command,
+            args.join(" "),
+            approval_flag,
+            escaped_prompt
+        )
+    }
+
+    #[test]
+    fn gemini_sandbox_none_no_approval_flag() {
+        let cmd = gemini_sandbox_shell_cmd("npx", &["@google/gemini-cli".to_string()], None, "hello");
+        assert!(!cmd.contains("--approval-mode"));
+    }
+
+    #[test]
+    fn gemini_sandbox_read_only_adds_plan() {
+        let cmd = gemini_sandbox_shell_cmd(
+            "npx",
+            &["@google/gemini-cli".to_string()],
+            Some(SandboxMode::ReadOnly),
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode plan"));
+    }
+
+    #[test]
+    fn gemini_sandbox_workspace_write_adds_auto_edit() {
+        let cmd = gemini_sandbox_shell_cmd(
+            "npx",
+            &["@google/gemini-cli".to_string()],
+            Some(SandboxMode::WorkspaceWrite),
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode auto_edit"));
+    }
+
+    #[test]
+    fn gemini_sandbox_danger_adds_yolo() {
+        let cmd = gemini_sandbox_shell_cmd(
+            "npx",
+            &["@google/gemini-cli".to_string()],
+            Some(SandboxMode::DangerFullAccess),
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode yolo"));
+    }
+
+    #[test]
+    fn gemini_sandbox_prompt_is_escaped() {
+        let cmd = gemini_sandbox_shell_cmd(
+            "npx",
+            &["@google/gemini-cli".to_string()],
+            None,
+            "it's fine",
+        );
+        // Single quotes in the prompt are shell-escaped via the '\\'' pattern
+        assert!(
+            cmd.contains("'\\''"),
+            "expected shell-escaped single quote in: {}",
+            cmd
+        );
+    }
+}

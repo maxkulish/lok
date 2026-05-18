@@ -119,4 +119,24 @@ mod tests {
         fn assert_copy<T: Copy>() {}
         assert_copy::<StepContext>();
     }
+
+    #[test]
+    fn test_sandbox_mode_serde_roundtrip() {
+        // Verify kebab-case YAML parsing via JSON (same serde rename rules)
+        let json = r#""read-only""#;
+        let mode: SandboxMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, SandboxMode::ReadOnly);
+
+        let json = r#""workspace-write""#;
+        let mode: SandboxMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, SandboxMode::WorkspaceWrite);
+
+        let json = r#""danger-full-access""#;
+        let mode: SandboxMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, SandboxMode::DangerFullAccess);
+
+        // Round-trip serialize + deserialize
+        let serialized = serde_json::to_value(&SandboxMode::ReadOnly).unwrap();
+        assert_eq!(serialized, serde_json::json!("read-only"));
+    }
 }

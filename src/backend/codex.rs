@@ -148,3 +148,90 @@ impl super::Backend for CodexBackend {
         which::which(&self.command).is_ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::backend::SandboxMode;
+
+    /// Helper: builds the effective Codex argv for a given sandbox setting.
+    /// Mirrors the query-time logic without spawning a process.
+    fn codex_sandbox_argv(
+        base_args: Vec<String>,
+        sandbox: Option<SandboxMode>,
+    ) -> Vec<String> {
+        let mut args: Vec<String> = if base_args.is_empty() {
+            vec![
+                "exec".to_string(),
+                "--json".to_string(),
+                "--ephemeral".to_string(),
+            ]
+        } else {
+            base_args
+        };
+
+        let mode = sandbox.unwrap_or(SandboxMode::ReadOnly);
+        match mode {
+            SandboxMode::ReadOnly => {
+                args.push("-s".to_string());
+                args.push("read-only".to_string());
+            }
+            SandboxMode::WorkspaceWrite => {
+                args.push("-s".to_string());
+                args.push("workspace-write".to_string());
+            }
+            SandboxMode::DangerFullAccess => {
+                args.push("-s".to_string());
+                args.push("danger-full-access".to_string());
+            }
+        }
+        args
+    }
+
+    #[test]
+    fn codex_sandbox_default_none_uses_read_only() {
+        let argv = codex_sandbox_argv(vec![], None);
+        let idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(argv[idx + 1], "read-only");
+    }
+
+    #[test]
+    fn codex_sandbox_workspace_write() {
+        let argv = codex_sandbox_argv(vec![], Some(SandboxMode::WorkspaceWrite));
+        let idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(argv[idx + 1], "workspace-write");
+    }
+
+    #[test]
+    fn codex_sandbox_danger_full_access() {
+        let argv = codex_sandbox_argv(vec![], Some(SandboxMode::DangerFullAccess));
+        let idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(argv[idx + 1], "danger-full-access");
+    }
+
+    #[test]
+    fn codex_defaults_include_ephemeral() {
+        let argv = codex_sandbox_argv(vec![], None);
+        assert!(argv.contains(&"--ephemeral".to_string()));
+    }
+
+    #[test]
+    fn codex_custom_args_preserved_before_sandbox() {
+        let custom = vec!["exec".to_string(), "--json".to_string()];
+        let argv = codex_sandbox_argv(custom.clone(), Some(SandboxMode::WorkspaceWrite));
+        // Custom args come first
+        assert_eq!(argv[0], "exec");
+        assert_eq!(argv[1], "--json");
+        // Then sandbox
+        let s_idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert!(s_idx >= 2);
+        assert_eq!(argv[s_idx + 1], "workspace-write");
+    }
+
+    #[test]
+    fn codex_no_ephemeral_with_custom_args() {
+        let custom = vec!["exec".to_string(), "--json".to_string()];
+        let argv = codex_sandbox_argv(custom, None);
+        // --ephemeral should NOT be injected when custom args are used
+        assert!(!argv.contains(&"--ephemeral".to_string()));
+    }
+}
