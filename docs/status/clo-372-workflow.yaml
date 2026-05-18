@@ -25,7 +25,7 @@ workflow:
   current_phase: pr
   status: in_progress
   created_at: '2026-05-18T20:41:12.151Z'
-  updated_at: '2026-05-18T21:36:18.248Z'
+  updated_at: '2026-05-18T21:37:36.328Z'
 phases:
   discovery:
     status: complete
@@ -201,7 +201,7 @@ phases:
         completion_tokens: 0
         task_label: pre-pr-validation-synthesis
   pr:
-    status: pending
+    status: in_progress
   complete:
     status: pending
 history:
@@ -469,3 +469,9 @@ history:
     details: >-
       Posted Linear comment summarizing restored pre-pr-validation workflow, validation report paths, PASS_WITH_NOTES
       synthesis, green re-validation gate, validation artifact commit 452f190, and PR-phase handoff.
+  - timestamp: '2026-05-18T21:37:36.328Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-PR checks green: cargo fmt --check, cargo clippy -- -D warnings, cargo clippy --tests, and cargo test all
+      pass.
