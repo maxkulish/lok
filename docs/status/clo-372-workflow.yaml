@@ -20,12 +20,12 @@ linear:
     - CLO-371
   branch_suggested: kmamemo/clo-372-thread-stepcontext-through-non-step-backendquery-call-sites
   branch_actual: feat/clo-372-non-step
-  status: In Progress
+  status: In Review
 workflow:
   current_phase: pr
   status: in_progress
   created_at: '2026-05-18T20:41:12.151Z'
-  updated_at: '2026-05-18T21:37:36.328Z'
+  updated_at: '2026-05-18T21:38:20.322Z'
 phases:
   discovery:
     status: complete
@@ -202,6 +202,8 @@ phases:
         task_label: pre-pr-validation-synthesis
   pr:
     status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/19
+    pr_number: 19
   complete:
     status: pending
 history:
@@ -475,3 +477,11 @@ history:
     details: >-
       Pre-PR checks green: cargo fmt --check, cargo clippy -- -D warnings, cargo clippy --tests, and cargo test all
       pass.
+  - timestamp: '2026-05-18T21:38:09.314Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #19 opened: https://github.com/maxkulish/lok/pull/19'
+  - timestamp: '2026-05-18T21:38:20.322Z'
+    action: linear_status_updated
+    phase: pr
+    details: 'Updated Linear issue CLO-372 to In Review and posted PR #19 link.'
