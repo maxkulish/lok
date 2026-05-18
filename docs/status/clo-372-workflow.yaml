@@ -25,7 +25,7 @@ workflow:
   current_phase: implement
   status: in_progress
   created_at: '2026-05-18T20:41:12.151Z'
-  updated_at: '2026-05-18T21:06:33.961Z'
+  updated_at: '2026-05-18T21:07:32.253Z'
 phases:
   discovery:
     status: complete
@@ -126,6 +126,8 @@ phases:
     approved: true
   implement:
     status: in_progress
+    commits:
+      - 051f3f8
   pr:
     status: pending
   complete:
@@ -295,3 +297,10 @@ history:
       Implementation phase started. Consulted matching lessons: .pi/lessons/clo-371-stepcontext-migration-lessons.md
       (applies: populate promised StepContext fields and keep public API visible) and .pi/lessons/pr-review-failures.md
       (PR-phase only; no implementation gate impact).
+  - timestamp: '2026-05-18T21:07:32.253Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST1 landed: added backend StepContext helper, timeout helpers, and focused helper tests. Acceptance command `cargo
+      test step_context_for_backend` passed (planned `--lib` form is not supported because this package has no library
+      target). Commit 051f3f8.

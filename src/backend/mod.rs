@@ -401,7 +401,7 @@ pub async fn run_query_with_config(
     let cwd = crate::utils::canonicalize_async(cwd).await;
     let prompt: Arc<str> = Arc::from(prompt);
     let cwd: Arc<Path> = Arc::from(cwd.as_path());
-    let default_timeout = config.defaults.timeout;
+    let config = Arc::new(config.clone());
     let parallel = config.defaults.parallel;
 
     let pb = ProgressBar::new(backends.len() as u64);
@@ -415,30 +415,30 @@ pub async fn run_query_with_config(
     let query_one = |backend: Arc<dyn Backend>,
                      prompt: Arc<str>,
                      cwd: Arc<Path>,
-                     pb: ProgressBar,
-                     timeout: u64| async move {
-        pb.set_message(format!("Querying {}...", backend.name()));
+                     config: Arc<Config>,
+                     pb: ProgressBar| async move {
+        let backend_name = backend.name().to_string();
+        pb.set_message(format!("Querying {}...", backend_name));
+
+        let timeout = effective_timeout_secs(backend_timeout_secs(&config, &backend_name));
+        let ctx = step_context_for_backend(&prompt, &cwd, &config, &backend_name);
 
         let start = Instant::now();
-        let result = tokio::time::timeout(
-            Duration::from_secs(timeout),
-            backend.query(StepContext::from_prompt(&prompt, &cwd, None)),
-        )
-        .await;
+        let result = tokio::time::timeout(Duration::from_secs(timeout), backend.query(ctx)).await;
         let elapsed_ms = start.elapsed().as_millis() as u64;
 
         pb.inc(1);
 
         match result {
             Ok(Ok(query_output)) => QueryResult {
-                backend: backend.name().to_string(),
+                backend: backend_name.clone(),
                 output: query_output.stdout,
                 success: true,
                 elapsed_ms,
                 error: None,
             },
             Ok(Err(e)) => QueryResult {
-                backend: backend.name().to_string(),
+                backend: backend_name.clone(),
                 output: format!("Error: {}", e),
                 success: false,
                 elapsed_ms,
@@ -450,7 +450,7 @@ pub async fn run_query_with_config(
                     elapsed_ms,
                 };
                 QueryResult {
-                    backend: backend.name().to_string(),
+                    backend: backend_name,
                     output: format!("Error: {}", timeout_err),
                     success: false,
                     elapsed_ms,
@@ -460,31 +460,16 @@ pub async fn run_query_with_config(
         }
     };
 
-    // Helper to get timeout for a backend (0 means no timeout)
-    let get_timeout = |backend_name: &str| -> u64 {
-        let timeout = config
-            .backends
-            .get(backend_name)
-            .and_then(|b| b.timeout)
-            .unwrap_or(default_timeout);
-        if timeout == 0 {
-            365 * 24 * 60 * 60 // 1 year = effectively no timeout
-        } else {
-            timeout
-        }
-    };
-
     let results = if parallel {
         let futures: Vec<_> = backends
             .iter()
             .map(|backend| {
-                let timeout = get_timeout(backend.name());
                 query_one(
                     Arc::clone(backend),
                     Arc::clone(&prompt),
                     Arc::clone(&cwd),
+                    Arc::clone(&config),
                     pb.clone(),
-                    timeout,
                 )
             })
             .collect();
@@ -492,13 +477,12 @@ pub async fn run_query_with_config(
     } else {
         let mut results = Vec::new();
         for backend in backends {
-            let timeout = get_timeout(backend.name());
             let result = query_one(
                 Arc::clone(backend),
                 Arc::clone(&prompt),
                 Arc::clone(&cwd),
+                Arc::clone(&config),
                 pb.clone(),
-                timeout,
             )
             .await;
             results.push(result);
@@ -667,6 +651,77 @@ mod tests {
         let ctx = step_context_for_backend("hello", Path::new("/tmp"), &config, "ollama");
 
         assert_eq!(ctx.timeout, Some(Duration::from_secs(365 * 24 * 60 * 60)));
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct RecordedContext {
+        prompt: String,
+        model: Option<String>,
+        timeout: Option<Duration>,
+    }
+
+    struct RecordingBackend {
+        observed: std::sync::Arc<std::sync::Mutex<Option<RecordedContext>>>,
+    }
+
+    #[async_trait]
+    impl Backend for RecordingBackend {
+        fn name(&self) -> &str {
+            "ollama"
+        }
+
+        async fn query(
+            &self,
+            ctx: StepContext<'_>,
+        ) -> std::result::Result<QueryOutput, BackendError> {
+            *self.observed.lock().expect("recording mutex poisoned") = Some(RecordedContext {
+                prompt: ctx.prompt.to_string(),
+                model: ctx.model.map(str::to_string),
+                timeout: ctx.timeout,
+            });
+
+            Ok(QueryOutput::from_text(
+                "ok".to_string(),
+                "ollama",
+                Duration::ZERO,
+            ))
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_query_with_config_passes_step_context_model_and_timeout() {
+        let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let backend: Arc<dyn Backend> = Arc::new(RecordingBackend {
+            observed: Arc::clone(&observed),
+        });
+        let mut config = Config::default();
+        config.defaults.parallel = false;
+        let backend_config = config
+            .backends
+            .get_mut("ollama")
+            .expect("default ollama backend exists");
+        backend_config.model = Some("run-query-model".to_string());
+        backend_config.timeout = Some(13);
+
+        let results = run_query_with_config(&[backend], "hello", Path::new("."), &config)
+            .await
+            .expect("run query succeeds");
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        assert_eq!(results[0].output, "ok");
+        assert_eq!(
+            *observed.lock().expect("recording mutex poisoned"),
+            Some(RecordedContext {
+                prompt: "hello".to_string(),
+                model: Some("run-query-model".to_string()),
+                timeout: Some(Duration::from_secs(13)),
+            })
+        );
     }
 
     #[test]
