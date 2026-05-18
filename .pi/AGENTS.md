@@ -115,6 +115,12 @@ of a separate `review` phase. It runs the `pre-pr-validation` workflow
 (`.lok/workflows/pre-pr-validation.toml`) and synthesizes the codex +
 gemini reports. There is no standalone review phase here.
 
+The canonical assets under `.lok/` (`lok.toml`, `workflows/`, `prompts/`)
+are project-tracked, not local-only. A worktree created for a feature
+branch must inherit them so the implement validation gate can run there
+without manual `cp` rescue. Per-user overrides go under `.lok/local/`,
+which `.gitignore` excludes.
+
 ## Maintenance rules
 
 - Any required-field / history change mirrors into `PHASE_CONFIG` in

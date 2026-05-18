@@ -1,0 +1,28 @@
+[defaults]
+parallel = true
+timeout = 300
+
+[cache]
+enabled = false
+
+[backends.gemini]
+enabled = true
+command = "gemini"
+args = ["--model", "gemini-3.1-pro-preview", "-y", "--sandbox"]
+timeout = 300
+
+[backends.ollama]
+enabled = true
+command = "http://localhost:11434"
+model = "glm-5:cloud"
+timeout = 300
+
+[backends.claude]
+enabled = true
+command = "claude"
+args = []
+
+[backends.haiku]
+enabled = true
+command = "claude"
+args = ["--model", "haiku"]

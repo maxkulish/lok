@@ -1,0 +1,144 @@
+name = "spec-review"
+description = "Multi-model specification review with output validation"
+
+# Step 1: Gemini spec review
+[[steps]]
+name = "gemini_review"
+timeout = 300000
+retries = 3
+continue_on_error = true
+shell = """
+PROMPT=$(sed \
+  -e 's|__SPEC_PATH__|{{ arg.1 }}|g' \
+  -e 's|__LINEAR_TITLE__|{{ arg.3 }}|g' \
+  -e 's|__LINEAR_DESC__|{{ arg.4 }}|g' \
+  -e 's|__LINEAR_LABELS__|{{ arg.5 }}|g' \
+  .lok/prompts/spec-review-prompt.md)
+timeout 300 gemini --model gemini-3.1-pro-preview -y --sandbox \
+  --include-directories docs,src \
+  -p "$PROMPT" -o text 2>/tmp/lok-gemini-stderr.log
+"""
+
+[steps.validate]
+backend = "claude"
+mode = "lenient"
+replace_output = true
+prompt = """
+{{ output }}
+
+---
+
+You are a review output validator. Determine whether the text ABOVE contains an actual structured specification review.
+
+VALID review: has numbered sections (## 1., ## 2.), assessment of problem statement, acceptance criteria, constraints, decomposition, a verdict (APPROVE/APPROVE_WITH_SUGGESTIONS/NEEDS_REVISION), actionable feedback.
+
+NOISE: MCP initialization messages ("Registering notification handlers", "YOLO mode"), timestamps only, stack traces, empty content.
+
+If valid: remove noise, return ONLY the clean review content.
+If not valid: return exactly: REVIEW_FAILED: <one-line reason>
+"""
+
+# Step 2: Ollama/Codex spec review
+[[steps]]
+name = "ollama_review"
+timeout = 300000
+retries = 3
+continue_on_error = true
+shell = """
+PROMPT=$(sed \
+  -e 's|__SPEC_PATH__|{{ arg.1 }}|g' \
+  -e 's|__LINEAR_TITLE__|{{ arg.3 }}|g' \
+  -e 's|__LINEAR_DESC__|{{ arg.4 }}|g' \
+  -e 's|__LINEAR_LABELS__|{{ arg.5 }}|g' \
+  .lok/prompts/spec-review-prompt.md)
+env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MODEL:-glm-5:cloud}" -- \
+  exec "$PROMPT" \
+  --sandbox read-only \
+  --oss --local-provider ollama \
+  --ephemeral
+"""
+
+[steps.validate]
+backend = "claude"
+mode = "lenient"
+replace_output = true
+prompt = """
+{{ output }}
+
+---
+
+You are a review output validator. Determine whether the text ABOVE contains an actual structured specification review.
+
+VALID review: numbered sections, assessment language, verdict, actionable feedback.
+NOISE: empty, timestamps only, error messages, partial output.
+
+If valid: return ONLY the clean review content.
+If not valid: return exactly: REVIEW_FAILED: <one-line reason>
+"""
+
+# Step 3: Synthesize
+[[steps]]
+name = "synthesis"
+backend = "claude"
+retries = 3
+depends_on = ["gemini_review", "ollama_review"]
+min_deps_success = 0
+prompt = """
+You are synthesizing findings from multiple AI spec reviewers.
+
+GEMINI REVIEW (success={{ steps.gemini_review.success }}):
+{{ steps.gemini_review.output }}
+
+OLLAMA REVIEW (success={{ steps.ollama_review.success }}):
+{{ steps.ollama_review.output }}
+
+INSTRUCTIONS:
+- If both contain REVIEW_FAILED, return exactly: NO_REVIEWS_AVAILABLE
+- If one failed, synthesize from the available review only. Note which failed.
+- If both valid, cross-reference into:
+
+## Agreement (High Confidence)
+| # | Finding | Severity |
+|---|---------|----------|
+
+## Disagreement (Needs Human Decision)
+| # | Topic | Gemini Position | Ollama Position |
+|---|-------|-----------------|-----------------|
+
+## Novel Insights (Single Reviewer)
+| # | Finding | Source | Severity |
+|---|---------|--------|----------|
+
+## Consolidated Verdict
+ANY NEEDS_REVISION -> NEEDS_REVISION. All APPROVE -> APPROVE. Otherwise -> APPROVE_WITH_SUGGESTIONS.
+
+## Priority Actions
+Ordered by severity, agreement items first.
+"""
+
+# Step 4: Write review files
+[[steps]]
+name = "write_reviews"
+depends_on = ["gemini_review", "ollama_review", "synthesis"]
+min_deps_success = 0
+shell = """
+mkdir -p docs/reviews
+REVIEW_DATE=$(date +%Y-%m-%d)
+
+printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Gemini 3.1 Pro' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-gemini.md
+cat >> docs/reviews/{{ arg.2 }}-spec-review-gemini.md << 'ENDGEMINI'
+{{ steps.gemini_review.output }}
+ENDGEMINI
+
+printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-ollama.md
+cat >> docs/reviews/{{ arg.2 }}-spec-review-ollama.md << 'ENDOLLAMA'
+{{ steps.ollama_review.output }}
+ENDOLLAMA
+
+printf '%s\n' '# Spec Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-synthesis.md
+cat >> docs/reviews/{{ arg.2 }}-spec-review-synthesis.md << 'ENDSYNTH'
+{{ steps.synthesis.output }}
+ENDSYNTH
+
+echo "Spec reviews written to docs/reviews/{{ arg.2 }}-spec-review-*.md"
+"""

@@ -1,4 +1,4 @@
 /target/
-.lok/
+.lok/local/
 .DS_Store
 node_modules/
