@@ -267,19 +267,13 @@ pub fn get_retry_policy(config: &BackendConfig, defaults: &crate::config::Defaul
     }
 }
 
-fn backend_timeout_secs(config: &Config, backend_name: &str) -> u64 {
-    config
-        .backends
-        .get(backend_name)
-        .and_then(|backend| backend.timeout)
-        .unwrap_or(config.defaults.timeout)
-}
+const NO_TIMEOUT_SECS: u64 = 365 * 24 * 60 * 60;
 
 fn effective_timeout_secs(timeout_secs: u64) -> u64 {
     if timeout_secs == 0 {
         // Preserve the existing convention where 0 disables timeout by mapping
         // it to a near-infinite duration used by the outer timeout wrapper.
-        365 * 24 * 60 * 60
+        NO_TIMEOUT_SECS
     } else {
         timeout_secs
     }
@@ -292,17 +286,14 @@ pub fn step_context_for_backend<'a>(
     backend_name: &str,
 ) -> StepContext<'a> {
     let backend_config = config.backends.get(backend_name);
-    let timeout_secs = backend_timeout_secs(config, backend_name);
+    let timeout_secs = backend_config
+        .and_then(|backend| backend.timeout)
+        .unwrap_or(config.defaults.timeout);
+    let model = backend_config.and_then(|backend| backend.model.as_deref());
 
     StepContext {
-        prompt,
-        history: &[],
-        model: backend_config.and_then(|backend| backend.model.as_deref()),
-        cwd,
-        sandbox: None,
-        schema: None,
-        options: None,
         timeout: Some(Duration::from_secs(effective_timeout_secs(timeout_secs))),
+        ..StepContext::from_prompt(prompt, cwd, model)
     }
 }
 
@@ -425,11 +416,14 @@ pub async fn run_query_with_config(
         let backend_name = backend.name().to_string();
         pb.set_message(format!("Querying {}...", backend_name));
 
-        let timeout = effective_timeout_secs(backend_timeout_secs(&config, &backend_name));
         let ctx = step_context_for_backend(&prompt, &cwd, &config, &backend_name);
+        let timeout_duration = ctx
+            .timeout
+            .expect("step_context_for_backend always sets timeout");
+        let timeout = timeout_duration.as_secs();
 
         let start = Instant::now();
-        let result = tokio::time::timeout(Duration::from_secs(timeout), backend.query(ctx)).await;
+        let result = tokio::time::timeout(timeout_duration, backend.query(ctx)).await;
         let elapsed_ms = start.elapsed().as_millis() as u64;
 
         pb.inc(1);
