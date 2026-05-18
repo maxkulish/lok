@@ -1,7 +1,6 @@
 use crate::config::BackendConfig;
 use anyhow::Result;
 use async_trait::async_trait;
-use std::path::Path;
 use std::process::Stdio;
 use std::time::Instant;
 use tokio::process::Command;
@@ -48,11 +47,13 @@ impl super::Backend for GeminiBackend {
 
     async fn query(
         &self,
-        prompt: &str,
-        cwd: &Path,
-        model: Option<&str>,
+        ctx: super::StepContext<'_>,
     ) -> std::result::Result<super::QueryOutput, super::BackendError> {
         let start = Instant::now();
+
+        let prompt = ctx.prompt;
+        let cwd = ctx.cwd;
+        let model = ctx.model;
 
         // Gemini CLI requires stdin to be a pipe (not null/tty), so we use shell
         // to pipe empty input: echo '' | npx @google/gemini-cli 'prompt'

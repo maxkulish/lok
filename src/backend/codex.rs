@@ -1,7 +1,6 @@
 use crate::config::BackendConfig;
 use anyhow::Result;
 use async_trait::async_trait;
-use std::path::Path;
 use std::process::Stdio;
 use std::time::Instant;
 use tokio::process::Command;
@@ -67,10 +66,11 @@ impl super::Backend for CodexBackend {
 
     async fn query(
         &self,
-        prompt: &str,
-        cwd: &Path,
-        model: Option<&str>,
+        ctx: super::StepContext<'_>,
     ) -> std::result::Result<super::QueryOutput, super::BackendError> {
+        let prompt = ctx.prompt;
+        let cwd = ctx.cwd;
+        let model = ctx.model;
         let start = Instant::now();
 
         let effective_model: Option<String> = model

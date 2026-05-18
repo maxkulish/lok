@@ -2,6 +2,7 @@
 mod bedrock;
 mod claude;
 mod codex;
+mod context;
 mod gemini;
 mod ollama;
 mod retry;
@@ -10,6 +11,8 @@ mod retry;
 #[allow(unused_imports)]
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
+#[allow(unused_imports)]
+pub use context::{HealthStatus, Message, Role, SandboxMode, StepContext, StepOptions};
 pub use retry::{RetryExecutor, RetryPolicy};
 
 use crate::config::{BackendConfig, Config};
@@ -231,13 +234,21 @@ impl QueryOutput {
 #[async_trait]
 pub trait Backend: Send + Sync {
     fn name(&self) -> &str;
-    async fn query(
-        &self,
-        prompt: &str,
-        cwd: &Path,
-        model: Option<&str>,
-    ) -> std::result::Result<QueryOutput, BackendError>;
+    async fn query(&self, ctx: StepContext<'_>) -> std::result::Result<QueryOutput, BackendError>;
     fn is_available(&self) -> bool;
+    /// Live async health probe. Default delegates to `is_available()`.
+    /// Returns a placeholder `HealthStatus` so the trait signature is stable
+    /// when FR-9/9a adds real fields.
+    #[allow(dead_code)]
+    async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
+        if self.is_available() {
+            Ok(HealthStatus)
+        } else {
+            Err(BackendError::Unavailable {
+                message: format!("Backend {} is not available", self.name()),
+            })
+        }
+    }
 }
 
 pub struct QueryResult {
@@ -377,7 +388,7 @@ pub async fn run_query_with_config(
         let start = Instant::now();
         let result = tokio::time::timeout(
             Duration::from_secs(timeout),
-            backend.query(&prompt, &cwd, None),
+            backend.query(StepContext::from_prompt(&prompt, &cwd, None)),
         )
         .await;
         let elapsed_ms = start.elapsed().as_millis() as u64;
@@ -792,5 +803,48 @@ mod tests {
         let anyhow_err = anyhow::anyhow!("Something unknown happened");
         let backend_err = BackendError::from(anyhow_err);
         assert!(matches!(backend_err, BackendError::ExecutionFailed { .. }));
+    }
+
+    struct HealthCheckBackend {
+        available: bool,
+    }
+
+    #[async_trait]
+    impl Backend for HealthCheckBackend {
+        fn name(&self) -> &str {
+            "health-check-mock"
+        }
+        async fn query(
+            &self,
+            _ctx: StepContext<'_>,
+        ) -> std::result::Result<QueryOutput, BackendError> {
+            Ok(QueryOutput::from_text(
+                "ok".into(),
+                "health-check-mock",
+                Duration::from_secs(0),
+            ))
+        }
+        fn is_available(&self) -> bool {
+            self.available
+        }
+        // Deliberately NOT overriding health_check — using default impl
+    }
+
+    #[tokio::test]
+    async fn test_health_check_default_returns_ok_when_available() {
+        let backend = HealthCheckBackend { available: true };
+        let result = backend.health_check().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_health_check_default_returns_err_when_unavailable() {
+        let backend = HealthCheckBackend { available: false };
+        let result = backend.health_check().await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            BackendError::Unavailable { .. }
+        ));
     }
 }

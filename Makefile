@@ -1,4 +1,4 @@
-.PHONY: help build test check clippy fmt clean sync feature release install
+.PHONY: help build test check clippy fmt clean sync feature release install pi-init
 
 # Auto-generate version from today's date with auto-incrementing patch
 # Format: YYYYMMDD.0.X where X increments if releasing multiple times per day
@@ -29,6 +29,9 @@ help:
 	@echo "  make clippy                        - Run clippy"
 	@echo "  make fmt                           - Format code"
 	@echo "  make clean                         - Clean build artifacts"
+	@echo ""
+	@echo "Pi:"
+	@echo "  make pi-init                       - Install npm deps for all .pi/extensions/*"
 	@echo ""
 	@echo "Workflow:"
 	@echo "  make sync                          - Pull latest from upstream into main"
@@ -65,6 +68,19 @@ check: fmt
 
 clean:
 	cargo clean
+
+pi-init:
+	@for ext in .pi/extensions/*/package.json; do \
+		[ -f "$$ext" ] || continue; \
+		dir=$$(dirname $$ext); \
+		echo "Installing deps in $$dir..."; \
+		if [ -f "$$dir/package-lock.json" ]; then \
+			(cd $$dir && npm ci --silent); \
+		else \
+			(cd $$dir && npm install --silent); \
+		fi; \
+	done
+	@echo "Pi extensions ready"
 
 # --- Workflow ---
 

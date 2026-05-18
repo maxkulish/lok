@@ -6,7 +6,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::time::Duration;
 
 pub struct OllamaBackend {
@@ -165,11 +164,9 @@ impl Backend for OllamaBackend {
 
     async fn query(
         &self,
-        prompt: &str,
-        _cwd: &Path,
-        model: Option<&str>,
+        ctx: super::StepContext<'_>,
     ) -> std::result::Result<super::QueryOutput, super::BackendError> {
-        self.chat(prompt, model).await
+        self.chat(ctx.prompt, ctx.model).await
     }
 
     fn is_available(&self) -> bool {

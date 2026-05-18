@@ -79,7 +79,12 @@ impl Team {
 
         // Query primary
         println!("{} Querying {}...", "→".cyan(), primary.name.to_uppercase());
-        let primary_result = primary_backend.query(task, &self.cwd, None).await?.stdout;
+        let primary_result = primary_backend
+            .query(crate::backend::StepContext::from_prompt(
+                task, &self.cwd, None,
+            ))
+            .await?
+            .stdout;
 
         println!();
         println!(
@@ -118,7 +123,12 @@ impl Team {
                     other_profile.name.to_uppercase()
                 );
 
-                match other_backend.query(&prompt, &self.cwd, None).await {
+                match other_backend
+                    .query(crate::backend::StepContext::from_prompt(
+                        &prompt, &self.cwd, None,
+                    ))
+                    .await
+                {
                     Ok(query_output) => {
                         println!();
                         println!(

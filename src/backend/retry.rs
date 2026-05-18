@@ -1,8 +1,7 @@
-use super::{Backend, BackendError, QueryOutput};
+use super::{Backend, BackendError, HealthStatus, QueryOutput};
 use async_trait::async_trait;
 use colored::Colorize;
 use rand::Rng;
-use std::path::Path;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
@@ -68,9 +67,7 @@ impl Backend for RetryExecutor {
 
     async fn query(
         &self,
-        prompt: &str,
-        cwd: &Path,
-        model: Option<&str>,
+        ctx: crate::backend::StepContext<'_>,
     ) -> std::result::Result<QueryOutput, BackendError> {
         let mut last_error: Option<BackendError> = None;
 
@@ -99,7 +96,7 @@ impl Backend for RetryExecutor {
                 sleep(delay).await;
             }
 
-            match self.inner.query(prompt, cwd, model).await {
+            match self.inner.query(ctx).await {
                 Ok(output) => return Ok(output),
                 Err(e) if e.is_retryable() => {
                     last_error = Some(e);
@@ -116,6 +113,10 @@ impl Backend for RetryExecutor {
 
     fn is_available(&self) -> bool {
         self.inner.is_available()
+    }
+
+    async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
+        self.inner.health_check().await
     }
 }
 
@@ -138,11 +139,12 @@ mod tests {
         fn is_available(&self) -> bool {
             true
         }
+        async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
+            Ok(HealthStatus)
+        }
         async fn query(
             &self,
-            _: &str,
-            _: &Path,
-            _: Option<&str>,
+            _ctx: crate::backend::StepContext<'_>,
         ) -> std::result::Result<QueryOutput, BackendError> {
             let count = self.failure_count.fetch_add(1, Ordering::SeqCst);
             if count < self.max_failures {
@@ -183,11 +185,12 @@ mod tests {
         fn is_available(&self) -> bool {
             true
         }
+        async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
+            Ok(HealthStatus)
+        }
         async fn query(
             &self,
-            _: &str,
-            _: &Path,
-            _: Option<&str>,
+            _ctx: crate::backend::StepContext<'_>,
         ) -> std::result::Result<QueryOutput, BackendError> {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             // Clone the held error for each call
@@ -230,7 +233,17 @@ mod tests {
             max_delay: Duration::from_millis(10),
         };
         let executor = RetryExecutor::new(inner, policy);
-        let res = executor.query("test", Path::new("."), None).await;
+        let ctx = crate::backend::StepContext {
+            prompt: "test",
+            history: &[],
+            model: None,
+            cwd: std::path::Path::new("."),
+            sandbox: None,
+            schema: None,
+            options: None,
+            timeout: None,
+        };
+        let res = executor.query(ctx).await;
         assert!(res.is_ok());
         assert_eq!(res.unwrap().stdout, "success");
     }
@@ -247,7 +260,17 @@ mod tests {
             max_delay: Duration::from_millis(10),
         };
         let executor = RetryExecutor::new(inner, policy);
-        let res = executor.query("test", Path::new("."), None).await;
+        let ctx = crate::backend::StepContext {
+            prompt: "test",
+            history: &[],
+            model: None,
+            cwd: std::path::Path::new("."),
+            sandbox: None,
+            schema: None,
+            options: None,
+            timeout: None,
+        };
+        let res = executor.query(ctx).await;
         assert!(res.is_err());
         assert!(matches!(res.unwrap_err(), BackendError::Network { .. }));
     }
@@ -315,7 +338,17 @@ mod tests {
             max_delay: Duration::from_millis(10),
         };
         let executor = RetryExecutor::new(inner, policy);
-        let res = executor.query("test", Path::new("."), None).await;
+        let ctx = crate::backend::StepContext {
+            prompt: "test",
+            history: &[],
+            model: None,
+            cwd: std::path::Path::new("."),
+            sandbox: None,
+            schema: None,
+            options: None,
+            timeout: None,
+        };
+        let res = executor.query(ctx).await;
         assert!(matches!(res, Err(BackendError::Auth { .. })));
         // Auth is not retryable -> exactly one call, no retries
         assert_eq!(inner_clone.call_count.load(Ordering::SeqCst), 1);
@@ -337,7 +370,17 @@ mod tests {
         };
         let executor = RetryExecutor::new(inner, policy);
         let start = std::time::Instant::now();
-        let res = executor.query("test", Path::new("."), None).await;
+        let ctx = crate::backend::StepContext {
+            prompt: "test",
+            history: &[],
+            model: None,
+            cwd: std::path::Path::new("."),
+            sandbox: None,
+            schema: None,
+            options: None,
+            timeout: None,
+        };
+        let res = executor.query(ctx).await;
         let elapsed = start.elapsed();
         assert!(matches!(res, Err(BackendError::RateLimit { .. })));
         // 1 initial + 1 retry = 2 calls
