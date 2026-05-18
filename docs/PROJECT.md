@@ -6,7 +6,7 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-370](https://linear.app/cloud-ai/issue/CLO-370) | Add `usage` field to `StepResult` for end-to-end token observability (FR-25a) | In Progress | Spec | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -18,6 +18,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-370](https://linear.app/cloud-ai/issue/CLO-370) | Add `usage` field to `StepResult` for end-to-end token observability (FR-25a) | 2026-05-18 | StepResult.usage: Option<TokenUsage> wired through all 4 LLM paths (single-backend, consensus+synthesis, for_each with aggregation, shell=None); BackendResponse extended for consensus; aggregate_usage helper; 2 new unit tests; 468 unit tests pass |
 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Configurable role routing with [roles]/[teams] config | 2026-04-12 | RoleResolver with two-tier lookup (team->global), RoutingStrategy enum (First/Parallel/Fallback), --team/--role/--explain CLI flags, Delegator fallback, deny_unknown_fields, 20 role tests |
 | [CLO-207](https://linear.app/cloud-ai/issue/CLO-207) | Extend QueryOutput with model, duration, usage, structured, backend | 2026-04-12 | QueryOutput extended with model/duration/usage/structured/backend; TokenUsage struct; 5 backends updated; 19 new tests |
 | [CLO-211](https://linear.app/cloud-ai/issue/CLO-211) | Wire apply-verify pipeline into workflow step execution | 2026-04-11 | RetryLoop replaces legacy fix_loop with shell-composed (format) \|\| true && (verify); command_wrapper applied to composed cmd; apply_once helper for verify=None; ST-3 spec error format strings with 4KB raw/1KB stderr truncation; Mutex poison recovery; 14 new tests, 429 total |
