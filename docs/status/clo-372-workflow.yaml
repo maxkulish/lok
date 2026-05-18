@@ -25,7 +25,7 @@ workflow:
   current_phase: implement
   status: in_progress
   created_at: '2026-05-18T20:41:12.151Z'
-  updated_at: '2026-05-18T21:08:55.386Z'
+  updated_at: '2026-05-18T21:09:42.297Z'
 phases:
   discovery:
     status: complete
@@ -129,6 +129,7 @@ phases:
     commits:
       - 051f3f8
       - ad1261b
+      - a1c4b49
   pr:
     status: pending
   complete:
@@ -312,3 +313,10 @@ history:
       ST2 landed: migrated run_query_with_config to backend_timeout_secs/step_context_for_backend with owned Arc<Config>
       async context, plus recording-backend test coverage for model and timeout propagation. Acceptance `cargo test
       run_query_with_config` passed. Commit ad1261b.
+  - timestamp: '2026-05-18T21:09:42.297Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST3 landed: migrated Conductor::execute_tool plus Spawn planner/execution query contexts to
+      backend::step_context_for_backend with config captured in agent closures. Acceptance `cargo check --all-targets &&
+      ! rg ... src/conductor.rs src/spawn.rs` passed. Commit a1c4b49.
