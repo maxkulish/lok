@@ -20,12 +20,12 @@ linear:
     - CLO-371
   branch_suggested: kmamemo/clo-372-thread-stepcontext-through-non-step-backendquery-call-sites
   branch_actual: feat/clo-372-non-step
-  status: In Review
+  status: Done
 workflow:
-  current_phase: pr
-  status: in_progress
+  current_phase: complete
+  status: complete
   created_at: '2026-05-18T20:41:12.151Z'
-  updated_at: '2026-05-18T21:44:37.237Z'
+  updated_at: '2026-05-18T21:50:22.392Z'
 phases:
   discovery:
     status: complete
@@ -201,13 +201,21 @@ phases:
         completion_tokens: 0
         task_label: pre-pr-validation-synthesis
   pr:
-    status: in_progress
+    status: complete
     pr_url: https://github.com/maxkulish/lok/pull/19
     pr_number: 19
     ci_passed: true
     reviews_addressed: true
+    merged_at: '2026-05-18T21:46:45Z'
+    merge_commit: 2631bfa582cfc44a77bb0cce1071ab266244a798
   complete:
-    status: pending
+    status: complete
+    merged_at: '2026-05-18T21:46:45Z'
+    merge_commit: 2631bfa582cfc44a77bb0cce1071ab266244a798
+    aggregation_files_updated: true
+    lessons_learned:
+      - L3 - Avoid duplicate source-of-truth calculations in context helpers
+    lessons_file: .pi/lessons/clo-371-stepcontext-migration-lessons.md
 history:
   - timestamp: '2026-05-18T20:41:12.151Z'
     action: workflow_started
@@ -506,3 +514,41 @@ history:
     details: >-
       After PR review fix commit 7947342, GitHub still reports no PR status checks and mergeStateStatus=CLEAN; local
       post-fix pre-flight/static gate is green.
+  - timestamp: '2026-05-18T21:45:58.059Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: >-
+      Mandatory pre-merge re-fetch passed for PR #19: no inline comments newer than latest review_addressed timestamp
+      2026-05-18T21:44:29.302Z. PR is mergeable, no required checks reported, all review threads resolved.
+  - timestamp: '2026-05-18T21:46:01.322Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-05-18T21:47:12.527Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #19 merged. Merge commit 2631bfa582cfc44a77bb0cce1071ab266244a798.'
+  - timestamp: '2026-05-18T21:47:17.965Z'
+    action: pr_merged
+    phase: pr
+    details: Merge commit 2631bfa582cfc44a77bb0cce1071ab266244a798
+  - timestamp: '2026-05-18T21:49:33.903Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-372 --complete in post-merge worktree: CLO-372
+      added to Recently Completed/Done and removed from Unblocked & Ready.
+  - timestamp: '2026-05-18T21:49:49.467Z'
+    action: linear_status_updated
+    phase: complete
+    details: Updated Linear issue CLO-372 to Done and posted merge/workflow YAML comment.
+  - timestamp: '2026-05-18T21:50:14.938Z'
+    action: lessons_extracted
+    phase: complete
+    details: >-
+      1 lesson recorded. Appended L3 to .pi/lessons/clo-371-stepcontext-migration-lessons.md covering duplicate
+      source-of-truth calculations in context helpers and named timeout sentinels.
+  - timestamp: '2026-05-18T21:50:22.392Z'
+    action: workflow_complete
+    phase: complete
+    details: 'Task CLO-372 fully completed. PR #19 merged. No downstream Linear blockers recorded for CLO-372.'

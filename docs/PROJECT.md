@@ -18,6 +18,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-372](https://linear.app/cloud-ai/issue/CLO-372) | Thread `StepContext` through non-Step `Backend::query` call sites (FR-20b) | 2026-05-18 | Threaded StepContext through non-Step Backend::query call sites, propagating model and timeout context to backend, conductor, spawn, team, and debate paths. |
 | [CLO-371](https://linear.app/cloud-ai/issue/CLO-371) | Migrate `Backend::query` to `StepContext` + add async `health_check` + sweep Step call sites (FR-19a/19b/20a) | 2026-05-18 | StepContext carrying struct; Backend::query migrated across all backends and call sites; async health_check added; timeout context populated; validation fix iteration applied; PR #18 merged |
 | [CLO-370](https://linear.app/cloud-ai/issue/CLO-370) | Add `usage` field to `StepResult` for end-to-end token observability (FR-25a) | 2026-05-18 | StepResult.usage: Option<TokenUsage> wired through all 4 LLM paths (single-backend, consensus+synthesis, for_each with aggregation, shell=None); BackendResponse extended for consensus; aggregate_usage helper; 2 new unit tests; 468 unit tests pass |
 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Configurable role routing with [roles]/[teams] config | 2026-04-12 | RoleResolver with two-tier lookup (team->global), RoutingStrategy enum (First/Parallel/Fallback), --team/--role/--explain CLI flags, Delegator fallback, deny_unknown_fields, 20 role tests |

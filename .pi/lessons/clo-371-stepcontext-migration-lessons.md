@@ -21,3 +21,13 @@ Durable rules from the CLO-371 `Backend::query` -> `StepContext` migration.
 **Rule:** If a public struct exposes public fields whose types live in a private module, re-export those field types alongside the struct in the public API surface.
 
 **How to apply:** For backend context additions, keep `src/backend/mod.rs` exports aligned with the design's public API section. If clippy flags re-exports as unused inside the binary crate, prefer a narrow `#[allow(unused_imports)]` on the public re-export over hiding the types from downstream users.
+
+---
+
+## L3 - Avoid duplicate source-of-truth calculations in context helpers
+
+**Source incident:** CLO-372 PR review on `src/backend/mod.rs` found the non-Step `StepContext` helper calculated timeout from config while `run_query_with_config` recalculated the same effective timeout separately. The same review also flagged the one-year "no timeout" sentinel as an unnamed magic number.
+
+**Rule:** When a context helper populates a field that callers also need for control flow, use the populated context field as the single source of truth. Name sentinel values such as "effectively no timeout" constants instead of repeating arithmetic literals.
+
+**How to apply:** Build the context once, read `ctx.timeout` (or the equivalent carrying-field value) for downstream wrappers, and add a focused test that proves the helper-provided value reaches the caller. Use named constants like `NO_TIMEOUT_SECS` for sentinel policy values.
