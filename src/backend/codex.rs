@@ -18,12 +18,13 @@ impl CodexBackend {
             .clone()
             .unwrap_or_else(|| "codex".to_string());
 
+        // Store custom args as-is; sandbox is injected dynamically at query time.
+        // Default args no longer include -s (it's set per-query from StepContext).
         let args = if config.args.is_empty() {
             vec![
                 "exec".to_string(),
                 "--json".to_string(),
-                "-s".to_string(),
-                "read-only".to_string(),
+                "--ephemeral".to_string(),
             ]
         } else {
             config.args.clone()
@@ -79,7 +80,21 @@ impl super::Backend for CodexBackend {
             .or_else(|| self.default_model.clone());
 
         let mut cmd = Command::new(&self.command);
-        cmd.args(&self.args);
+
+        // Base args: use config args if set, otherwise recommended defaults
+        if self.args.is_empty() {
+            cmd.args(["exec", "--json", "--ephemeral"]);
+        } else {
+            cmd.args(&self.args);
+        }
+
+        // Sandbox flag: per-step ctx.sandbox overrides, fallback to read-only
+        let sandbox = ctx.sandbox.unwrap_or(super::SandboxMode::ReadOnly);
+        match sandbox {
+            super::SandboxMode::ReadOnly => cmd.args(["-s", "read-only"]),
+            super::SandboxMode::WorkspaceWrite => cmd.args(["-s", "workspace-write"]),
+            super::SandboxMode::DangerFullAccess => cmd.args(["-s", "danger-full-access"]),
+        };
 
         if let Some(m) = effective_model.as_ref() {
             cmd.arg("--model").arg(m);
