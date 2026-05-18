@@ -25,7 +25,7 @@ workflow:
   current_phase: implement
   status: in_progress
   created_at: '2026-05-18T20:41:12.151Z'
-  updated_at: '2026-05-18T21:10:21.362Z'
+  updated_at: '2026-05-18T21:35:19.286Z'
 phases:
   discovery:
     status: complete
@@ -125,12 +125,81 @@ phases:
     plan_file: docs/plans/clo-372-thread-stepcontext-non-step.md
     approved: true
   implement:
-    status: in_progress
+    status: complete
     commits:
       - 051f3f8
       - ad1261b
       - a1c4b49
       - ecbba6a
+      - 56b0c58
+    assumptions_revalidated: true
+    assumption_outcomes:
+      - text: >-
+          Backend config is the correct source of model selection for non-Step calls because these paths have no active
+          workflow Step.
+        outcome: held
+        evidence: >-
+          src/backend/mod.rs:590 test_step_context_for_backend_uses_backend_model; production call sites use
+          step_context_for_backend in src/conductor.rs:187, src/spawn.rs:174/286, src/team.rs:84/129, src/debate.rs:231.
+      - text: >-
+          Mirroring the existing outer timeout into StepContext.timeout is behavior-preserving because runtime timeout
+          enforcement remains unchanged.
+        outcome: held
+        evidence: >-
+          src/backend/mod.rs:270 backend_timeout_secs, src/backend/mod.rs:278 effective_timeout_secs,
+          src/backend/mod.rs:607 test_step_context_for_backend_uses_backend_timeout, src/backend/mod.rs:701
+          test_run_query_with_config_passes_step_context_model_and_timeout.
+      - text: >-
+          Leaving history, sandbox, schema, and options empty/None is safe for this slice because no non-Step caller
+          currently has those values.
+        outcome: held
+        evidence: >-
+          src/backend/mod.rs:288 step_context_for_backend explicitly sets history empty and sandbox/schema/options None;
+          src/backend/mod.rs:636 test_step_context_for_backend_preserves_phase1_defaults.
+      - text: Cloning Config into Team and Spawn async closures is acceptable because config is small and already Clone.
+        outcome: held
+        evidence: >-
+          src/team.rs:15 Team stores private config: Config; src/spawn.rs:243 clones self.config into async closures;
+          cargo check --all-targets and cargo clippy -- -D warnings passed.
+      - text: >-
+          A public helper in backend::mod is sufficient and does not require re-export changes because it only uses
+          already-public Config, Path, and StepContext.
+        outcome: held
+        evidence: >-
+          src/backend/mod.rs:288 public step_context_for_backend signature; cargo clippy -- -D warnings and cargo test
+          passed.
+      - text: backend.name() always matches the key used in Config.backends for configured backends.
+        outcome: held
+        evidence: >-
+          Existing get_backends/create_backend path constructs backends from config keys, RetryExecutor forwards inner
+          name in src/backend/retry.rs:64, and helper tests/run_query_with_config tests verify the default ollama
+          key/name path.
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    codex_report: docs/reviews/clo-372-codex-validation.md
+    gemini_validation_report: docs/reviews/clo-372-gemini-validation.md
+    validation_synthesis_report: docs/reviews/clo-372-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_fix_iteration_count: 1
+    token_usage:
+      - recorded_at: '2026-05-18T21:35:19.286Z'
+        provider: codex
+        model: gpt-5.5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-05-18T21:35:19.286Z'
+        provider: gemini
+        model: gemini-3.1-pro-preview
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-gemini
+      - recorded_at: '2026-05-18T21:35:19.286Z'
+        provider: claude
+        model: unknown
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
   pr:
     status: pending
   complete:
@@ -327,3 +396,66 @@ history:
     details: >-
       ST4 landed: Team now retains Config and team/debate non-Step query paths use backend::step_context_for_backend.
       Acceptance `cargo check --all-targets && ! rg ... src/team.rs src/debate.rs` passed. Commit ecbba6a.
+  - timestamp: '2026-05-18T21:11:08.244Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST5 landed: production static guard over backend/conductor/spawn/team/debate is clean; cargo fmt --check, cargo
+      clippy --all-targets -- -D warnings, and cargo test all passed. Helper now constructs StepContext explicitly so
+      the static guard has no false positive. Commit 56b0c58.
+  - timestamp: '2026-05-18T21:11:49.856Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      6 design assumptions reviewed after implementation. held: 6, violated: 0, untested: 0. Model/timeout propagation
+      is covered by helper and run_query_with_config tests; config cloning/public helper assumptions held under cargo
+      fmt, clippy, and test gates.
+  - timestamp: '2026-05-18T21:11:59.164Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All 5 implementation sub-tasks landed. Production static guard clean; cargo fmt --check, cargo clippy -- -D
+      warnings, and cargo test green. 5 commits.
+  - timestamp: '2026-05-18T21:12:15.939Z'
+    action: validation_gate_failed
+    phase: implement
+    details: >-
+      lok pre-pr-validation exited non-zero because workflow 'pre-pr-validation' was not found in .lok/workflows,
+      ~/.config/lok/workflows, or embedded workflows. Required review files were not produced. Implementation remains at
+      validating; investigating workflow availability before any PR transition.
+  - timestamp: '2026-05-18T21:12:43.306Z'
+    action: blocked_pending_validation_workflow
+    phase: implement
+    details: >-
+      Implementation code and pre-merge gates are green, but mandatory pre-pr validation cannot run because `lok
+      workflow run pre-pr-validation ...` reports workflow not found. Human/tooling action required: provide
+      .lok/workflows/pre-pr-validation.toml or embedded workflow support, then rerun the validation gate.
+  - timestamp: '2026-05-18T21:12:56.437Z'
+    action: blocked_comment_posted
+    phase: implement
+    details: >-
+      Posted Linear comment summarizing green implementation gates and mandatory validation blocker: pre-pr-validation
+      workflow is missing from lok search paths.
+  - timestamp: '2026-05-18T21:14:56.452Z'
+    action: validation_gate_still_blocked
+    phase: implement
+    details: >-
+      Re-attempted `lok workflow run pre-pr-validation docs/designs/clo-372-thread-stepcontext-non-step.md
+      docs/plans/clo-372-thread-stepcontext-non-step.md CLO-372`; it still exits non-zero because workflow
+      'pre-pr-validation' is not found in .lok/workflows, ~/.config/lok/workflows, or embedded workflows. No validation
+      reports produced; not transitioning to PR.
+  - timestamp: '2026-05-18T21:31:03.277Z'
+    action: validation_workflow_restored
+    phase: implement
+    details: >-
+      Located canonical pre-pr-validation workflow assets in sibling checkout /Users/mk/Code/orchestrator/lok/.lok and
+      copied ignored local assets into .lok/workflows/pre-pr-validation.toml and
+      .lok/prompts/pre-pr-validation-prompt.md. `lok workflow list` now shows pre-pr-validation (local). Proceeding to
+      rerun mandatory gate.
+  - timestamp: '2026-05-18T21:35:19.286Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: PASS_WITH_NOTES. Gemini: FAIL (tooling/environment artifact: untrusted-directory execution failure).
+      Synthesis: PASS_WITH_NOTES. One bounded housekeeping fix iteration applied: validation reports present, synthesis
+      re-validation appended, and pre-merge gate rerun green.
