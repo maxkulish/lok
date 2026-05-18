@@ -22,10 +22,10 @@ linear:
   branch_actual: feat/clo-372-non-step
   status: In Progress
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
   created_at: '2026-05-18T20:41:12.151Z'
-  updated_at: '2026-05-18T21:35:19.286Z'
+  updated_at: '2026-05-18T21:36:18.248Z'
 phases:
   discovery:
     status: complete
@@ -459,3 +459,13 @@ history:
       Codex: PASS_WITH_NOTES. Gemini: FAIL (tooling/environment artifact: untrusted-directory execution failure).
       Synthesis: PASS_WITH_NOTES. One bounded housekeeping fix iteration applied: validation reports present, synthesis
       re-validation appended, and pre-merge gate rerun green.
+  - timestamp: '2026-05-18T21:36:04.823Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-18T21:36:18.248Z'
+    action: implement_comment_posted
+    phase: implement
+    details: >-
+      Posted Linear comment summarizing restored pre-pr-validation workflow, validation report paths, PASS_WITH_NOTES
+      synthesis, green re-validation gate, validation artifact commit 452f190, and PR-phase handoff.
