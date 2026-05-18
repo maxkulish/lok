@@ -1763,10 +1763,11 @@ impl WorkflowRunner {
                                 }
 
                                 if let Some(u) = iter_usage {
-                                    aggregate_usage = Some(match aggregate_usage {
-                                        Some(prev) => prev.saturating_add(&u),
-                                        None => u,
-                                    });
+                                    if let Some(agg) = &mut aggregate_usage {
+                                        *agg = agg.saturating_add(&u);
+                                    } else {
+                                        aggregate_usage = Some(u);
+                                    }
                                 }
 
                                 let status = if iter_success { "✓".green() } else { "✗".red() };
@@ -2067,10 +2068,11 @@ impl WorkflowRunner {
                                                 Ok(Ok(qo)) => {
                                                     let synthesized = qo.stdout;
                                                     if let Some(u) = qo.usage {
-                                                        step_usage = Some(match step_usage {
-                                                            Some(prev) => prev.saturating_add(&u),
-                                                            None => u,
-                                                        });
+                                                        if let Some(agg) = &mut step_usage {
+                                                            *agg = agg.saturating_add(&u);
+                                                        } else {
+                                                            step_usage = Some(u);
+                                                        }
                                                     }
                                                     println!("    {} Synthesized", "✓".green());
                                                     (synthesized, Some(synth_backend_name.to_string()))
