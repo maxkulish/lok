@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-04-12
+**Last Updated**: 2026-05-18
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-370](https://linear.app/cloud-ai/issue/CLO-370) | Add `usage` field to `StepResult` for end-to-end token observability (FR-25a) | In Progress | Spec | - |
 
 ## Up Next (Prioritized Backlog)
 

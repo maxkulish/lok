@@ -119,7 +119,6 @@ impl TokenUsage {
         }
     }
 
-    #[allow(dead_code)]
     pub fn saturating_add(&self, other: &Self) -> Self {
         Self::new(
             self.prompt_tokens.saturating_add(other.prompt_tokens),

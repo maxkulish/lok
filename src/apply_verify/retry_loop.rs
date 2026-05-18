@@ -527,12 +527,11 @@ mod tests {
 
         // Two edits: first succeeds on a.txt, second fails because b.txt
         // has old text that won't match (file doesn't even exist)
-        let raw = format!(
-            r#"{{"edits": [
-                {{"file": "a.txt", "old": "a_original", "new": "a_modified"}},
-                {{"file": "b.txt", "old": "b_original", "new": "b_modified"}}
-            ]}}"#
-        );
+        let raw = r#"{"edits": [
+                {"file": "a.txt", "old": "a_original", "new": "a_modified"},
+                {"file": "b.txt", "old": "b_original", "new": "b_modified"}
+            ]}"#
+        .to_string();
 
         let rl = make_retry_loop(0, "exit 0", false);
         let requester = MockEditRequester::new(vec![]);

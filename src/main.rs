@@ -1319,7 +1319,7 @@ async fn run_report(
     }
 
     // Sort by timestamp (oldest first for chronological order in reports)
-    events.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    events.sort_by_key(|e| e.timestamp);
 
     // Apply limit (from the end, so we get most recent)
     if let Some(n) = limit {
