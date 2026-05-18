@@ -25,7 +25,7 @@ workflow:
   current_phase: pr
   status: in_progress
   created_at: '2026-05-18T20:41:12.151Z'
-  updated_at: '2026-05-18T21:38:45.323Z'
+  updated_at: '2026-05-18T21:44:37.237Z'
 phases:
   discovery:
     status: complete
@@ -205,6 +205,7 @@ phases:
     pr_url: https://github.com/maxkulish/lok/pull/19
     pr_number: 19
     ci_passed: true
+    reviews_addressed: true
   complete:
     status: pending
 history:
@@ -492,3 +493,16 @@ history:
     details: >-
       GitHub reports no status checks on PR #19 (statusCheckRollup empty; gh pr checks reports no checks). Treating
       required CI as satisfied with local mandatory pre-flight green.
+  - timestamp: '2026-05-18T21:44:29.302Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      2 Gemini inline review threads resolved. Applied fix commit 7947342 for NO_TIMEOUT_SECS/lookup cleanup and
+      run_query_with_config timeout reuse; pushed before replies. Replies posted 2/2 and /gemini review trailer verified
+      on every author reply. Gemini re-reviewed both threads positively; both review threads resolved.
+  - timestamp: '2026-05-18T21:44:37.237Z'
+    action: ci_iteration
+    phase: pr
+    details: >-
+      After PR review fix commit 7947342, GitHub still reports no PR status checks and mergeStateStatus=CLEAN; local
+      post-fix pre-flight/static gate is green.
