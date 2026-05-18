@@ -24,7 +24,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-18T20:42:11.318Z'
-  updated_at: '2026-05-18T21:07:06.547Z'
+  updated_at: '2026-05-18T21:30:38.639Z'
 phases:
   discovery:
     status: complete
@@ -65,6 +65,7 @@ phases:
     status: pending
     commits:
       - cf3421f
+      - 25d151a
   pr:
     status: pending
   complete:
@@ -148,5 +149,9 @@ history:
     action: subtask_complete
     phase: implement
     details: 'ST1 landed: add serde derives to SandboxMode enum. Commit cf3421f'
+  - timestamp: '2026-05-18T21:30:38.639Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST2 landed: add sandbox field to Step struct with serde derives. Commit 25d151a'
 task_title: Per-step sandbox routing for Codex and Gemini backends (FR-21)
 task_url: https://linear.app/cloud-ai/issue/CLO-374/per-step-sandbox-routing-for-codex-and-gemini-backends-fr-21

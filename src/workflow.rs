@@ -159,7 +159,7 @@ impl Workflow {
 
 /// Build a `StepContext` from a `Step` and current workflow defaults.
 ///
-/// History/sandbox/schema/options remain empty until their follow-on CLOs land.
+/// History/schema/options remain empty until their follow-on CLOs land.
 fn step_context<'a>(
     step: &'a Step,
     workflow: &Workflow,
@@ -167,6 +167,7 @@ fn step_context<'a>(
     cwd: &'a Path,
 ) -> backend::StepContext<'a> {
     backend::StepContext {
+        sandbox: step.sandbox,
         timeout: workflow
             .step_timeout(step)
             .map(std::time::Duration::from_millis),
