@@ -922,6 +922,12 @@ pub struct StepResult {
     /// to validation-clause outcomes only.
     #[allow(dead_code)]
     pub failure: Option<StepFailure>,
+    /// Token usage reported by the backend(s) that produced this step. None for
+    /// shell-only steps, error paths, and any backend that did not report
+    /// metering. For multi-backend consensus and `for_each` iterations, this is
+    /// the saturating sum of every contributing response.
+    #[allow(dead_code)]
+    pub usage: Option<crate::backend::TokenUsage>,
 }
 
 impl StepResult {
@@ -952,6 +958,7 @@ impl StepResult {
             exit_code: None,
             validation: None,
             failure: Some(failure),
+            usage: None,
         }
     }
 }
@@ -1663,6 +1670,7 @@ impl WorkflowRunner {
 
                             let mut iteration_results: Vec<serde_json::Value> = Vec::new();
                             let mut all_success = true;
+                            let mut aggregate_usage: Option<crate::backend::TokenUsage> = None;
 
                             for (index, item) in items.iter().enumerate() {
                                 // Interpolate item/index into prompt and shell
@@ -1680,6 +1688,7 @@ impl WorkflowRunner {
 
                                 let iter_output: String;
                                 let iter_success: bool;
+                                let mut iter_usage: Option<crate::backend::TokenUsage> = None;
 
                                 // Shell iteration
                                 if let Some(ref shell_cmd) = iter_shell {
@@ -1737,6 +1746,7 @@ impl WorkflowRunner {
                                     match tokio::time::timeout(timeout_duration, backend.query(&iter_prompt, &cwd, model_override.as_deref())).await {
                                         Ok(Ok(qo)) => {
                                             iter_output = qo.stdout;
+                                            iter_usage = qo.usage;
                                             iter_success = true;
                                         }
                                         Ok(Err(e)) => {
@@ -1750,6 +1760,13 @@ impl WorkflowRunner {
                                             all_success = false;
                                         }
                                     }
+                                }
+
+                                if let Some(u) = iter_usage {
+                                    aggregate_usage = Some(match aggregate_usage {
+                                        Some(prev) => prev.saturating_add(&u),
+                                        None => u,
+                                    });
                                 }
 
                                 let status = if iter_success { "✓".green() } else { "✗".red() };
@@ -1797,6 +1814,7 @@ impl WorkflowRunner {
                                 exit_code: None,
                                 validation: None,
                                 failure,
+                                usage: aggregate_usage,
                             };
                         }
 
@@ -1877,6 +1895,7 @@ impl WorkflowRunner {
                                             exit_code: shell_output.exit_code,
                                             validation,
                                             failure: None,
+                                            usage: None,
                                         };
                                     }
                                     Ok(Err(e)) => {
@@ -1913,7 +1932,7 @@ impl WorkflowRunner {
                         // LLM step - query backend(s)
                         // Handle multi-backend with consensus
                         if backends_list.len() > 1 {
-                            use crate::consensus::{BackendResponse, ConsensusStrategy, majority_vote, weighted_vote, BackendWeights};
+                            use crate::consensus::{BackendResponse, ConsensusStrategy, majority_vote, weighted_vote, BackendWeights, aggregate_usage};
 
                             println!("  {} querying {} backends with {:?} consensus", "[multi]".cyan(), backends_list.len(), consensus_strategy);
 
@@ -1941,7 +1960,7 @@ impl WorkflowRunner {
                                         return (bn.clone(), Err(format!("Backend {} not available", bn)));
                                     }
                                     match tokio::time::timeout(timeout_dur, backend.query(&prompt, &cwd, model_override.as_deref())).await {
-                                        Ok(Ok(qo)) => (bn.clone(), Ok(qo.stdout)),
+                                        Ok(Ok(qo)) => (bn.clone(), Ok((qo.stdout, qo.usage))),
                                         Ok(Err(e)) => (bn.clone(), Err(e.to_string())),
                                         Err(_) => (bn.clone(), Err(format!("Timeout after {}s", timeout_dur.as_secs()))),
                                     }
@@ -1953,9 +1972,9 @@ impl WorkflowRunner {
                             let mut errors: Vec<String> = Vec::new();
                             for handle in handles {
                                 match handle.await {
-                                    Ok((backend, Ok(content))) => {
+                                    Ok((backend, Ok((content, usage)))) => {
                                         println!("    {} {}", "✓".green(), backend);
-                                        responses.push(BackendResponse { backend, content });
+                                        responses.push(BackendResponse { backend, content, usage });
                                     }
                                     Ok((backend, Err(e))) => {
                                         println!("    {} {} - {}", "✗".red(), backend, e);
@@ -1971,6 +1990,12 @@ impl WorkflowRunner {
                                 let elapsed_ms = start.elapsed().as_millis() as u64;
                                 return StepResult::error(step_name, format!("All backends failed: {}", errors.join("; ")), elapsed_ms, None, StepFailureKind::BackendError);
                             }
+
+                            // Aggregate usage across every backend we consulted. This
+                            // sums prompt/completion/total tokens via saturating_add so
+                            // the step-level cost reflects the full multi-backend spend,
+                            // not just the winning response.
+                            let mut step_usage = aggregate_usage(responses.iter().map(|r| r.usage.clone()));
 
                             // Apply consensus strategy
                             let (final_output, used_backend) = match consensus_strategy {
@@ -2041,6 +2066,12 @@ impl WorkflowRunner {
                                             match tokio::time::timeout(timeout_duration, synth_backend.query(&synth_prompt, &cwd, None)).await {
                                                 Ok(Ok(qo)) => {
                                                     let synthesized = qo.stdout;
+                                                    if let Some(u) = qo.usage {
+                                                        step_usage = Some(match step_usage {
+                                                            Some(prev) => prev.saturating_add(&u),
+                                                            None => u,
+                                                        });
+                                                    }
                                                     println!("    {} Synthesized", "✓".green());
                                                     (synthesized, Some(synth_backend_name.to_string()))
                                                 }
@@ -2118,6 +2149,7 @@ impl WorkflowRunner {
                                 exit_code: None,
                                 validation,
                                 failure: None,
+                                usage: step_usage,
                             };
                         }
 
@@ -2150,6 +2182,7 @@ impl WorkflowRunner {
                         let mut text = String::new();
                         let mut step_stderr: Option<String> = None;
                         let mut step_exit_code: Option<i32> = None;
+                        let mut step_usage: Option<crate::backend::TokenUsage> = None;
                         let mut query_success = false;
 
                         for attempt in 0..=max_retries {
@@ -2173,6 +2206,7 @@ impl WorkflowRunner {
                                     text = qo.stdout;
                                     step_stderr = qo.stderr;
                                     step_exit_code = qo.exit_code;
+                                    step_usage = qo.usage;
                                     query_success = true;
                                     break;
                                 }
@@ -2492,6 +2526,7 @@ impl WorkflowRunner {
                                 exit_code: step_exit_code,
                                 validation,
                                 failure: None,
+                                usage: step_usage,
                             }
                         } else {
                             // Record step complete (failure - should never reach here)
@@ -3859,6 +3894,7 @@ mod tests {
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -4121,6 +4157,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         results.insert(
@@ -4137,6 +4174,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         results
@@ -4230,6 +4268,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         results.insert(
@@ -4246,6 +4285,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -4285,6 +4325,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         let template = "{% if steps.fetch.success %}A{% else %}B{% endif %}";
@@ -4316,6 +4357,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         let template = r#"{{ steps.fetch.output | default_val("fallback") }}"#;
@@ -4344,6 +4386,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         let template = "{{ steps.fetch.output | trim }}";
@@ -4373,6 +4416,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         let template = r#"{{ steps.list.items | join(", ") }}"#;
@@ -4402,6 +4446,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         let template = "{{ steps.fetch.path | shell_escape }}";
@@ -4430,6 +4475,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         let template = "{{ steps.fetch.output | lines | first }}";
@@ -4472,6 +4518,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         let template = "{{ steps.raw_json.verdict }}";
@@ -4528,6 +4575,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         let template = "{% for entry in steps.list.items %}{{ entry }},{% endfor %}";
@@ -4559,6 +4607,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
         // First interpolation is valid, second references a missing step - the error
@@ -4713,6 +4762,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -4741,6 +4791,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -4781,6 +4832,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -4809,6 +4861,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -4918,6 +4971,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -4946,6 +5000,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -5060,6 +5115,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -5078,6 +5134,7 @@ line2"}"#;
                 exit_code: None,
                 validation: None,
                 failure: None,
+                usage: None,
             },
         );
 
@@ -5491,7 +5548,8 @@ timeout = 5000
     fn test_heuristic_contains_single_quote_char() {
         // Edge case: single quote character as the entire argument should not panic
         let result = run_heuristic_check("contains(')", "some output with '");
-        assert!(result.passed || !result.passed); // Just verify no panic
+        // Just verify no panic; either pass or fail is acceptable.
+        let _ = result.passed;
     }
 
     #[tokio::test]
@@ -5930,6 +5988,7 @@ prompt = "Validate: {{ output }}"
             exit_code: None,
             validation: None,
             failure: None,
+            usage: None,
         };
         assert!(result.success);
         assert!(result.failure.is_none());
@@ -6160,6 +6219,7 @@ prompt = "p"
                 raw_response: None,
             }),
             failure: None,
+            usage: None,
         };
         assert!(!result.success);
         assert!(result.validation.is_some());
@@ -6492,5 +6552,49 @@ prompt = "p"
         let verify_cmd = "cargo test";
         let composed = format!("({}) || true && ({})", format_cmd, verify_cmd);
         assert_eq!(composed, "(cargo fmt) || true && (cargo test)");
+    }
+
+    // -----------------------------------------------------------------------
+    // CLO-370: StepResult.usage round-trip
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_step_result_usage_round_trip() {
+        let usage = crate::backend::TokenUsage::new(100, 50);
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.completion_tokens, 50);
+        assert_eq!(usage.total_tokens, 150);
+
+        let result = StepResult {
+            name: "test_step".to_string(),
+            output: "ok".to_string(),
+            parsed_output: None,
+            success: true,
+            elapsed_ms: 0,
+            backend: Some("bedrock".to_string()),
+            raw_output: None,
+            stderr: None,
+            exit_code: None,
+            validation: None,
+            failure: None,
+            usage: Some(usage),
+        };
+
+        let preserved = result.usage.expect("usage should be preserved");
+        assert_eq!(preserved.prompt_tokens, 100);
+        assert_eq!(preserved.completion_tokens, 50);
+        assert_eq!(preserved.total_tokens, 150);
+    }
+
+    #[test]
+    fn test_step_result_error_has_no_usage() {
+        let err = StepResult::error(
+            "test_step".to_string(),
+            "boom".to_string(),
+            42,
+            Some("claude".to_string()),
+            StepFailureKind::BackendError,
+        );
+        assert!(err.usage.is_none());
     }
 }

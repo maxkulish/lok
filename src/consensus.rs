@@ -6,6 +6,7 @@
 //! - `vote`: Majority vote (for classification/yes-no)
 //! - `weighted_vote`: Weighted majority by backend tier
 
+use crate::backend::TokenUsage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -96,6 +97,16 @@ impl BackendWeights {
 pub struct BackendResponse {
     pub backend: String,
     pub content: String,
+    pub usage: Option<TokenUsage>,
+}
+
+/// Sum every `Some(usage)` value across the slice via `TokenUsage::saturating_add`.
+/// Returns `None` if no element reported usage (matches the "no metering" case).
+pub fn aggregate_usage(usages: impl IntoIterator<Item = Option<TokenUsage>>) -> Option<TokenUsage> {
+    usages
+        .into_iter()
+        .flatten()
+        .reduce(|acc, u| acc.saturating_add(&u))
 }
 
 /// Perform majority vote on responses
@@ -190,14 +201,17 @@ mod tests {
             BackendResponse {
                 backend: "claude".to_string(),
                 content: "yes".to_string(),
+                usage: None,
             },
             BackendResponse {
                 backend: "codex".to_string(),
                 content: "yes".to_string(),
+                usage: None,
             },
             BackendResponse {
                 backend: "ollama".to_string(),
                 content: "no".to_string(),
+                usage: None,
             },
         ];
 
@@ -214,10 +228,12 @@ mod tests {
             BackendResponse {
                 backend: "claude".to_string(),
                 content: "A".to_string(),
+                usage: None,
             },
             BackendResponse {
                 backend: "codex".to_string(),
                 content: "B".to_string(),
+                usage: None,
             },
         ];
 
@@ -238,14 +254,17 @@ mod tests {
             BackendResponse {
                 backend: "claude".to_string(),
                 content: "yes".to_string(),
+                usage: None,
             }, // weight 2.0
             BackendResponse {
                 backend: "ollama".to_string(),
                 content: "no".to_string(),
+                usage: None,
             }, // weight 1.0
             BackendResponse {
                 backend: "ollama".to_string(),
                 content: "no".to_string(),
+                usage: None,
             }, // weight 1.0
         ];
 
@@ -263,14 +282,17 @@ mod tests {
             BackendResponse {
                 backend: "claude".to_string(),
                 content: "yes".to_string(),
+                usage: None,
             }, // 2.0
             BackendResponse {
                 backend: "bedrock".to_string(),
                 content: "yes".to_string(),
+                usage: None,
             }, // 2.0
             BackendResponse {
                 backend: "ollama".to_string(),
                 content: "no".to_string(),
+                usage: None,
             }, // 1.0
         ];
 
@@ -287,14 +309,17 @@ mod tests {
             BackendResponse {
                 backend: "claude".to_string(),
                 content: "  yes  ".to_string(),
+                usage: None,
             },
             BackendResponse {
                 backend: "codex".to_string(),
                 content: "yes".to_string(),
+                usage: None,
             },
             BackendResponse {
                 backend: "ollama".to_string(),
                 content: "no".to_string(),
+                usage: None,
             },
         ];
 

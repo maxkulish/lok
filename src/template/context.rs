@@ -169,6 +169,7 @@ mod tests {
             exit_code: None,
             validation: None,
             failure: None,
+            usage: None,
         }
     }
 
@@ -190,6 +191,7 @@ mod tests {
             exit_code: None,
             validation: None,
             failure: None,
+            usage: None,
         }
     }
 

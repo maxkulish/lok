@@ -1,0 +1,54 @@
+task_id: CLO-370
+title: "Add `usage` field to `StepResult` for end-to-end token observability (FR-25a)"
+task_type: specification
+linear_url: "https://linear.app/cloud-ai/issue/CLO-370/add-usage-field-to-stepresult-for-end-to-end-token-observability-fr"
+branch: feat/clo-370-step
+
+workflow:
+  current_phase: implement
+  status: in_progress
+  started_at: "2026-05-18T00:00:00Z"
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task — PRD §FR-25a is already exhaustive"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task — using /spec instead of design doc"
+  spec:
+    status: complete
+    spec_file: "specs/2026-05-18-clo-370-stepresult-usage-field.md"
+    approved: true
+    review_completed: true
+    review_notes: "Self-reviewed against PRD §FR-25a. Reconciled PRD drift at sites 1788/2109 (QueryOutput already discarded — aggregate via TokenUsage::saturating_add). BackendResponse extended with usage field for consensus aggregation."
+  implement:
+    status: in_progress
+  pr:
+    status: pending
+  complete:
+    status: pending
+
+source_prd: "docs/prds/prd-phase-2-predictable-cli-execution-v5.md"
+source_section: "§FR-25a, §9 release plan step 1"
+
+related:
+  blocks:
+    - CLO-371
+  related_to:
+    - CLO-207
+
+history:
+  - timestamp: "2026-05-18T00:00:00Z"
+    action: workflow_started
+    phase: spec
+    details: "Classified as specification task: 50-LOC additive change, no traits touched, PRD provides line-specific scope"
+  - timestamp: "2026-05-18T00:00:00Z"
+    action: project_sync_start
+    phase: spec
+    details: "Added to PROJECT.md Active Work (WIP 1/3); Linear set to In Progress"
+  - timestamp: "2026-05-18T00:00:00Z"
+    action: spec_approved
+    phase: spec
+    details: "Spec written at specs/2026-05-18-clo-370-stepresult-usage-field.md. Drift reconciliation: sites 1788 (for_each) and 2109 (consensus) need TokenUsage aggregation since QueryOutput is destructured early; BackendResponse extended with usage field; 26 test sites need mechanical usage:None addition."
