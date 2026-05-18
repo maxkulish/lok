@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-04-12
+**Last Updated**: 2026-05-18
 
 ## Summary
 
@@ -15,6 +15,7 @@
 | Phase 7: MiniJinja Templates | 2 | 2 | Complete |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
+| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 1 | 1 | In Progress |
 
 ## Phase 2: Validation Pipeline
 
@@ -80,3 +81,12 @@ Driven by Mentis pre-PR validation incident (2026-04-07): Haiku returned unparse
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Add configurable role routing with [roles]/[teams] config | Done | CLO-203 |
+
+## Phase 10: Predictable CLI Execution (Phase 2 PRD v5)
+
+Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 release plan.
+
+| Task | Title | Status | Dependencies |
+|------|-------|--------|--------------|
+| [CLO-370](https://linear.app/cloud-ai/issue/CLO-370) | Add `usage` field to StepResult for end-to-end token observability (FR-25a) | Done | CLO-207 |
+| [CLO-371](https://linear.app/cloud-ai/issue/CLO-371) | (next per PRD §9 step 2) | Unblocked | CLO-370 |
