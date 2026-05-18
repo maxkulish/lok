@@ -151,8 +151,7 @@ impl Default for Config {
                 args: vec![
                     "exec".to_string(),
                     "--json".to_string(),
-                    "-s".to_string(),
-                    "read-only".to_string(),
+                    "--ephemeral".to_string(),
                 ],
                 skip_lines: 0,
                 api_key_env: None,
@@ -409,6 +408,23 @@ max_tokens = 8192
         assert!(codex.enabled);
         assert_eq!(codex.command, Some("codex".to_string()));
         assert_eq!(codex.skip_lines, 0);
+    }
+
+    #[test]
+    fn test_codex_default_args_use_ephemeral_not_sandbox() {
+        let config = Config::default();
+        let codex = config.backends.get("codex").unwrap();
+
+        assert!(
+            codex.args.contains(&"--ephemeral".to_string()),
+            "default Codex args must include --ephemeral; got {:?}",
+            codex.args
+        );
+        assert!(
+            !codex.args.iter().any(|a| a == "-s"),
+            "default Codex args must NOT pin -s (sandbox is injected per-step); got {:?}",
+            codex.args
+        );
     }
 
     #[test]

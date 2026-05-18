@@ -24,7 +24,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-18T20:42:11.318Z'
-  updated_at: '2026-05-18T21:39:42.825Z'
+  updated_at: '2026-05-18T22:17:39.586Z'
 phases:
   discovery:
     status: complete
@@ -62,7 +62,7 @@ phases:
     plan_file: docs/plans/clo-374-per-step-sandbox-routing.md
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
       - cf3421f
       - 25d151a
@@ -81,10 +81,17 @@ phases:
       - evidence: 'src/backend/codex.rs::new: --ephemeral in default args, not in custom args path'
         outcome: held
         text: '--ephemeral is safe to add to default Codex args'
-      - evidence: Not yet verified against gemini --help
-        outcome: untested
+      - evidence: 'Verified with: npx @google/gemini-cli --help -> --approval-mode choices: default, auto_edit, yolo, plan'
+        outcome: held
         text: Gemini approval-mode names (plan/auto_edit/yolo) match actual --approval-mode flags
     assumptions_revalidated: true
+    codex_report: docs/reviews/CLO-374-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/CLO-374-gemini-validation.md
+    validation_fix_iteration_count: 0
+    validation_synthesis_report: docs/reviews/CLO-374-validation-synthesis.md
+    validation_synthesis_verdict: PASS
   pr:
     status: pending
   complete:
@@ -186,5 +193,11 @@ history:
     action: implementation_complete
     phase: implement
     details: All 6 sub-tasks landed. fmt+clippy+test green. 7 commits.
+  - timestamp: '2026-05-18T22:17:39.586Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Gemini approval-mode names verified against live gemini --help: plan, auto_edit, yolo all confirmed. Codex review
+      must-fix items already satisfied (Config::default() already had correct args). Pre-merge gate green (490 tests).
 task_title: Per-step sandbox routing for Codex and Gemini backends (FR-21)
 task_url: https://linear.app/cloud-ai/issue/CLO-374/per-step-sandbox-routing-for-codex-and-gemini-backends-fr-21
