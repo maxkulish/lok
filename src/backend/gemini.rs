@@ -47,9 +47,17 @@ impl GeminiBackend {
         sandbox: Option<super::SandboxMode>,
         prompt: &str,
     ) -> String {
-        let escaped_prompt = prompt.replace("'", "'\\''");
+        // Shell-escape each component: wrap in single quotes, escape internal single quotes
+        let escape = |s: &str| s.replace("'", "'\\''");
+        let escaped_command = format!("'{}'", escape(command));
+        let escaped_args = args
+            .iter()
+            .map(|a| format!("'{}'", escape(a)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let escaped_prompt = escape(prompt);
         let model_flag = model
-            .map(|m| format!(" --model '{}'", m.replace("'", "'\\''")))
+            .map(|m| format!(" --model '{}'", escape(m)))
             .unwrap_or_default();
         let approval_flag = match sandbox {
             Some(super::SandboxMode::ReadOnly) => " --approval-mode plan",
@@ -58,12 +66,8 @@ impl GeminiBackend {
             None => "",
         };
         format!(
-            "echo '' | {} {}{}{} '{}'",
-            command,
-            args.join(" "),
-            model_flag,
-            approval_flag,
-            escaped_prompt
+            "echo '' | {} {} {}{} '{}'",
+            escaped_command, escaped_args, model_flag, approval_flag, escaped_prompt
         )
     }
 }

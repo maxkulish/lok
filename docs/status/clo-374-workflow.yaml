@@ -24,7 +24,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-18T20:42:11.318Z'
-  updated_at: '2026-05-18T22:18:37.570Z'
+  updated_at: '2026-05-18T22:22:03.940Z'
 phases:
   discovery:
     status: complete
@@ -93,7 +93,20 @@ phases:
     validation_synthesis_report: docs/reviews/CLO-374-validation-synthesis.md
     validation_synthesis_verdict: PASS
   pr:
-    status: pending
+    status: in_progress
+    commits:
+      - cf3421f
+      - 25d151a
+      - 765f0f4
+      - eebee71
+      - 8307aa8
+      - 07c60c5
+      - df44f78
+      - e899932
+      - be718b9
+    pr_number: 20
+    pr_url: https://github.com/maxkulish/lok/pull/20
+    ci_passed: true
   complete:
     status: pending
 history:
@@ -203,5 +216,17 @@ history:
     action: phase_transition
     phase: implement
     details: Transitioned from implement to pr
+  - timestamp: '2026-05-18T22:21:32.011Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + test all pass (490 tests, zero warnings)'
+  - timestamp: '2026-05-18T22:21:53.185Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #20 opened: https://github.com/maxkulish/lok/pull/20'
+  - timestamp: '2026-05-18T22:22:03.940Z'
+    action: ci_passed
+    phase: pr
+    details: No CI pipeline configured. Pre-flight gate green locally (490 tests, fmt + clippy clean).
 task_title: Per-step sandbox routing for Codex and Gemini backends (FR-21)
 task_url: https://linear.app/cloud-ai/issue/CLO-374/per-step-sandbox-routing-for-codex-and-gemini-backends-fr-21
