@@ -24,7 +24,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-18T20:42:11.318Z'
-  updated_at: '2026-05-18T21:38:35.283Z'
+  updated_at: '2026-05-18T21:39:42.825Z'
 phases:
   discovery:
     status: complete
@@ -62,7 +62,7 @@ phases:
     plan_file: docs/plans/clo-374-per-step-sandbox-routing.md
     approved: true
   implement:
-    status: pending
+    status: validating
     commits:
       - cf3421f
       - 25d151a
@@ -70,6 +70,21 @@ phases:
       - eebee71
       - 8307aa8
       - 07c60c5
+      - df44f78
+    assumption_outcomes:
+      - evidence: 'src/backend/codex.rs::query: sandbox appended after base args'
+        outcome: held
+        text: Per-step sandbox takes priority over backend config args
+      - evidence: 'src/backend/codex.rs::query: None -> ReadOnly; src/backend/gemini.rs::query: None -> no flag'
+        outcome: held
+        text: None sandbox means read-only for Codex, no flag for Gemini
+      - evidence: 'src/backend/codex.rs::new: --ephemeral in default args, not in custom args path'
+        outcome: held
+        text: '--ephemeral is safe to add to default Codex args'
+      - evidence: Not yet verified against gemini --help
+        outcome: untested
+        text: Gemini approval-mode names (plan/auto_edit/yolo) match actual --approval-mode flags
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -161,5 +176,15 @@ history:
     action: subtask_complete
     phase: implement
     details: 'ST6 landed: add argv-capture and serde round-trip tests. Commit 07c60c5'
+  - timestamp: '2026-05-18T21:39:39.450Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      4 assumptions reviewed. held: 3, violated: 0, untested: 1. Gemini approval-mode names untested — need gemini
+      --help verification at PR time.
+  - timestamp: '2026-05-18T21:39:42.825Z'
+    action: implementation_complete
+    phase: implement
+    details: All 6 sub-tasks landed. fmt+clippy+test green. 7 commits.
 task_title: Per-step sandbox routing for Codex and Gemini backends (FR-21)
 task_url: https://linear.app/cloud-ai/issue/CLO-374/per-step-sandbox-routing-for-codex-and-gemini-backends-fr-21
