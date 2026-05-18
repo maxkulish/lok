@@ -159,6 +159,20 @@ Outputs (written to `docs/reviews/`):
 - `docs/reviews/clo-XX-codex-validation.md`
 - `docs/reviews/clo-XX-gemini-validation.md`
 - `docs/reviews/clo-XX-validation-synthesis.md`
+- `docs/reviews/clo-XX-claude-fallback-validation.md` (only when both Codex and Gemini fail)
+
+Optional environment overrides:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `CODEX_MODEL` | `gpt-5.5` | Codex reviewer model |
+| `GEMINI_MODEL` | `gemini-3.1-pro-preview` | Primary Gemini model |
+| `GEMINI_FALLBACK_MODEL` | `gemini-2.5-pro` | Secondary Gemini model if primary returns empty |
+
+Pipeline shape: `health_check` -> `codex_review` + `gemini_review`
+(parallel) -> `claude_fallback` (only when both external reviewers
+failed) -> `synthesis` -> `write_reports` (with hard `GATE FAIL`
+check that the three required review files exist and are non-empty).
 
 Verdict vocabulary used by the workflow: `PASS`, `PASS_WITH_NOTES`,
 `FAIL`. `implement.md` maps these onto its YAML

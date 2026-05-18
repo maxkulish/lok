@@ -2,6 +2,7 @@
 mod bedrock;
 mod claude;
 mod codex;
+mod context;
 mod gemini;
 mod ollama;
 mod retry;
@@ -10,6 +11,7 @@ mod retry;
 #[allow(unused_imports)]
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
+pub use context::{HealthStatus, Message, Role, SandboxMode, StepContext, StepOptions};
 pub use retry::{RetryExecutor, RetryPolicy};
 
 use crate::config::{BackendConfig, Config};
