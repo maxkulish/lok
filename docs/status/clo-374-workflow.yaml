@@ -1,0 +1,232 @@
+task_id: CLO-374
+task_type: development
+classification_reason: >-
+  title does not start with operational signals (Investigate/Audit/Document/Migrate/Configure), no [spec]/[ops] labels
+  or Type: Specification/Operational markers, ACs are mechanical (enum, serde parsing, argv builders, integration tests)
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Personal-health
+  status_at_start: Backlog
+  blocks: []
+  blocked_by:
+    - CLO-371
+  branch_suggested: kmamemo/clo-374-per-step-sandbox-routing-for-codex-and-gemini-backends-fr-21
+  priority: Medium
+  branch_actual: feat/clo-374-per-step-sandbox-routing
+workflow:
+  current_phase: pr
+  status: active
+  created_at: '2026-05-18T20:42:11.318Z'
+  updated_at: '2026-05-18T22:22:03.940Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: Thread sandbox through step_context() + per-backend arg injection
+    approaches_identified: 2
+    approved: true
+    baseline_score: 7
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-374.md
+    prd_created: false
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/design-docs/clo-374-per-step-sandbox-routing.md
+    discovery_context_used: true
+    draft_ready: true
+    applied_suggestions:
+      - 'serde import detail for SandboxMode in context.rs: use serde::{Deserialize, Serialize}'
+      - Remove unnecessary sandbox field rename (field name already matches YAML key)
+      - ephemeral flag only added in no-custom-args default set, not injected when user has custom config.args
+    flagged_suggestions: []
+    review_applied: true
+    review_completed: false
+    review_gemini: null
+    review_ollama: null
+    review_verdict: null
+    approved: true
+    finalized: true
+    assumptions_surfaced: true
+    human_review_completed: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-374-per-step-sandbox-routing.md
+    approved: true
+  implement:
+    status: complete
+    commits:
+      - cf3421f
+      - 25d151a
+      - 765f0f4
+      - eebee71
+      - 8307aa8
+      - 07c60c5
+      - df44f78
+    assumption_outcomes:
+      - evidence: 'src/backend/codex.rs::query: sandbox appended after base args'
+        outcome: held
+        text: Per-step sandbox takes priority over backend config args
+      - evidence: 'src/backend/codex.rs::query: None -> ReadOnly; src/backend/gemini.rs::query: None -> no flag'
+        outcome: held
+        text: None sandbox means read-only for Codex, no flag for Gemini
+      - evidence: 'src/backend/codex.rs::new: --ephemeral in default args, not in custom args path'
+        outcome: held
+        text: '--ephemeral is safe to add to default Codex args'
+      - evidence: 'Verified with: npx @google/gemini-cli --help -> --approval-mode choices: default, auto_edit, yolo, plan'
+        outcome: held
+        text: Gemini approval-mode names (plan/auto_edit/yolo) match actual --approval-mode flags
+    assumptions_revalidated: true
+    codex_report: docs/reviews/CLO-374-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/CLO-374-gemini-validation.md
+    validation_fix_iteration_count: 0
+    validation_synthesis_report: docs/reviews/CLO-374-validation-synthesis.md
+    validation_synthesis_verdict: PASS
+  pr:
+    status: in_progress
+    commits:
+      - cf3421f
+      - 25d151a
+      - 765f0f4
+      - eebee71
+      - 8307aa8
+      - 07c60c5
+      - df44f78
+      - e899932
+      - be718b9
+    pr_number: 20
+    pr_url: https://github.com/maxkulish/lok/pull/20
+    ci_passed: true
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-18T20:42:11.318Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-374 as development
+  - timestamp: '2026-05-18T20:43:05.084Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: title does not start with operational signals
+      (Investigate/Audit/Document/Migrate/Configure), no [spec]/[ops] labels or Type: Specification/Operational markers,
+      ACs are mechanical (enum, serde parsing, argv builders, integration tests)
+  - timestamp: '2026-05-18T20:43:21.260Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-18T20:44:57.810Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-374-per-step-sandbox-routing checked out from origin/main
+  - timestamp: '2026-05-18T20:49:44.616Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: Thread sandbox through step_context() + per-backend arg injection. Baseline 7/10. 2 approaches
+      considered.
+  - timestamp: '2026-05-18T20:49:49.041Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-18T20:51:11.363Z'
+    action: design_started
+    phase: design
+    details: Starting design phase. No existing design doc. Task is single-feature (no subtasks), skipping /spec.
+  - timestamp: '2026-05-18T20:52:21.709Z'
+    action: design_draft_ready
+    phase: design
+    details: Design doc created at docs/design-docs/clo-374-per-step-sandbox-routing.md
+  - timestamp: '2026-05-18T20:54:13.425Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      AI review unavailable - design doc finalized with self-applied refinements (serde import detail,
+      ephemeral-only-in-defaults clarification). Proceeding to checkpoint.
+  - timestamp: '2026-05-18T21:03:15.999Z'
+    action: design_finalized
+    phase: design
+    details: Design approved by user. Moving to plan phase.
+  - timestamp: '2026-05-18T21:03:40.309Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: >-
+      Assumptions surfaced in design doc: Gemini approval-mode names to verify against --help at implementation time;
+      per-step sandbox takes priority over backend config args; None sandbox means read-only for Codex but no flag for
+      Gemini.
+  - timestamp: '2026-05-18T21:03:43.657Z'
+    action: design_human_review_complete
+    phase: design
+    details: 'User reviewed and approved design doc. Choice: approve. Design finalized and ready for plan phase.'
+  - timestamp: '2026-05-18T21:03:46.110Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-18T21:04:34.434Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 6 sub-tasks at docs/plans/clo-374-per-step-sandbox-routing.md
+  - timestamp: '2026-05-18T21:04:42.160Z'
+    action: plan_approved
+    phase: plan
+    details: Plan approved. 6 sub-tasks queued.
+  - timestamp: '2026-05-18T21:05:00.511Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-18T21:07:06.547Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST1 landed: add serde derives to SandboxMode enum. Commit cf3421f'
+  - timestamp: '2026-05-18T21:30:38.639Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST2 landed: add sandbox field to Step struct with serde derives. Commit 25d151a'
+  - timestamp: '2026-05-18T21:38:35.283Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST6 landed: add argv-capture and serde round-trip tests. Commit 07c60c5'
+  - timestamp: '2026-05-18T21:39:39.450Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      4 assumptions reviewed. held: 3, violated: 0, untested: 1. Gemini approval-mode names untested — need gemini
+      --help verification at PR time.
+  - timestamp: '2026-05-18T21:39:42.825Z'
+    action: implementation_complete
+    phase: implement
+    details: All 6 sub-tasks landed. fmt+clippy+test green. 7 commits.
+  - timestamp: '2026-05-18T22:17:39.586Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Gemini approval-mode names verified against live gemini --help: plan, auto_edit, yolo all confirmed. Codex review
+      must-fix items already satisfied (Config::default() already had correct args). Pre-merge gate green (490 tests).
+  - timestamp: '2026-05-18T22:18:37.570Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-18T22:21:32.011Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + test all pass (490 tests, zero warnings)'
+  - timestamp: '2026-05-18T22:21:53.185Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #20 opened: https://github.com/maxkulish/lok/pull/20'
+  - timestamp: '2026-05-18T22:22:03.940Z'
+    action: ci_passed
+    phase: pr
+    details: No CI pipeline configured. Pre-flight gate green locally (490 tests, fmt + clippy clean).
+task_title: Per-step sandbox routing for Codex and Gemini backends (FR-21)
+task_url: https://linear.app/cloud-ai/issue/CLO-374/per-step-sandbox-routing-for-codex-and-gemini-backends-fr-21
