@@ -183,7 +183,8 @@ Always explain your reasoning briefly before making tool calls."#,
 
                 let retry_policy = backend::get_retry_policy(backend_config, &self.config.defaults);
                 let backend = backend::create_backend(backend_name, backend_config, retry_policy)?;
-                let ctx = backend::step_context_for_backend(prompt, cwd, &self.config, backend_name);
+                let ctx =
+                    backend::step_context_for_backend(prompt, cwd, &self.config, backend_name);
                 let result = backend.query(ctx).await?;
 
                 println!(

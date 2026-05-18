@@ -170,7 +170,8 @@ AGENT: frontend | Build the UI"#,
             task
         );
 
-        let ctx = backend::step_context_for_backend(&prompt, &self.cwd, &self.config, backend.name());
+        let ctx =
+            backend::step_context_for_backend(&prompt, &self.cwd, &self.config, backend.name());
         let output = backend.query(ctx).await?;
         self.parse_agent_tasks(&output.stdout)
     }

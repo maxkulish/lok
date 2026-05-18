@@ -295,9 +295,14 @@ pub fn step_context_for_backend<'a>(
     let timeout_secs = backend_timeout_secs(config, backend_name);
 
     StepContext {
+        prompt,
+        history: &[],
         model: backend_config.and_then(|backend| backend.model.as_deref()),
+        cwd,
+        sandbox: None,
+        schema: None,
+        options: None,
         timeout: Some(Duration::from_secs(effective_timeout_secs(timeout_secs))),
-        ..StepContext::from_prompt(prompt, cwd, None)
     }
 }
 

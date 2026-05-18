@@ -25,7 +25,7 @@ workflow:
   current_phase: implement
   status: in_progress
   created_at: '2026-05-18T20:41:12.151Z'
-  updated_at: '2026-05-18T21:09:42.297Z'
+  updated_at: '2026-05-18T21:10:21.362Z'
 phases:
   discovery:
     status: complete
@@ -130,6 +130,7 @@ phases:
       - 051f3f8
       - ad1261b
       - a1c4b49
+      - ecbba6a
   pr:
     status: pending
   complete:
@@ -320,3 +321,9 @@ history:
       ST3 landed: migrated Conductor::execute_tool plus Spawn planner/execution query contexts to
       backend::step_context_for_backend with config captured in agent closures. Acceptance `cargo check --all-targets &&
       ! rg ... src/conductor.rs src/spawn.rs` passed. Commit a1c4b49.
+  - timestamp: '2026-05-18T21:10:21.362Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST4 landed: Team now retains Config and team/debate non-Step query paths use backend::step_context_for_backend.
+      Acceptance `cargo check --all-targets && ! rg ... src/team.rs src/debate.rs` passed. Commit ecbba6a.
