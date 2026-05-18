@@ -165,7 +165,8 @@ mod tests {
 
     #[test]
     fn gemini_sandbox_none_no_approval_flag() {
-        let cmd = gemini_sandbox_shell_cmd("npx", &["@google/gemini-cli".to_string()], None, "hello");
+        let cmd =
+            gemini_sandbox_shell_cmd("npx", &["@google/gemini-cli".to_string()], None, "hello");
         assert!(!cmd.contains("--approval-mode"));
     }
 

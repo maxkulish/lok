@@ -155,10 +155,7 @@ mod tests {
 
     /// Helper: builds the effective Codex argv for a given sandbox setting.
     /// Mirrors the query-time logic without spawning a process.
-    fn codex_sandbox_argv(
-        base_args: Vec<String>,
-        sandbox: Option<SandboxMode>,
-    ) -> Vec<String> {
+    fn codex_sandbox_argv(base_args: Vec<String>, sandbox: Option<SandboxMode>) -> Vec<String> {
         let mut args: Vec<String> = if base_args.is_empty() {
             vec![
                 "exec".to_string(),
