@@ -22,10 +22,10 @@ linear:
   branch_suggested: kmamemo/clo-371-migrate-backendquery-to-stepcontext-add-async-health_check
   priority: 2
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-05-18T17:30:50.822Z'
-  updated_at: '2026-05-18T19:22:42.272Z'
+  updated_at: '2026-05-18T19:54:02.550Z'
 phases:
   discovery:
     status: complete
@@ -95,12 +95,81 @@ phases:
     plan_file: docs/plans/clo-371-migrate-backendquery-to-stepcontext.md
     approved: true
   implement:
-    status: pending
+    status: complete
     commits:
       - b7f0de8
       - 92a261b
+      - 69fe115
+      - b21bd53
+      - d1ab0c4
+    assumptions_revalidated: true
+    assumption_outcomes:
+      - text: >-
+          The conductor and other non-Step callers can tolerate StepContext being constructed inline from local
+          variables.
+        outcome: held
+        evidence: >-
+          src/conductor.rs, src/spawn.rs, src/team.rs, src/debate.rs compile under `cargo test`; `cargo fmt --check &&
+          cargo clippy -- -D warnings && cargo test` green.
+      - text: >-
+          #[async_trait] handles lifetime elision on StepContext<'_> the same way it handled &str + &Path +
+          Option<&str>.
+        outcome: held
+        evidence: All Backend impls compile; `cargo clippy --all-targets -- -D warnings` and `cargo test` green.
+      - text: All five backends live in the same repo, so a single PR can migrate them lockstep.
+        outcome: held
+        evidence: src/backend/{codex,gemini,ollama,claude,bedrock}.rs migrated; `cargo build --features bedrock` green.
+      - text: Step struct does not need new fields for this PR; we only change the plumbing shape, not the config surface.
+        outcome: held
+        evidence: src/workflow.rs Step struct unchanged for sandbox/schema/options/history; `cargo test` green.
+      - text: cargo check --features bedrock passes today against the current trait.
+        outcome: held
+        evidence: '`cargo build --features bedrock` green on current HEAD b21bd53.'
+      - text: >-
+          Empty history, None sandbox/schema, and empty options are safe defaults that produce Phase-1-equivalent
+          behavior.
+        outcome: held
+        evidence: src/backend/context.rs::tests::test_step_context_default_is_phase1_equivalent; `cargo test` green.
+      - text: Downstream crate consumers (rs-wisper) do not implement Backend; they only call it via Arc<dyn Backend>.
+        outcome: untested
+        evidence: >-
+          rs-wisper source tree not present under /Users/mk/Code/orchestrator during implementation; no local downstream
+          verification possible.
+      - text: >-
+          Default health_check impl returning Ok(()) when is_available() is true is sufficient for the one test we need
+          in this PR.
+        outcome: held
+        evidence: >-
+          src/backend/mod.rs::tests::test_health_check_default_returns_ok_when_available and
+          test_health_check_default_returns_err_when_unavailable; `cargo test` green.
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-371-codex-validation.md
+    gemini_validation_report: docs/reviews/clo-371-gemini-validation.md
+    validation_synthesis_report: docs/reviews/clo-371-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_fix_iteration_count: 1
+    token_usage:
+      - recorded_at: '2026-05-18T19:52:55.382Z'
+        provider: codex
+        model: gpt-5.5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-05-18T19:52:55.382Z'
+        provider: gemini
+        model: gemini-3.1-pro-preview
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-gemini
+      - recorded_at: '2026-05-18T19:52:55.382Z'
+        provider: claude
+        model: claude-opus-4
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
   pr:
-    status: pending
+    status: in_progress
   complete:
     status: pending
 history:
@@ -204,5 +273,54 @@ history:
     action: subtask_complete
     phase: implement
     details: 'ST2 landed: Add health_check to Backend trait + RetryExecutor forwarding. Commit 92a261b. 2 tests pass.'
+  - timestamp: '2026-05-18T19:32:04.623Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST3 landed: lockstep migration to StepContext-based Backend::query across backends and call sites. Commit 69fe115.
+      All existing backend query implementations/tests and 11 call sites migrated. `cargo test` green.
+  - timestamp: '2026-05-18T19:44:34.622Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST4 landed: integration verification and workflow query grep gate clean. Commit b21bd53. `cargo fmt --check`,
+      `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo build --features bedrock`, and both workflow
+      grep gates all pass.
+  - timestamp: '2026-05-18T19:45:05.347Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      8 assumptions reviewed. held: 7, violated: 0, untested: 1. No design divergence; rs-wisper downstream
+      implementation check was untestable because that source tree is not present locally.
+  - timestamp: '2026-05-18T19:45:09.505Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed. Pre-merge gate green: `cargo fmt --check && cargo clippy -- -D warnings && cargo test`. Full
+      plan gate also green: `cargo clippy --all-targets -- -D warnings`, `cargo build --features bedrock`, and both
+      workflow grep gates. 4 commits.
+  - timestamp: '2026-05-18T19:52:31.863Z'
+    action: validation_fixes_applied
+    phase: implement
+    details: >-
+      Applied the single PASS_WITH_NOTES fix iteration from synthesis: populated StepContext.timeout at workflow
+      validation/edit/step call sites, added step_context helper, and re-exported Message/Role/SandboxMode/StepOptions.
+      Commit d1ab0c4. Re-validation section appended to docs/reviews/clo-371-validation-synthesis.md.
+  - timestamp: '2026-05-18T19:52:55.382Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL. Gemini: PASS_WITH_NOTES. Synthesis: PASS_WITH_NOTES. One bounded fix iteration applied and committed
+      in d1ab0c4; all Must Fix Before PR items addressed and pre-merge gate rerun green.
+  - timestamp: '2026-05-18T19:53:22.039Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-18T19:54:02.550Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate green before PR: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo clippy --tests`, and
+      `cargo test` all pass.
 task_title: Migrate `Backend::query` to `StepContext` + add async `health_check` + sweep Step call sites (FR-19a/19b/20a)
 task_url: https://linear.app/cloud-ai/issue/CLO-371/migrate-backendquery-to-stepcontext-add-async-health-check-sweep-step
