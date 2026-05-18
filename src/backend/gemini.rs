@@ -66,11 +66,22 @@ impl super::Backend for GeminiBackend {
             .as_ref()
             .map(|m| format!(" --model '{}'", m.replace("'", "'\\''")))
             .unwrap_or_default();
+
+        // Approval mode: per-step ctx.sandbox controls --approval-mode
+        // None = no flag (Gemini default behaviour retained)
+        let approval_flag = match ctx.sandbox {
+            Some(super::SandboxMode::ReadOnly) => " --approval-mode plan",
+            Some(super::SandboxMode::WorkspaceWrite) => " --approval-mode auto_edit",
+            Some(super::SandboxMode::DangerFullAccess) => " --approval-mode yolo",
+            None => "",
+        };
+
         let shell_cmd = format!(
-            "echo '' | {} {}{} '{}'",
+            "echo '' | {} {}{}{} '{}'",
             &self.command,
             self.args.join(" "),
             model_flag,
+            approval_flag,
             escaped_prompt
         );
 
