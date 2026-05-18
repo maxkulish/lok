@@ -267,6 +267,40 @@ pub fn get_retry_policy(config: &BackendConfig, defaults: &crate::config::Defaul
     }
 }
 
+fn backend_timeout_secs(config: &Config, backend_name: &str) -> u64 {
+    config
+        .backends
+        .get(backend_name)
+        .and_then(|backend| backend.timeout)
+        .unwrap_or(config.defaults.timeout)
+}
+
+fn effective_timeout_secs(timeout_secs: u64) -> u64 {
+    if timeout_secs == 0 {
+        // Preserve the existing convention where 0 disables timeout by mapping
+        // it to a near-infinite duration used by the outer timeout wrapper.
+        365 * 24 * 60 * 60
+    } else {
+        timeout_secs
+    }
+}
+
+pub fn step_context_for_backend<'a>(
+    prompt: &'a str,
+    cwd: &'a Path,
+    config: &'a Config,
+    backend_name: &str,
+) -> StepContext<'a> {
+    let backend_config = config.backends.get(backend_name);
+    let timeout_secs = backend_timeout_secs(config, backend_name);
+
+    StepContext {
+        model: backend_config.and_then(|backend| backend.model.as_deref()),
+        timeout: Some(Duration::from_secs(effective_timeout_secs(timeout_secs))),
+        ..StepContext::from_prompt(prompt, cwd, None)
+    }
+}
+
 pub fn create_backend(
     name: &str,
     config: &BackendConfig,
@@ -562,6 +596,78 @@ pub fn list_backends(config: &Config) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_step_context_for_backend_uses_backend_model() {
+        let mut config = Config::default();
+        config
+            .backends
+            .get_mut("ollama")
+            .expect("default ollama backend exists")
+            .model = Some("custom-model".to_string());
+
+        let cwd = Path::new("/tmp");
+        let ctx = step_context_for_backend("hello", cwd, &config, "ollama");
+
+        assert_eq!(ctx.prompt, "hello");
+        assert_eq!(ctx.cwd, cwd);
+        assert_eq!(ctx.model, Some("custom-model"));
+    }
+
+    #[test]
+    fn test_step_context_for_backend_uses_backend_timeout() {
+        let mut config = Config::default();
+        config
+            .backends
+            .get_mut("ollama")
+            .expect("default ollama backend exists")
+            .timeout = Some(42);
+
+        let ctx = step_context_for_backend("hello", Path::new("/tmp"), &config, "ollama");
+
+        assert_eq!(ctx.timeout, Some(Duration::from_secs(42)));
+    }
+
+    #[test]
+    fn test_step_context_for_backend_falls_back_to_default_timeout() {
+        let mut config = Config::default();
+        config.defaults.timeout = 17;
+        config
+            .backends
+            .get_mut("ollama")
+            .expect("default ollama backend exists")
+            .timeout = None;
+
+        let ctx = step_context_for_backend("hello", Path::new("/tmp"), &config, "ollama");
+
+        assert_eq!(ctx.timeout, Some(Duration::from_secs(17)));
+    }
+
+    #[test]
+    fn test_step_context_for_backend_preserves_phase1_defaults() {
+        let config = Config::default();
+        let ctx = step_context_for_backend("hello", Path::new("/tmp"), &config, "ollama");
+
+        assert!(ctx.history.is_empty());
+        assert!(ctx.sandbox.is_none());
+        assert!(ctx.schema.is_none());
+        assert!(ctx.options.is_none());
+    }
+
+    #[test]
+    fn test_step_context_for_backend_preserves_zero_as_no_timeout() {
+        let mut config = Config::default();
+        config.defaults.timeout = 0;
+        config
+            .backends
+            .get_mut("ollama")
+            .expect("default ollama backend exists")
+            .timeout = None;
+
+        let ctx = step_context_for_backend("hello", Path::new("/tmp"), &config, "ollama");
+
+        assert_eq!(ctx.timeout, Some(Duration::from_secs(365 * 24 * 60 * 60)));
+    }
 
     #[test]
     fn test_query_output_from_text() {

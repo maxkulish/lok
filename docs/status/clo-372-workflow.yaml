@@ -1,0 +1,297 @@
+task_id: CLO-372
+task_title: Thread `StepContext` through non-Step `Backend::query` call sites (FR-20b)
+task_url: https://linear.app/cloud-ai/issue/CLO-372/thread-stepcontext-through-non-step-backendquery-call-sites-fr-20b
+task_type: development
+classification_reason: Defaulted to development (no explicit Type tag in body and no operational keywords in title)
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  priority: 3
+  blocks: []
+  blocked_by:
+    - CLO-371
+  branch_suggested: kmamemo/clo-372-thread-stepcontext-through-non-step-backendquery-call-sites
+  branch_actual: feat/clo-372-non-step
+  status: In Progress
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-05-18T20:41:12.151Z'
+  updated_at: '2026-05-18T21:06:33.961Z'
+phases:
+  discovery:
+    status: complete
+    discovery_context_used: true
+    discovery_doc: docs/discovery/clo-372.md
+    baseline_score: 60
+    approach: mechanical_propagation
+    design_needed: false
+    selected_prd: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    discovery_debt: 0
+    problem_framed: true
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    prd_created: false
+    discovery_report: docs/discovery/clo-372.md
+    approaches_identified: 2
+    approach_chosen: Approach A — minimal per-site migration using local context builders
+    approved: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-372-thread-stepcontext-non-step.md
+    draft_ready: true
+    draft_source: manual
+    discovery_context_used: true
+    token_usage:
+      - recorded_at: '2026-05-18T20:50:55.537Z'
+        provider: pi
+        model: manual-fallback
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-draft-manual
+      - recorded_at: '2026-05-18T20:53:45.196Z'
+        provider: gemini
+        model: gemini-2.5-pro
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-gemini
+      - recorded_at: '2026-05-18T20:53:45.196Z'
+        provider: pi
+        model: manual-fallback
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-synthesis
+    assumptions_surfaced: true
+    assumptions:
+      - text: >-
+          Backend config is the correct source of model selection for non-Step calls because these paths have no active
+          workflow Step.
+        confidence: high
+        verification: >-
+          Verified by Config::BackendConfig.model and absence of model fields in AgentTask, Team, and Debate; tests
+          cover helper model resolution.
+      - text: >-
+          Mirroring the existing outer timeout into StepContext.timeout is behavior-preserving because runtime timeout
+          enforcement remains unchanged.
+        confidence: high
+        verification: >-
+          Covered by .pi/lessons/clo-371-stepcontext-migration-lessons.md § L1; tests assert helper timeout equals
+          existing backend/default timeout resolution.
+      - text: >-
+          Leaving history, sandbox, schema, and options empty/None is safe for this slice because no non-Step caller
+          currently has those values.
+        confidence: high
+        verification: >-
+          Matches CLO-371 phase-equivalent defaults and is verified by existing StepContext::from_prompt tests plus new
+          helper tests.
+      - text: Cloning Config into Team and Spawn async closures is acceptable because config is small and already Clone.
+        confidence: medium
+        verification: >-
+          Verified by compile time and existing config clone usage in Conductor/Spawn; no performance-critical hot loop
+          is introduced.
+      - text: >-
+          A public helper in backend::mod is sufficient and does not require re-export changes because it only uses
+          already-public Config, Path, and StepContext.
+        confidence: high
+        verification: >-
+          Covered by .pi/lessons/clo-371-stepcontext-migration-lessons.md § L2; compiler validates public signature
+          visibility.
+      - text: backend.name() always matches the key used in Config.backends for configured backends.
+        confidence: medium
+        verification: >-
+          Verified by existing create_backend/get_backends construction path and by fallback behavior when config lookup
+          returns None.
+    review_completed: true
+    review_gemini: docs/reviews/clo-372-design-gemini.md
+    review_synthesis: docs/reviews/clo-372-design-synthesis.md
+    review_verdict: approve_with_changes
+    applied_suggestions:
+      - Added explanatory comment to the effective_timeout_secs design snippet documenting the timeout=0 convention.
+      - Added migration-step note requiring the timeout=0 explanatory comment during implementation.
+    flagged_suggestions: []
+    human_review_completed: true
+    plannotator_annotations: ''
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-372-thread-stepcontext-non-step.md
+    approved: true
+  implement:
+    status: in_progress
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-18T20:41:12.151Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-372 as development
+  - timestamp: '2026-05-18T20:41:24.813Z'
+    action: init_resumed
+    phase: init
+    details: Existing workflow file detected; resumed existing init state instead of creating new workflow.
+  - timestamp: '2026-05-18T20:41:25.507Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: issue title/scope is mechanical implementation work (FR-20b call-site migration), issue
+      body has no Type tag and no operational keywords.
+  - timestamp: '2026-05-18T20:41:27.518Z'
+    action: init_linear_fetched
+    phase: init
+    details: >-
+      Fetched Linear issue CLO-372: title/URL/description/priority/related blocks captured; branch suggested =
+      kmamemo/clo-372-thread-stepcontext-through-non-step-backendquery-call-sites; blocked_by CLO-371.
+  - timestamp: '2026-05-18T20:41:28.141Z'
+    action: linear_status_updated
+    phase: init
+    details: Linear status updated from Backlog to Todo as task entered active workstream.
+  - timestamp: '2026-05-18T20:41:30.565Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-18T20:41:34.063Z'
+    action: init_workflow_metadata_sync
+    phase: init
+    details: >-
+      Synced workflow linear metadata from Linear issue: project Lok, priority 3, blocked_by CLO-371, branch suggestion
+      captured.
+  - timestamp: '2026-05-18T20:42:24.277Z'
+    action: branch_created
+    phase: discovery
+    details: Checked out existing local branch feat/clo-372-non-step for discovery work; using as linear.branch_actual.
+  - timestamp: '2026-05-18T20:44:17.860Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Completed discovery for CLO-372: identified five affected modules and six non-step `Backend::query` call sites
+      (conductor, spawn, team, debate, backend::run_query_with_config) where `StepContext` drops model and optional
+      context metadata. Existing FR-20b requirement covered by `docs/prds/prd-phase-2-predictable-cli-execution-v5.md`;
+      created `docs/discovery/clo-372.md` with two approaches and a chosen minimal-migration plan.
+  - timestamp: '2026-05-18T20:44:31.870Z'
+    action: discovery_report_complete
+    phase: discovery
+    details: >-
+      Discovery report finalized and stored at docs/discovery/clo-372.md. PRD exists in
+      docs/prds/prd-phase-2-predictable-cli-execution-v5.md.
+  - timestamp: '2026-05-18T20:44:32.611Z'
+    action: pre_flight_checks_passed
+    phase: discovery
+    details: >-
+      All discovery mandatory YAML fields populated for discovery->design handoff: problem framed, PRD discovery doc
+      path set, discovery report path set, discovery debt=0, baseline score 60, 2 approaches, approach chosen,
+      approved=true.
+  - timestamp: '2026-05-18T20:44:35.634Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-18T20:44:45.767Z'
+    action: linear_status_updated
+    phase: discovery
+    details: Updated Linear issue CLO-372 to In Progress (from Todo) after discovery completion.
+  - timestamp: '2026-05-18T20:44:46.647Z'
+    action: discovery_comment_posted
+    phase: discovery
+    details: >-
+      Posted Linear comment summarizing discovery findings, chosen approach, and artifact paths
+      (docs/discovery/clo-372.md, existing FR-20b PRD section).
+  - timestamp: '2026-05-18T20:44:48.419Z'
+    action: workflow_status_updated
+    phase: discovery
+    details: Set workflow.status to in_progress in preparation for design handoff.
+  - timestamp: '2026-05-18T20:44:56.604Z'
+    action: discovery_report_file_created
+    phase: discovery
+    details: Created discovery artifact at docs/discovery/clo-372.md.
+  - timestamp: '2026-05-18T20:49:08.192Z'
+    action: design_started
+    phase: design
+    details: >-
+      Entered design phase. Consulted prior lessons and found .pi/lessons/clo-371-stepcontext-migration-lessons.md; .lok
+      design-draft/design-review workflows are not present, so design draft and review will use manual fallback.
+  - timestamp: '2026-05-18T20:50:55.537Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Manual fallback design draft created at docs/designs/clo-372-thread-stepcontext-non-step.md (299 lines, 8 required
+      sections). .lok design-draft workflow was unavailable; draft uses discovery report docs/discovery/clo-372.md and
+      prior lesson .pi/lessons/clo-371-stepcontext-migration-lessons.md.
+  - timestamp: '2026-05-18T20:51:05.718Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: >-
+      6 assumptions surfaced (high: 4, medium: 2, low: 0). See design doc § Assumptions. Lessons cited:
+      .pi/lessons/clo-371-stepcontext-migration-lessons.md § L1-L2.
+  - timestamp: '2026-05-18T20:53:45.196Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: approve_with_changes. Gemini approved with 2 non-blocking observations; 2 documentation
+      refinements applied, 0 flagged.
+  - timestamp: '2026-05-18T20:58:57.876Z'
+    action: design_human_review_complete
+    phase: design
+    details: >-
+      Plannotator annotate opened docs/designs/clo-372-thread-stepcontext-non-step.md and returned no annotations before
+      the 300s session timeout; proceeding with no feedback.
+  - timestamp: '2026-05-18T20:59:07.752Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design ready for plan phase. Final doc at docs/designs/clo-372-thread-stepcontext-non-step.md; public helper
+      signature, module migration plan, assumptions, test plan, AI review synthesis, and human review gate verified.
+  - timestamp: '2026-05-18T20:59:09.657Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-18T20:59:21.708Z'
+    action: design_comment_posted
+    phase: design
+    details: >-
+      Posted Linear comment summarizing design completion, review artifacts, applied feedback, Plannotator result, and
+      plan-phase handoff.
+  - timestamp: '2026-05-18T21:05:21.278Z'
+    action: plan_started
+    phase: plan
+    details: >-
+      Entered plan phase. Loaded workflow state and finalized design docs/designs/clo-372-thread-stepcontext-non-step.md
+      to decompose implementation into ordered, mechanically testable sub-tasks.
+  - timestamp: '2026-05-18T21:05:57.586Z'
+    action: plan_created
+    phase: plan
+    details: >-
+      Plan with 5 sub-tasks at docs/plans/clo-372-thread-stepcontext-non-step.md. Sub-tasks cover backend helper/tests,
+      run_query_with_config migration, conductor/spawn migration, team/debate migration, and final static/full
+      validation.
+  - timestamp: '2026-05-18T21:06:03.528Z'
+    action: plan_approved
+    phase: plan
+    details: >-
+      Plan approved in Auto Mode. 5 sub-tasks queued; each has a concrete acceptance command, references real source
+      modules, and the pre-merge gate is cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test.
+  - timestamp: '2026-05-18T21:06:05.032Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-18T21:06:12.387Z'
+    action: plan_comment_posted
+    phase: plan
+    details: >-
+      Posted Linear comment summarizing the approved plan, 5 queued sub-tasks, pre-merge gate, and implement-phase
+      handoff.
+  - timestamp: '2026-05-18T21:06:33.961Z'
+    action: implementation_started
+    phase: implement
+    details: >-
+      Implementation phase started. Consulted matching lessons: .pi/lessons/clo-371-stepcontext-migration-lessons.md
+      (applies: populate promised StepContext fields and keep public API visible) and .pi/lessons/pr-review-failures.md
+      (PR-phase only; no implementation gate impact).
