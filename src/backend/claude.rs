@@ -284,17 +284,15 @@ impl super::Backend for ClaudeBackend {
 
     async fn query(
         &self,
-        prompt: &str,
-        cwd: &Path,
-        model: Option<&str>,
+        ctx: super::StepContext<'_>,
     ) -> std::result::Result<super::QueryOutput, BackendError> {
         match &self.mode {
             ClaudeMode::Api { .. } => {
-                self.query_api("You are a helpful assistant.", prompt, model)
+                self.query_api("You are a helpful assistant.", ctx.prompt, ctx.model)
                     .await
             }
             ClaudeMode::Cli { .. } => self
-                .query_cli(prompt, cwd, model)
+                .query_cli(ctx.prompt, ctx.cwd, ctx.model)
                 .await
                 .map_err(BackendError::from),
         }

@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_sdk_bedrockruntime::Client;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::time::Instant;
 
 use super::TokenUsage;
@@ -154,18 +153,19 @@ impl super::Backend for BedrockBackend {
 
     async fn query(
         &self,
-        prompt: &str,
-        _cwd: &Path,
-        model: Option<&str>,
+        ctx: super::StepContext<'_>,
     ) -> std::result::Result<super::QueryOutput, super::BackendError> {
         let start = Instant::now();
 
         let messages = vec![Message {
             role: "user".to_string(),
-            content: MessageContent::Text(prompt.to_string()),
+            content: MessageContent::Text(ctx.prompt.to_string()),
         }];
 
-        let effective_model_id = model.filter(|m| !m.is_empty()).unwrap_or(&self.model_id);
+        let effective_model_id = ctx
+            .model
+            .filter(|m| !m.is_empty())
+            .unwrap_or(&self.model_id);
 
         let response = self
             .invoke_with_messages_model(effective_model_id, None, messages, None)

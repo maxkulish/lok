@@ -6,6 +6,7 @@ use std::time::Duration;
 ///
 /// All borrows are tied to the caller's stack frame; the backend must not
 /// retain references past the `await` point.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct StepContext<'a> {
     pub prompt: &'a str,
@@ -28,15 +29,33 @@ pub struct StepContext<'a> {
 
 /// Minimal options bag for per-step config passthrough.
 /// Replace with a typed struct when FR-24 lands.
+#[allow(dead_code)]
 pub type StepOptions = std::collections::HashMap<String, serde_json::Value>;
+
+impl<'a> StepContext<'a> {
+    pub fn from_prompt(prompt: &'a str, cwd: &'a Path, model: Option<&'a str>) -> Self {
+        Self {
+            prompt,
+            history: &[],
+            model,
+            cwd,
+            sandbox: None,
+            schema: None,
+            options: None,
+            timeout: None,
+        }
+    }
+}
 
 /// Placeholder for the full health status struct introduced in FR-9/9a.
 /// Empty today so `Backend::health_check` return type is stable.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct HealthStatus;
 
 /// Sandbox permission levels for subprocess backends.
 /// Maps to Codex `-s` and Gemini `--approval-mode`.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SandboxMode {
     ReadOnly,
@@ -45,12 +64,14 @@ pub enum SandboxMode {
 }
 
 /// One turn in a conversation history.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Message {
     pub role: Role,
     pub content: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     User,
