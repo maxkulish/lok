@@ -170,9 +170,8 @@ AGENT: frontend | Build the UI"#,
             task
         );
 
-        let output = backend
-            .query(backend::StepContext::from_prompt(&prompt, &self.cwd, None))
-            .await?;
+        let ctx = backend::step_context_for_backend(&prompt, &self.cwd, &self.config, backend.name());
+        let output = backend.query(ctx).await?;
         self.parse_agent_tasks(&output.stdout)
     }
 
@@ -240,6 +239,7 @@ AGENT: frontend | Build the UI"#,
                 let backend_map = backend_map.clone();
                 let delegator = self.delegator.clone();
                 let cwd = self.cwd.clone();
+                let config = self.config.clone();
                 let shared_context = shared_context.to_string();
 
                 async move {
@@ -281,10 +281,10 @@ AGENT: frontend | Build the UI"#,
                         shared_context, task.name, task.description
                     );
 
-                    match backend
-                        .query(backend::StepContext::from_prompt(&prompt, &cwd, None))
-                        .await
-                    {
+                    let ctx =
+                        backend::step_context_for_backend(&prompt, &cwd, &config, backend.name());
+
+                    match backend.query(ctx).await {
                         Ok(query_output) => AgentResult {
                             name: task.name,
                             backend: backend.name().to_string(),
