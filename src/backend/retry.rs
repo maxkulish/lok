@@ -1,4 +1,4 @@
-use super::{Backend, BackendError, QueryOutput};
+use super::{Backend, BackendError, HealthStatus, QueryOutput};
 use async_trait::async_trait;
 use colored::Colorize;
 use rand::Rng;
@@ -117,6 +117,10 @@ impl Backend for RetryExecutor {
     fn is_available(&self) -> bool {
         self.inner.is_available()
     }
+
+    async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
+        self.inner.health_check().await
+    }
 }
 
 #[cfg(test)]
@@ -137,6 +141,9 @@ mod tests {
         }
         fn is_available(&self) -> bool {
             true
+        }
+        async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
+            Ok(HealthStatus)
         }
         async fn query(
             &self,
@@ -182,6 +189,9 @@ mod tests {
         }
         fn is_available(&self) -> bool {
             true
+        }
+        async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
+            Ok(HealthStatus)
         }
         async fn query(
             &self,
