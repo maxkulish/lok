@@ -13,7 +13,7 @@
 | Claude fallback | SKIPPED | At least one external reviewer (Codex) succeeded. |
 
 ## Verdict
-PASS_WITH_NOTES
+PASS
 
 ## Must Fix Before PR
 
@@ -33,3 +33,21 @@ PASS_WITH_NOTES
 ## Recommendation
 
 PROCEED_WITH_FIXES. Two bounded fixes before opening the PR: (1) add the three missing `reasoning_tokens` Some/None assertions to `test_token_usage_saturating_add_folds_optionals` to honor the plan's explicit matrix requirement; (2) drop the two unnecessary `#[allow(dead_code)]` attributes on the public builder methods and confirm the pre-merge gate (`cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`) is still green. Both fixes are local to `src/backend/mod.rs`, ~5 lines total, single iteration. The implementation otherwise matches the design exactly — additive fields, preserved 2-arg constructor, total_tokens excludes new fields, struct-literal test updated, 10 new unit tests landed.
+
+## Re-validation
+
+Fix iteration applied on commit `29b4e3d`.
+
+| Fix | Status | Notes |
+|-----|--------|-------|
+| Complete `reasoning_tokens` Some/None matrix | ✅ Applied | Added 3 assertions (`Some + None`, `None + Some`, `None + None`) to `test_token_usage_saturating_add_folds_optionals`. |
+| Remove `#[allow(dead_code)]` from builder methods | ❌ Reverted | Both methods trigger `-D dead-code` at `cargo clippy --all-targets -- -D warnings` because the binary crate (`lok`/`lokomotiv`) does not yet call them. They are intentionally public API for downstream FRs (CLO-381, CLO-382). The annotations are correct for the current slice; synthesis reviewer noted this would be "worth investigating if clippy warns" — investigation confirms the suppressions are necessary. |
+
+Post-fix gate (2026-05-19):
+- `cargo fmt --check` ✅
+- `cargo clippy --all-targets -- -D warnings` ✅
+- `cargo test` ✅ (all ~470 backend tests + integration tests pass)
+- `cargo build --features bedrock` ✅
+- `cargo doc --no-deps` ✅
+
+**Revised verdict: PASS** — all `Must Fix Before PR` items have been addressed (test matrix complete; dead_code suppression investigated, confirmed necessary, and retained with explanation).
