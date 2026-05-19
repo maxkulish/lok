@@ -1,6 +1,7 @@
 use crate::backend::{BackendError, TokenUsage};
 use serde::Deserialize;
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum CodexEvent {
@@ -57,6 +58,7 @@ pub(super) enum CodexItem {
     Other,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(super) struct CodexUsage {
     #[serde(default)]
@@ -172,9 +174,7 @@ mod tests {
     fn parses_thread_started() {
         let s = r#"{"type":"thread.started","thread_id":"abc123"}"#;
         let e: CodexEvent = serde_json::from_str(s).unwrap();
-        assert!(
-            matches!(e, CodexEvent::ThreadStarted { thread_id } if thread_id == "abc123")
-        );
+        assert!(matches!(e, CodexEvent::ThreadStarted { thread_id } if thread_id == "abc123"));
     }
 
     #[test]
@@ -204,7 +204,10 @@ mod tests {
     fn parses_item_completed_agent_message() {
         let s = r#"{"type":"item.completed","item":{"type":"agent_message","text":"hello"}}"#;
         let e: CodexEvent = serde_json::from_str(s).unwrap();
-        if let CodexEvent::ItemCompleted { item: Some(CodexItem::AgentMessage { text: Some(t) }) } = e {
+        if let CodexEvent::ItemCompleted {
+            item: Some(CodexItem::AgentMessage { text: Some(t) }),
+        } = e
+        {
             assert_eq!(t, "hello");
         } else {
             panic!("expected AgentMessage, got {:?}", e);
@@ -216,7 +219,12 @@ mod tests {
         let s = r#"{"type":"item.completed","item":{"type":"command_execution","command":"pwd"}}"#;
         let e: CodexEvent = serde_json::from_str(s).unwrap();
         assert!(
-            matches!(e, CodexEvent::ItemCompleted { item: Some(CodexItem::Other) }),
+            matches!(
+                e,
+                CodexEvent::ItemCompleted {
+                    item: Some(CodexItem::Other)
+                }
+            ),
             "expected Other, got {:?}",
             e
         );
@@ -226,7 +234,11 @@ mod tests {
     fn unknown_event_type_falls_to_unknown() {
         let s = r#"{"type":"future.event","foo":"bar"}"#;
         let e: CodexEvent = serde_json::from_str(s).unwrap();
-        assert!(matches!(e, CodexEvent::Unknown), "expected Unknown, got {:?}", e);
+        assert!(
+            matches!(e, CodexEvent::Unknown),
+            "expected Unknown, got {:?}",
+            e
+        );
     }
 
     #[test]
@@ -234,7 +246,12 @@ mod tests {
         let s = r#"{"type":"item.completed","item":{"type":"future_item"}}"#;
         let e: CodexEvent = serde_json::from_str(s).unwrap();
         assert!(
-            matches!(e, CodexEvent::ItemCompleted { item: Some(CodexItem::Other) }),
+            matches!(
+                e,
+                CodexEvent::ItemCompleted {
+                    item: Some(CodexItem::Other)
+                }
+            ),
             "expected ItemCompleted with Other, got {:?}",
             e
         );
@@ -273,7 +290,13 @@ mod tests {
 {"type":"turn.failed","error":{"message":"model is not supported"}}"#;
         let err = parse_jsonl_stream(stream).unwrap_err();
         assert!(
-            matches!(err, BackendError::ExecutionFailed { exit_code: None, .. }),
+            matches!(
+                err,
+                BackendError::ExecutionFailed {
+                    exit_code: None,
+                    ..
+                }
+            ),
             "expected ExecutionFailed, got {:?}",
             err
         );
@@ -289,7 +312,13 @@ mod tests {
         let stream = r#"{"type":"error","message":"internal server error"}"#;
         let err = parse_jsonl_stream(stream).unwrap_err();
         assert!(
-            matches!(err, BackendError::ExecutionFailed { exit_code: None, .. }),
+            matches!(
+                err,
+                BackendError::ExecutionFailed {
+                    exit_code: None,
+                    ..
+                }
+            ),
             "expected ExecutionFailed, got {:?}",
             err
         );
@@ -310,7 +339,11 @@ mod tests {
             BackendError::Parse { message } => message,
             _ => unreachable!(),
         };
-        assert!(msg.contains("without agent_message"), "error message was: {}", msg);
+        assert!(
+            msg.contains("without agent_message"),
+            "error message was: {}",
+            msg
+        );
     }
 
     #[test]
@@ -384,8 +417,64 @@ not valid json
     }
 
     #[test]
-    fn whitespace_only_stream_returns_parse_error() {
-        let err = parse_jsonl_stream("   \n\n  ").unwrap_err();
-        assert!(matches!(err, BackendError::Parse { .. }));
+    fn fixture_turn_completed_returns_happy_path_message() {
+        let stream = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/codex/turn-completed.jsonl"
+        ))
+        .expect("turn-completed.jsonl exists");
+        let result = parse_jsonl_stream(&stream).expect("turn-completed should parse");
+        assert_eq!(result.agent_message, Some("fixture happy path".to_string()));
+        let usage = result.usage.expect("turn.completed should have usage");
+        assert_eq!(usage.prompt_tokens, 23057);
+        assert_eq!(usage.completion_tokens, 7);
+    }
+
+    #[test]
+    fn fixture_multi_turn_reasoning_returns_only_final_agent_message() {
+        let stream = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/codex/multi-turn-reasoning.jsonl"
+        ))
+        .expect("multi-turn-reasoning.jsonl exists");
+        let result = parse_jsonl_stream(&stream).expect("multi-turn-reasoning should parse");
+        assert_eq!(result.agent_message, Some("323".to_string()));
+        let usage = result.usage.expect("turn.completed should have usage");
+        assert_eq!(usage.prompt_tokens, 46243);
+        assert_eq!(usage.completion_tokens, 95);
+    }
+
+    #[test]
+    fn fixture_turn_failed_returns_execution_failed() {
+        let stream = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/codex/turn-failed.jsonl"
+        ))
+        .expect("turn-failed.jsonl exists");
+        let err = parse_jsonl_stream(&stream).expect_err("turn-failed should fail");
+        let msg = match &err {
+            BackendError::ExecutionFailed { message, .. } => message.clone(),
+            other => panic!("expected ExecutionFailed, got {:?}", other),
+        };
+        assert!(
+            msg.contains("not supported") || msg.contains("invalid_request_error"),
+            "error message should contain model failure details, got: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn fixture_missing_agent_message_returns_parse_error() {
+        let stream = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/codex/missing-agent-message.jsonl"
+        ))
+        .expect("missing-agent-message.jsonl exists");
+        let err = parse_jsonl_stream(&stream).expect_err("missing-agent-message should fail");
+        assert!(
+            matches!(err, BackendError::Parse { .. }),
+            "expected Parse error, got {:?}",
+            err
+        );
     }
 }

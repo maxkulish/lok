@@ -21,7 +21,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-19T19:53:29.331Z'
-  updated_at: '2026-05-19T20:24:05.248Z'
+  updated_at: '2026-05-19T20:29:56.889Z'
 phases:
   discovery:
     status: complete
@@ -92,6 +92,8 @@ phases:
     approved: true
   implement:
     status: pending
+    commits:
+      - 4b8489b
   pr:
     status: pending
   complete:
@@ -167,5 +169,11 @@ history:
     action: phase_transition
     phase: plan
     details: Transitioned from plan to implement
+  - timestamp: '2026-05-19T20:29:56.889Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST1+ST2 landed: codex_event.rs with serde types+parser state machine; refactored codex.rs parse_output to return
+      Result and wired through query. Commit 4b8489b.
 task_title: 'FR-3a: event-driven Codex JSONL parser (replace substring match)'
 task_url: https://linear.app/cloud-ai/issue/CLO-379/fr-3a-event-driven-codex-jsonl-parser-replace-substring-match
