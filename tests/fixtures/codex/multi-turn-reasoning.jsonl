@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"019e4096-caac-7ab1-b1e1-327230cc224e"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc pwd","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc pwd","aggregated_output":"<WORKDIR>\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"323"}}
+{"type":"turn.completed","usage":{"input_tokens":46243,"cached_input_tokens":30464,"output_tokens":95,"reasoning_output_tokens":51}}

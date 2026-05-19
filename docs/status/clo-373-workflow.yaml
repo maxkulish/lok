@@ -1,0 +1,546 @@
+task_id: CLO-373
+task_type: development
+classification_reason: >-
+  No **Type:** Specification/Operational marker or spec/ops label; title does not match operational prefixes. Fixture
+  capture requires repo changes, so defaulted to development.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  priority: Medium
+  branch_suggested: kmamemo/clo-373-capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40
+  branch_actual: feat/clo-373-codex
+workflow:
+  current_phase: complete
+  status: active
+  created_at: '2026-05-19T10:39:32.397Z'
+  updated_at: '2026-05-19T14:44:06.824Z'
+phases:
+  discovery:
+    status: complete
+    approved: true
+    problem_framed: true
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    prd_created: false
+    discovery_report: docs/discovery/clo-373.md
+    discovery_debt: []
+    baseline_score: 8
+    approaches_identified: 3
+    approach_chosen: Capture fresh real streams with targeted prompts
+  design:
+    status: complete
+    design_doc: docs/designs/clo-373-codex-jsonl-fixtures.md
+    draft_ready: true
+    draft_source: lok design-draft
+    discovery_context_used: true
+    token_usage:
+      - recorded_at: '2026-05-19T10:50:46.598Z'
+        provider: claude
+        model: unknown via lok design-draft
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-draft
+      - recorded_at: '2026-05-19T12:34:52.111Z'
+        provider: gemini
+        model: gemini-2.5-pro
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-gemini-rerun
+      - recorded_at: '2026-05-19T12:34:52.111Z'
+        provider: ollama
+        model: glm-5:cloud
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-ollama-rerun
+      - recorded_at: '2026-05-19T12:34:52.111Z'
+        provider: claude
+        model: unknown via lok fallback
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-claude-fallback-rerun
+      - recorded_at: '2026-05-19T13:15:35.360Z'
+        provider: gemini
+        model: gemini-3.1-pro-preview
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-gemini-timeoutfix
+      - recorded_at: '2026-05-19T13:15:35.360Z'
+        provider: ollama
+        model: glm-5:cloud
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-ollama-timeoutfix
+      - recorded_at: '2026-05-19T13:15:35.360Z'
+        provider: claude
+        model: unknown via lok fallback/synthesis
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-synthesis-timeoutfix
+      - recorded_at: '2026-05-19T13:38:51.562Z'
+        provider: claude
+        model: pi local investigation
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: lok-condition-bug-investigation
+    assumptions_surfaced: true
+    assumptions:
+      - text: Codex CLI 0.130.0 is the recorded version for the captured streams.
+        confidence: high
+        verification: >-
+          Verified by codex --version during discovery; pinned in tests/fixtures/codex/README.md and
+          tests/fixtures/codex/version.txt during implementation.
+      - text: Codex 0.130.0 JSONL event names match the documented set in codex-quick-ref and PRD §11.4.
+        confidence: high
+        verification: >-
+          The integration test asserts every fixture event type is in thread.started, turn.started, turn.completed,
+          turn.failed, item.started, item.completed, or error.
+      - text: Codex agent-message item type is represented as item.type == "agent_message" inside item.completed events.
+        confidence: high
+        verification: >-
+          Verified from src/backend/codex.rs::parse_output and CLO-374 review snippets; integration tests assert the
+          nested field name.
+      - text: >-
+          This task remains fixture/test-only and does not introduce new backend carrying structs, public re-exports, or
+          programmatic shell command construction.
+        confidence: high
+        verification: >-
+          Final diff contains only .gitattributes, tests/fixtures/codex/, tests/codex_fixtures.rs, and design/status
+          docs; if scope expands, re-apply .pi/lessons/clo-371-stepcontext-migration-lessons.md §L1-L3 and
+          .pi/lessons/clo-374-sandbox-routing-lessons.md §L1.
+      - text: >-
+          A prompt that asks Codex to think step by step and produce a short answer reliably yields
+          reasoning_output_tokens > 0 on a reasoning-capable model.
+        confidence: medium
+        verification: >-
+          Capture against a reasoning-capable default model and grep for a non-zero reasoning_output_tokens value before
+          committing; iterate if zero.
+      - text: >-
+          A no-final-agent-message fixture can be produced without inventing synthetic JSONL, either from a natural
+          Codex 0.130.0 turn.completed stream or by paired-line trimming of a real turn.completed stream.
+        confidence: medium
+        verification: >-
+          Try natural prompts/sandbox conditions first; if none work, remove both paired final agent_message
+          item.started and item.completed lines from a real stream and document the edit in README metadata.
+      - text: Scrubbed JSONL remains JSON-valid after replacement.
+        confidence: high
+        verification: Run the README JSONL validator and the every_fixture_is_line_valid_jsonl integration test.
+      - text: The scrub gate patterns catch common leakage classes for this corpus.
+        confidence: medium
+        verification: >-
+          Integration tests catch obvious POSIX/macOS/Windows paths, token-looking strings, and emails; README manual
+          inspection remains required for non-patterned secrets.
+      - text: The four fixtures together stay under a reviewable size target of 50 KB total and 20 KB per fixture.
+        confidence: medium
+        verification: Integration-test metadata assertions plus manual wc -c tests/fixtures/codex/*.jsonl before committing.
+    review_completed: true
+    review_gemini: docs/reviews/clo-373-review-gemini.md
+    review_synthesis: docs/reviews/clo-373-review-synthesis.md
+    review_verdict: approve_with_changes
+    applied_suggestions:
+      - Filter fixture discovery to *.jsonl so README.md/version.txt are ignored.
+      - Assert parsed JSONL event vectors are non-empty.
+      - >-
+        Expand scrub checklist/gate to include API keys, bearer tokens, token-looking strings, emails, and Windows home
+        paths.
+      - >-
+        Strengthen semantic assertions for agent_message presence, failure payloads, reasoning_output_tokens, and
+        missing-agent-message absence.
+      - >-
+        Split reasoning token and intermediate non-message item assertions to avoid coupling unrelated Codex emission
+        properties.
+      - Add .gitattributes LF normalization requirement for tests/fixtures/codex/*.jsonl.
+      - Assert every event has a known documented Codex type.
+      - >-
+        Resolve missing-agent-message strategy by allowing documented paired-line trim from a real stream if natural
+        capture fails.
+      - Add integration-test scrub gate rather than README-only enforcement.
+      - Resolve size cap by making 20 KB per fixture / 50 KB corpus an integration-test assertion.
+      - Require README per-fixture metadata plus version.txt and pinned Codex 0.130.0 warning.
+      - Document test hermeticity and avoid absolute CARGO_MANIFEST_DIR path leakage in panic messages.
+    flagged_suggestions:
+      - id: second-failure-fixture
+        reason: >-
+          Deferred to FR-3a/future parser work because FR-40 acceptance requires one failure stream; design records this
+          as a non-blocking open question.
+    human_review_completed: true
+    plannotator_annotations: ''
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-373-codex-jsonl-fixtures.md
+    approved: true
+  implement:
+    status: complete
+    commits:
+      - eac2930
+      - a078b8b
+      - d3da388
+      - a4e1d7b
+      - f2f3cba
+      - 96e44fc
+      - 327501b
+    assumptions_revalidated: true
+    assumption_outcomes:
+      - text: Codex CLI 0.130.0 is the recorded version for the captured streams.
+        outcome: held
+        evidence: tests/fixtures/codex/version.txt:1 and tests/fixtures/codex/README.md:7 record codex-cli 0.130.0.
+      - text: Codex 0.130.0 JSONL event names match the documented set in codex-quick-ref and PRD §11.4.
+        outcome: held
+        evidence: >-
+          tests/codex_fixtures.rs:6-14 defines the known event set; every_fixture_is_line_valid_jsonl passed in cargo
+          test --test codex_fixtures.
+      - text: Codex agent-message item type is represented as item.type == "agent_message" inside item.completed events.
+        outcome: held
+        evidence: tests/codex_fixtures.rs:78-79 and turn_completed_fixture_is_valid_jsonl_with_agent_message passed.
+      - text: >-
+          This task remains fixture/test-only and does not introduce new backend carrying structs, public re-exports, or
+          programmatic shell command construction.
+        outcome: held
+        evidence: >-
+          git diff 5283b0e..HEAD --name-only shows only .gitattributes, docs, tests/codex_fixtures.rs, and
+          tests/fixtures/codex; no src/backend/codex.rs or shell helper changes in the CLO-373 implementation commits.
+      - text: >-
+          A prompt that asks Codex to think step by step and produce a short answer reliably yields
+          reasoning_output_tokens > 0 on a reasoning-capable model.
+        outcome: held
+        evidence: >-
+          tests/fixtures/codex/README.md:29 records the reasoning prompt;
+          multi_turn_reasoning_fixture_reports_reasoning_tokens passed and asserts reasoning_output_tokens > 0 at
+          tests/codex_fixtures.rs:256-262.
+      - text: >-
+          A no-final-agent-message fixture can be produced without inventing synthetic JSONL, either from a natural
+          Codex 0.130.0 turn.completed stream or by paired-line trimming of a real turn.completed stream.
+        outcome: violated
+        evidence: >-
+          tests/fixtures/codex/README.md:30 documents two natural attempts and the actual fallback: Codex emitted no
+          paired item.started for the final agent_message, so only the real item.completed agent_message line was
+          trimmed.
+      - text: Scrubbed JSONL remains JSON-valid after replacement.
+        outcome: held
+        evidence: >-
+          python3 JSONL validation over tests/fixtures/codex/*.jsonl passed; every_fixture_is_line_valid_jsonl passed in
+          cargo test --test codex_fixtures.
+      - text: The scrub gate patterns catch common leakage classes for this corpus.
+        outcome: held
+        evidence: >-
+          fixtures_do_not_contain_obvious_sensitive_text passed; implemented in tests/codex_fixtures.rs:94-132 and
+          invoked at tests/codex_fixtures.rs:196-203.
+      - text: The four fixtures together stay under a reviewable size target of 50 KB total and 20 KB per fixture.
+        outcome: held
+        evidence: >-
+          wc -c tests/fixtures/codex/*.jsonl reported 1,790 bytes total; size caps are asserted in
+          tests/codex_fixtures.rs:16-17 and fixtures_do_not_exceed_reviewable_size_caps passed.
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-373-codex-validation.md
+    gemini_validation_report: docs/reviews/clo-373-gemini-validation.md
+    validation_synthesis_report: docs/reviews/clo-373-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_fix_iteration_count: 1
+    token_usage:
+      - recorded_at: '2026-05-19T14:33:32.932Z'
+        provider: codex
+        model: gpt-5.5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-05-19T14:33:32.932Z'
+        provider: gemini
+        model: gemini-2.5-pro
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-gemini
+      - recorded_at: '2026-05-19T14:33:32.932Z'
+        provider: claude
+        model: unknown via lok pre-pr-validation synthesis
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
+  pr:
+    status: complete
+    pr_url: https://github.com/maxkulish/lok/pull/21
+    pr_number: 21
+    ci_passed: true
+    reviews_addressed: true
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-19T10:39:32.397Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-373 as development
+  - timestamp: '2026-05-19T10:39:55.358Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: no specification or operational marker; fixture capture is implementation work for
+      FR-40.
+  - timestamp: '2026-05-19T10:40:04.117Z'
+    action: linear_status_updated
+    phase: init
+    details: Linear issue moved from Backlog to Todo.
+  - timestamp: '2026-05-19T10:40:50.761Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-373 --start procedure: WIP 0/3, no blockers;
+      CLO-373 added to Active Work and Phase 10 marked In Progress.
+  - timestamp: '2026-05-19T10:40:52.527Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-19T10:41:11.255Z'
+    action: branch_created
+    phase: discovery
+    details: >-
+      Branch feat/clo-373-codex already checked out for CLO-373 work; retained current branch with init/project-sync
+      changes present.
+  - timestamp: '2026-05-19T10:41:36.126Z'
+    action: discovery_research
+    phase: discovery
+    details: >-
+      Reviewed Linear issue, phase-2 PRD FR-40/§11.4, Codex quick reference, current src/backend/codex.rs parser, tests
+      layout, and local Codex version 0.130.0.
+  - timestamp: '2026-05-19T10:42:15.271Z'
+    action: discovery_report_created
+    phase: discovery
+    details: >-
+      Wrote discovery report at docs/discovery/clo-373.md with problem framing, existing code findings, three
+      approaches, and selected fixture-capture approach.
+  - timestamp: '2026-05-19T10:42:26.478Z'
+    action: linear_discovery_update
+    phase: discovery
+    details: Linear issue moved to In Progress and discovery report comment posted.
+  - timestamp: '2026-05-19T10:42:30.119Z'
+    action: discovery_approved
+    phase: discovery
+    details: 'Approach: Capture fresh real streams with targeted prompts. Baseline 8/10. 3 approaches considered.'
+  - timestamp: '2026-05-19T10:42:31.609Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-19T10:46:39.698Z'
+    action: design_lessons_consulted
+    phase: design
+    details: >-
+      Consulted .pi/lessons for Codex/backend/fixtures/parser/test-relevant lessons; matching files read:
+      clo-371-stepcontext-migration-lessons.md, clo-374-sandbox-routing-lessons.md.
+  - timestamp: '2026-05-19T10:50:46.598Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated by lok design-draft workflow and manually reviewed/edited at
+      docs/designs/clo-373-codex-jsonl-fixtures.md.
+  - timestamp: '2026-05-19T10:51:01.251Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '9 assumptions surfaced (high: 6, medium: 3, low: 0). See design doc § Assumptions.'
+  - timestamp: '2026-05-19T10:51:17.510Z'
+    action: design_review_workflow_fallback
+    phase: design
+    details: >-
+      lok design-review workflow failed before review due unknown variable '{{ steps.health_check.output }}'; falling
+      back to direct review generation.
+  - timestamp: '2026-05-19T12:34:52.111Z'
+    action: design_review_gemini_investigated
+    phase: design
+    details: >-
+      Investigated lok+Gemini review failure: direct gemini auth works, but lok default
+      GEMINI_MODEL=gemini-3.1-pro-preview times out in 10s health check; setting GEMINI_MODEL=gemini-2.5-pro makes
+      Gemini review pass. Also confirmed lok 20260519.0.0 ignores condition=false, so claude_fallback runs even when
+      Gemini/Ollama succeed.
+  - timestamp: '2026-05-19T13:15:35.360Z'
+    action: design_review_gemini_timeout_fix_verified
+    phase: design
+    details: >-
+      Updated design-review workflow to keep gemini-3.1-pro-preview as default and increase Gemini health check/review
+      timeouts (health 120s shell inside 150s step; review 900s shell inside 2100s step). Verified lok design-review now
+      reports gemini=true and Gemini OK using gemini-3.1-pro-preview.
+  - timestamp: '2026-05-19T13:38:51.562Z'
+    action: lok_condition_bug_investigated
+    phase: design
+    details: >-
+      Root-caused lok condition bug: workflow Step deserializer accepted `when` and alias `if`, but not `condition`, so
+      `.lok/workflows/design-review.toml` ignored `condition = ...` and always ran claude_fallback. Patched
+      src/workflow.rs to add `condition` as a serde alias and verified with unit tests plus local cargo-run workflow
+      reproduction.
+  - timestamp: '2026-05-19T13:39:09.668Z'
+    action: lok_condition_fix_validated
+    phase: design
+    details: >-
+      Formatted condition-alias patch and validated with `cargo test test_step_ -- --nocapture` plus `cargo fmt
+      --check`; focused tests passed for both lok/lokomotiv binaries.
+  - timestamp: '2026-05-19T13:53:43.908Z'
+    action: design_assumptions_updated_after_review
+    phase: design
+    details: 'Assumptions mirrored after applying design review feedback; still 9 assumptions (high: 5, medium: 4, low: 0).'
+  - timestamp: '2026-05-19T13:53:56.885Z'
+    action: design_review_complete
+    phase: design
+    details: 'Review verdict: approve_with_changes. 12 applied, 1 flagged/deferred.'
+  - timestamp: '2026-05-19T13:54:25.649Z'
+    action: design_human_review_complete
+    phase: design
+    details: Plannotator annotate session closed with no annotations after 12 applied and 1 flagged AI-review suggestions.
+  - timestamp: '2026-05-19T13:54:35.361Z'
+    action: design_finalized
+    phase: design
+    details: Design ready for plan phase after AI review changes and Plannotator no-feedback gate.
+  - timestamp: '2026-05-19T13:54:38.363Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-19T14:11:26.001Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 5 sub-tasks at docs/plans/clo-373-codex-jsonl-fixtures.md
+  - timestamp: '2026-05-19T14:11:44.471Z'
+    action: plan_refined
+    phase: plan
+    details: >-
+      Normalized ST3 acceptance into a single concrete command; plan remains 5 sub-tasks at
+      docs/plans/clo-373-codex-jsonl-fixtures.md.
+  - timestamp: '2026-05-19T14:11:49.833Z'
+    action: plan_approved
+    phase: plan
+    details: Plan approved. 5 sub-tasks queued.
+  - timestamp: '2026-05-19T14:11:51.234Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-19T14:12:20.497Z'
+    action: implementation_lessons_consulted
+    phase: implement
+    details: >-
+      Consulted .pi/lessons for Codex/fixture/parser/backend/workflow/test relevant lessons; read
+      clo-371-stepcontext-migration-lessons.md, clo-374-sandbox-routing-lessons.md, pr-review-failures.md.
+      Implementation remains fixture/test-only; no carrying structs or shell-command construction added, PR-review
+      timing/trailer rules defer to pr phase.
+  - timestamp: '2026-05-19T14:13:39.171Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST1 landed: added Codex fixture metadata README, version.txt, and .gitattributes LF rule. Commit 7a29074. Note:
+      commit was created while current checkout reported release/v20260519.0.1; switching back to recorded branch
+      feat/clo-373-codex before continuing.
+  - timestamp: '2026-05-19T14:13:52.705Z'
+    action: implementation_branch_corrected
+    phase: implement
+    details: >-
+      Switched back to recorded task branch feat/clo-373-codex and cherry-picked ST1 metadata commit as eac2930;
+      continuing implementation on the task branch.
+  - timestamp: '2026-05-19T14:16:11.948Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST2 landed: captured and scrub-reviewed Codex happy-path and invalid-model failure JSONL fixtures; acceptance
+      command passed. Commit a078b8b.
+  - timestamp: '2026-05-19T14:16:27.038Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST3 landed: captured reasoning/tool fixture with scrubbed workdir and added missing-agent-message fixture derived
+      from a real stream after natural attempts still emitted agent messages; acceptance command passed. Commit d3da388.
+  - timestamp: '2026-05-19T14:17:36.375Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST4 landed: added Rust integration tests for JSONL validity, event semantics, scrub gates, and size caps; cargo
+      test --test codex_fixtures passed. Commit a4e1d7b.
+  - timestamp: '2026-05-19T14:18:53.903Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST5 landed: full pre-merge gate cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+      passed; fixture corpus is 1,790 bytes total and src/backend/codex.rs is unchanged. Commit f2f3cba.
+  - timestamp: '2026-05-19T14:19:11.051Z'
+    action: implementation_docs_committed
+    phase: implement
+    details: >-
+      Committed CLO-373 discovery/design/plan/review/status artifacts and project dashboard updates so validation can
+      inspect committed task context. Commit 96e44fc.
+  - timestamp: '2026-05-19T14:19:26.581Z'
+    action: unrelated_changes_stashed
+    phase: implement
+    details: >-
+      Stashed unrelated design-review workflow/workflow.rs condition-alias edits before pre-PR validation so CLO-373
+      validation reviews only fixture-corpus scope. Stash name: clo-373-unrelated-design-review-workflow-fix.
+  - timestamp: '2026-05-19T14:20:32.158Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      9 assumptions reviewed. held: 8, violated: 1, untested: 0. Violation: Codex 0.130.0 did not emit a paired
+      item.started for the source stream's final agent_message, so missing-agent-message trimmed the single actual
+      item.completed agent_message line and documented that provenance.
+  - timestamp: '2026-05-19T14:20:43.597Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed. fmt+clippy+test green. 6 commits. One design assumption diverged in documented provenance:
+      missing-agent-message source stream had no paired item.started for the trimmed agent message.
+  - timestamp: '2026-05-19T14:33:04.014Z'
+    action: validation_fix_iteration_applied
+    phase: implement
+    details: >-
+      Applied the single synthesis-approved fix iteration: reverted out-of-scope workflow/template/Cargo diff to main,
+      tightened token-looking scrub gate/README regex, stripped discovery trailing whitespace, appended synthesis
+      re-validation, and re-ran cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --test
+      codex_fixtures successfully. Commit 327501b.
+  - timestamp: '2026-05-19T14:33:32.932Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL. Gemini: PASS_WITH_NOTES. Synthesis: PASS_WITH_NOTES. Single synthesis-approved fix iteration applied;
+      full cargo fmt --check && cargo clippy -- -D warnings && cargo test is green.
+  - timestamp: '2026-05-19T14:34:04.949Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-19T14:34:52.320Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate green: cargo fmt --check, cargo clippy -- -D warnings, cargo clippy --tests, and cargo test all
+      pass
+  - timestamp: '2026-05-19T14:35:20.835Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #21 opened: https://github.com/maxkulish/lok/pull/21'
+  - timestamp: '2026-05-19T14:35:47.457Z'
+    action: ci_passed
+    phase: pr
+    details: 'No GitHub checks reported for PR #21 (statusCheckRollup empty); local mandatory pre-flight gate is green.'
+  - timestamp: '2026-05-19T14:43:17.654Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      1 thread resolved; replies posted 1/1; /gemini review trailer verified on every reply. Gemini-code-assist
+      re-reviewed and said the fix addresses the compilation issue; thread PRRT_kwDOR0Ln1c6DMIq2 resolved.
+  - timestamp: '2026-05-19T14:43:37.850Z'
+    action: ci_iteration
+    phase: pr
+    details: >-
+      After PR review fix commit 6d26ab1, GitHub still reports no checks; reran local full PR gate (fmt, clippy -D
+      warnings, clippy --tests, cargo test) and it passed.
+  - timestamp: '2026-05-19T14:44:04.542Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: >-
+      Mandatory pre-merge re-fetch passed: no inline comments newer than review_addressed timestamp
+      2026-05-19T14:43:17.654Z.
+  - timestamp: '2026-05-19T14:44:06.824Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+task_title: Capture Codex JSONL fixtures for parser test corpus (FR-40)
+task_url: https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40

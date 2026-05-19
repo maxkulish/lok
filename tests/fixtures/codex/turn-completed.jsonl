@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"019e4096-182c-7013-ab7b-1ad4216746e2"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"fixture happy path"}}
+{"type":"turn.completed","usage":{"input_tokens":23057,"cached_input_tokens":7552,"output_tokens":7,"reasoning_output_tokens":0}}
