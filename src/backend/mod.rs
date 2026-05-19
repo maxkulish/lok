@@ -109,25 +109,73 @@ pub struct TokenUsage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    /// Tokens served from prompt cache (Anthropic `cache_read_input_tokens`,
+    /// Codex `cached_input_tokens`). `None` when the backend does not report it.
+    /// NOT included in `total_tokens`; surfaced separately so cache savings are
+    /// visible to run summary / JSON output.
+    ///
+    /// **Note**: This value is reported directly by the upstream API and may
+    /// exceed `prompt_tokens` in edge cases (e.g. server-side caching on a
+    /// different message). It is stored as-reported; no validation is applied.
+    pub cached_tokens: Option<u32>,
+    /// Reasoning / thinking tokens billed in addition to completion
+    /// (Codex `reasoning_output_tokens`, o-series). `None` when not reported.
+    /// NOT included in `total_tokens`.
+    pub reasoning_tokens: Option<u32>,
 }
 
 impl TokenUsage {
     /// Construct a `TokenUsage` from prompt and completion counts, computing `total_tokens`
     /// via `saturating_add` so that `u32::MAX + 1` clamps to `u32::MAX` instead of panicking.
+    ///
+    /// `cached_tokens` and `reasoning_tokens` default to `None`; use [`with_cached`](Self::with_cached)
+    /// and [`with_reasoning`](Self::with_reasoning) to set them.
     pub fn new(prompt_tokens: u32, completion_tokens: u32) -> Self {
         Self {
             prompt_tokens,
             completion_tokens,
             total_tokens: prompt_tokens.saturating_add(completion_tokens),
+            cached_tokens: None,
+            reasoning_tokens: None,
         }
     }
 
+    /// Set `cached_tokens`. Consumes `self` for use in method-chaining
+    /// construction patterns (e.g. `TokenUsage::new(p, c).with_cached(Some(40))`).
+    #[allow(dead_code)]
+    pub fn with_cached(mut self, cached: Option<u32>) -> Self {
+        self.cached_tokens = cached;
+        self
+    }
+
+    /// Set `reasoning_tokens`. Consumes `self` for use in method-chaining
+    /// construction patterns.
+    #[allow(dead_code)]
+    pub fn with_reasoning(mut self, reasoning: Option<u32>) -> Self {
+        self.reasoning_tokens = reasoning;
+        self
+    }
+
     pub fn saturating_add(&self, other: &Self) -> Self {
-        Self::new(
-            self.prompt_tokens.saturating_add(other.prompt_tokens),
-            self.completion_tokens
+        Self {
+            prompt_tokens: self.prompt_tokens.saturating_add(other.prompt_tokens),
+            completion_tokens: self
+                .completion_tokens
                 .saturating_add(other.completion_tokens),
-        )
+            total_tokens: self.total_tokens.saturating_add(other.total_tokens),
+            cached_tokens: sum_opt(self.cached_tokens, other.cached_tokens),
+            reasoning_tokens: sum_opt(self.reasoning_tokens, other.reasoning_tokens),
+        }
+    }
+}
+
+/// Saturating addition for `Option<u32>`: `None` + `None` = `None`,
+/// `Some(x)` + `None` = `Some(x)`, `Some(x)` + `Some(y)` = `Some(x.saturating_add(y))`.
+fn sum_opt(a: Option<u32>, b: Option<u32>) -> Option<u32> {
+    match (a, b) {
+        (None, None) => None,
+        (Some(x), None) | (None, Some(x)) => Some(x),
+        (Some(x), Some(y)) => Some(x.saturating_add(y)),
     }
 }
 
@@ -815,6 +863,110 @@ mod tests {
     }
 
     #[test]
+    fn test_token_usage_new_defaults_new_optionals_to_none() {
+        let usage = TokenUsage::new(10, 20);
+        assert_eq!(usage.cached_tokens, None);
+        assert_eq!(usage.reasoning_tokens, None);
+    }
+
+    #[test]
+    fn test_token_usage_default_is_all_zero_and_none() {
+        let usage = TokenUsage::default();
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+        assert_eq!(usage.total_tokens, 0);
+        assert_eq!(usage.cached_tokens, None);
+        assert_eq!(usage.reasoning_tokens, None);
+    }
+
+    #[test]
+    fn test_token_usage_with_cached_sets_field() {
+        let usage = TokenUsage::new(10, 20).with_cached(Some(7));
+        assert_eq!(usage.cached_tokens, Some(7));
+        assert_eq!(usage.prompt_tokens, 10);
+    }
+
+    #[test]
+    fn test_token_usage_with_reasoning_sets_field() {
+        let usage = TokenUsage::new(10, 20).with_reasoning(Some(13));
+        assert_eq!(usage.reasoning_tokens, Some(13));
+        assert_eq!(usage.completion_tokens, 20);
+    }
+
+    #[test]
+    fn test_token_usage_with_cached_none_is_idempotent() {
+        let usage = TokenUsage::new(10, 20)
+            .with_cached(Some(7))
+            .with_cached(None);
+        assert_eq!(usage.cached_tokens, None);
+    }
+
+    #[test]
+    fn test_token_usage_total_excludes_cached_and_reasoning() {
+        let usage = TokenUsage::new(100, 50)
+            .with_cached(Some(40))
+            .with_reasoning(Some(20));
+        assert_eq!(usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn test_token_usage_saturating_add_folds_optionals() {
+        let a = TokenUsage::new(10, 20).with_cached(Some(5));
+        let b = TokenUsage::new(3, 4).with_cached(Some(7));
+        let sum = a.saturating_add(&b);
+        assert_eq!(sum.cached_tokens, Some(12));
+
+        let sum_none_left = a.saturating_add(&TokenUsage::new(1, 2));
+        assert_eq!(sum_none_left.cached_tokens, Some(5));
+
+        let sum_none_right = TokenUsage::new(1, 2).saturating_add(&a);
+        assert_eq!(sum_none_right.cached_tokens, Some(5));
+
+        let sum_none_none = TokenUsage::new(1, 2).saturating_add(&TokenUsage::new(3, 4));
+        assert_eq!(sum_none_none.cached_tokens, None);
+
+        // reasoning_tokens follows same logic
+        let ra = TokenUsage::new(10, 20).with_reasoning(Some(5));
+        let rb = TokenUsage::new(3, 4).with_reasoning(Some(7));
+        assert_eq!(ra.saturating_add(&rb).reasoning_tokens, Some(12));
+
+        let rsum_none_left = ra.saturating_add(&TokenUsage::new(1, 2));
+        assert_eq!(rsum_none_left.reasoning_tokens, Some(5));
+
+        let rsum_none_right = TokenUsage::new(1, 2).saturating_add(&ra);
+        assert_eq!(rsum_none_right.reasoning_tokens, Some(5));
+
+        let rsum_none_none = TokenUsage::new(1, 2).saturating_add(&TokenUsage::new(3, 4));
+        assert_eq!(rsum_none_none.reasoning_tokens, None);
+    }
+
+    #[test]
+    fn test_token_usage_saturating_add_clamps_optional_overflow() {
+        let a = TokenUsage::new(0, 0).with_cached(Some(u32::MAX));
+        let sum = a.saturating_add(&TokenUsage::new(0, 0).with_cached(Some(1)));
+        assert_eq!(sum.cached_tokens, Some(u32::MAX));
+
+        let ra = TokenUsage::new(0, 0).with_reasoning(Some(u32::MAX));
+        let rsum = ra.saturating_add(&TokenUsage::new(0, 0).with_reasoning(Some(1)));
+        assert_eq!(rsum.reasoning_tokens, Some(u32::MAX));
+    }
+
+    #[test]
+    fn test_token_usage_saturating_add_preserves_total_invariant() {
+        let a = TokenUsage::new(10, 20);
+        let b = TokenUsage::new(3, 4)
+            .with_cached(Some(1))
+            .with_reasoning(Some(2));
+        let sum = a.saturating_add(&b);
+        // total_tokens is prompt + completion only; cached/reasoning don't leak in
+        assert_eq!(sum.prompt_tokens, 13);
+        assert_eq!(sum.completion_tokens, 24);
+        assert_eq!(sum.total_tokens, 37);
+        assert_eq!(sum.cached_tokens, Some(1));
+        assert_eq!(sum.reasoning_tokens, Some(2));
+    }
+
+    #[test]
     fn test_query_output_from_text_populates_backend_and_duration() {
         let output = QueryOutput::from_text("ok".to_string(), "claude", Duration::from_millis(100));
         assert_eq!(output.backend, "claude");
@@ -860,6 +1012,7 @@ mod tests {
                 prompt_tokens: 5,
                 completion_tokens: 10,
                 total_tokens: 15,
+                ..Default::default()
             })
         );
     }

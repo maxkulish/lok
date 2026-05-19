@@ -1,0 +1,344 @@
+task_id: CLO-378
+task_type: development
+classification_reason: >-
+  Title "FR-25b: extend TokenUsage..." is a feature extension to add two new Option<u32> fields to TokenUsage. No
+  specification/operational signals present in title, description, or labels. Label is "Feature", not "[spec]" or
+  "[ops]".
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Personal-health
+  status_at_start: Backlog
+  blocks:
+    - CLO-382
+    - CLO-381
+  blocked_by: []
+  branch_suggested: kmamemo/clo-378-fr-25b-extend-tokenusage-with-cached_tokens-reasoning_tokens
+  priority: High
+  branch_actual: feat/clo-378-tokenusage-extension
+workflow:
+  current_phase: pr
+  status: active
+  created_at: '2026-05-19T19:45:48.048Z'
+  updated_at: '2026-05-19T20:33:39.111Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: >-
+      Minimal struct extension — add cached_tokens/reasoning_tokens to TokenUsage, keep new() defaulting to None, fix 1
+      struct-literal test
+    approaches_identified: 3
+    approved: true
+    baseline_score: 9
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-378.md
+    prd_created: false
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-378-tokenusage-extension.md
+    discovery_context_used: true
+    draft_ready: true
+    draft_source: claude-designer
+    assumptions:
+      - confidence: high
+        text: >-
+          Option<u32> derives Debug, Clone, Default, PartialEq, Eq correctly under the existing struct-level
+          #[derive(...)]
+        verification: standard library guarantee; cargo build will fail loudly otherwise
+      - confidence: high
+        text: >-
+          All 13 construction sites enumerated in the discovery report are exhaustive. Only src/backend/mod.rs:859-862
+          uses a struct literal that omits ..Default::default()
+        verification: pre-implementation rerun of rg 'TokenUsage\s*\{' and rg 'TokenUsage::(new|default)'
+      - confidence: high
+        text: total_tokens semantics stay prompt + completion. PRD §4 FR-25b states this explicitly; rs-wisper relies on it
+        verification: read PRD line 192 and existing test_token_usage_new_computes_total
+      - confidence: medium
+        text: >-
+          rs-wisper consumes TokenUsage only by reading existing fields and does not destructure with an exhaustive
+          struct pattern
+        verification: grep rs-wisper for TokenUsage use; if it pattern-matches exhaustively, add new fields there (still additive)
+      - confidence: medium
+        text: >-
+          saturating_add is only called from within lok during cross-step aggregation. No external caller depends on its
+          current 2-field behavior
+        verification: rg 'TokenUsage::saturating_add|usage\.saturating_add|\.saturating_add\(&'
+      - confidence: low
+        text: >-
+          Backends that report a single combined cache hits count can fit it into cached_tokens without losing
+          information needed by FR-28
+        verification: revisit when FR-25 (Codex) and FR-27a (Claude CLI) land
+    assumptions_surfaced: true
+    applied_suggestions:
+      - 'P2: doc comment on cached_tokens about exceeding prompt_tokens edge case'
+      - 'P3: doc comment on with_cached clarifying consuming-self semantics'
+      - 'P4: explicit test for saturating_add total_tokens invariant with mismatched new fields'
+    flagged_suggestions: []
+    review_completed: true
+    review_gemini: docs/reviews/clo-378-review-gemini.md
+    review_synthesis: docs/reviews/clo-378-review-synthesis.md
+    review_verdict: approve
+    token_usage:
+      - recorded_at: '2026-05-19T19:55:41.326Z'
+        provider: gemini
+        model: gemini-3.1-pro-preview
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-gemini-manual-fallback
+    human_review_completed: true
+    finalized: true
+  plan:
+    status: complete
+    approved: true
+    plan_file: docs/plans/clo-378-tokenusage-extension.md
+  implement:
+    status: complete
+    commits:
+      - d9d678b
+      - 2fe3945
+      - 1e376a6
+      - db3ed70
+    last_phase_completed: ST4
+    assumption_outcomes:
+      - evidence: cargo build + cargo test pass; derive macros compile TokenUsage with Option<u32> fields
+        outcome: held
+        text: >-
+          Option<u32> derives Debug, Clone, Default, PartialEq, Eq correctly under the existing struct-level
+          #[derive(...)]
+      - evidence: cargo build passes across all targets; no compile errors from other struct literals
+        outcome: held
+        text: >-
+          All 13 construction sites enumerated in the discovery report are exhaustive. Only src/backend/mod.rs:859-862
+          uses a struct literal that omits ..Default::default()
+      - evidence: >-
+          src/backend/mod.rs::tests::test_token_usage_total_excludes_cached_and_reasoning +
+          test_token_usage_saturating_add_preserves_total_invariant pass
+        outcome: held
+        text: total_tokens semantics stay prompt + completion. PRD §4 FR-25b states this explicitly; rs-wisper relies on it
+      - evidence: >-
+          rs-wisper is external to this repo; not available locally for verification. Design flags this as a
+          coordination item for when rs-wisper bumps lok.
+        outcome: untested
+        text: >-
+          rs-wisper consumes TokenUsage only by reading existing fields and does not destructure with an exhaustive
+          struct pattern
+      - evidence: >-
+          rg shows callers only in src/backend/mod.rs (tests), src/consensus.rs:109, src/workflow.rs:1802,2121 — all
+          internal
+        outcome: held
+        text: >-
+          saturating_add is only called from within lok during cross-step aggregation. No external caller depends on its
+          current 2-field behavior
+      - evidence: >-
+          Revisit when FR-25 (Codex, CLO-381) and FR-27a (Claude CLI) land — backend-specific extraction not wired yet
+          per non-goals
+        outcome: untested
+        text: >-
+          Backends that report a single combined cache hits count can fit it into cached_tokens without losing
+          information needed by FR-28
+    assumptions_revalidated: true
+    codex_report: docs/reviews/clo-378-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/clo-378-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-378-validation-synthesis.md
+    validation_synthesis_verdict: PASS
+    token_usage:
+      - recorded_at: '2026-05-19T20:32:34.115Z'
+        provider: codex
+        model: gpt-5.5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-05-19T20:32:34.115Z'
+        provider: gemini
+        model: gemini-3.1-pro-preview
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-gemini
+      - recorded_at: '2026-05-19T20:32:34.115Z'
+        provider: claude
+        model: claude-opus-4
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
+      - recorded_at: '2026-05-19T20:32:34.115Z'
+        provider: claude
+        model: claude-opus-4
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-fix-iteration
+  pr:
+    status: in_progress
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-19T19:45:48.048Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-378 as development
+  - timestamp: '2026-05-19T19:46:18.709Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: Title "FR-25b: extend TokenUsage..." is a feature extension to add two new Option<u32>
+      fields to TokenUsage. No specification/operational signals present in title, description, or labels. Label is
+      "Feature", not "[spec]" or "[ops]".
+  - timestamp: '2026-05-19T19:46:59.117Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      PROJECT.md/ROADMAP.md synced via /project:sync CLO-378 --start. Added to Active Work, added to Phase 10 as In
+      Progress, Phase 10 summary updated to 5/4 In Progress.
+  - timestamp: '2026-05-19T19:47:01.564Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-19T19:47:07.388Z'
+    action: discovery_started
+    phase: discovery
+    details: Starting discovery phase for CLO-378
+  - timestamp: '2026-05-19T19:47:15.138Z'
+    action: prd_exists
+    phase: discovery
+    details: >-
+      Existing PRD at docs/prds/prd-phase-2-predictable-cli-execution-v5.md covers FR-25b in §4 FR Group: Token & Usage
+      Observability. PRD §9 Release Plan step 4 confirms TokenUsage extension sequencing.
+  - timestamp: '2026-05-19T19:47:21.549Z'
+    action: problem_framed
+    phase: discovery
+    details: >-
+      Problem framed: TokenUsage needs 2 new Option<u32> fields for cached_tokens and reasoning_tokens. PRD already
+      exists and fully specifies the requirements.
+  - timestamp: '2026-05-19T19:47:45.506Z'
+    action: discovery_report_complete
+    phase: discovery
+    details: >-
+      Discovery complete for CLO-378. Verified: (a) TokenUsage struct at src/backend/mod.rs:108, (b) all 14 construction
+      sites using TokenUsage::new() or default() — only 1 struct literal breaks, (c) PRD already fully specifies FR-25b,
+      (d) 0 killer assumptions. Recommended: Approach 1 (minimal extension).
+  - timestamp: '2026-05-19T19:48:33.089Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-378-tokenusage-extension checked out from d0e131c (main HEAD)
+  - timestamp: '2026-05-19T19:49:05.401Z'
+    action: discovery_approved
+    phase: discovery
+    details: 'Approach: Minimal struct extension. Baseline 9/10. 3 approaches considered. 0 discovery debt.'
+  - timestamp: '2026-05-19T19:49:09.261Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-19T19:53:00.555Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated by lok designer at docs/designs/clo-378-tokenusage-extension.md (245 lines, 9 sections passed
+      verification)
+  - timestamp: '2026-05-19T19:53:11.883Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: >-
+      6 assumptions surfaced (high: 3, medium: 2, low: 1). See design doc § Assumptions. Cites clo-371 lesson L1 for
+      carrying-struct construction discipline.
+  - timestamp: '2026-05-19T19:55:41.326Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: approve. 3 suggestions applied (P2: cached_tokens doc comment, P3: with_cached doc comment, P4:
+      saturating_add total_tokens invariant test). 0 flagged.
+  - timestamp: '2026-05-19T19:56:48.429Z'
+    action: design_human_review_complete
+    phase: design
+    details: Plannotator annotate session closed with no annotations.
+  - timestamp: '2026-05-19T19:57:01.685Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design ready for plan phase. Single-file change (src/backend/mod.rs), 10 new unit tests, 0 new deps, purely
+      additive.
+  - timestamp: '2026-05-19T19:57:09.585Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-19T20:14:25.375Z'
+    action: plan_created
+    phase: plan
+    details: >-
+      Plan with 5 sub-tasks at docs/plans/clo-378-tokenusage-extension.md: ST1 struct+constructor, ST2 builder methods,
+      ST3 saturating_add+sum_opt, ST4 test fix+10 new tests, ST5 pre-merge gate
+  - timestamp: '2026-05-19T20:14:30.202Z'
+    action: plan_approved
+    phase: plan
+    details: >-
+      Plan approved. 5 sub-tasks queued (ST1: struct+constructor, ST2: builder, ST3: saturating_add, ST4: tests, ST5:
+      gate). All S/M sized.
+  - timestamp: '2026-05-19T20:14:32.606Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-19T20:14:44.522Z'
+    action: implementation_started
+    phase: implement
+    details: Starting implementation of CLO-378 plan with 5 sub-tasks
+  - timestamp: '2026-05-19T20:15:34.613Z'
+    action: phase_completed
+    phase: implement
+    details: 'ST1 committed d9d678b: added cached_tokens and reasoning_tokens fields to TokenUsage struct + constructor'
+  - timestamp: '2026-05-19T20:15:59.997Z'
+    action: phase_completed
+    phase: implement
+    details: 'ST2 committed 2fe3945: added with_cached and with_reasoning builder methods'
+  - timestamp: '2026-05-19T20:17:55.714Z'
+    action: phase_completed
+    phase: implement
+    details: 'ST3 committed 1e376a6: extended saturating_add with sum_opt helper + fixed struct-literal test'
+  - timestamp: '2026-05-19T20:19:16.161Z'
+    action: phase_completed
+    phase: implement
+    details: 'ST4 committed db3ed70: added 10 unit tests for TokenUsage extension'
+  - timestamp: '2026-05-19T20:24:10.559Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST5 landed: pre-merge gate. fmt+clippy+test green. cargo build --features bedrock, cargo doc --no-deps, and cargo
+      run --bin lok -- --help all pass.
+  - timestamp: '2026-05-19T20:24:46.002Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      6 assumptions reviewed. held: 4, violated: 0, untested: 2. No violations — implementation matches design. A4
+      (rs-wisper destructure) and A6 (cache hits semantics) are coordination items tracked for downstream FRs.
+  - timestamp: '2026-05-19T20:24:51.448Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All 5 sub-tasks landed. ST1: struct+constructor, ST2: builder methods, ST3: saturating_add+sum_opt, ST4: 10
+      tests+struct literal fix, ST5: fmt+clippy+test+bedrock+doc+help all green. 4 commits.
+  - timestamp: '2026-05-19T20:32:34.115Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: PASS_WITH_NOTES. Gemini: REVIEW_FAILED (tooling). Synthesis: PASS after fix iteration. Applied: (1)
+      completed reasoning_tokens test matrix with 3 assertions; (2) investigated dead_code suppression on builder
+      methods — confirmed necessary for binary crate builds, retained with explanation. pre-merge gate re-runs green.
+  - timestamp: '2026-05-19T20:32:49.536Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-19T20:33:39.111Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + clippy --tests + test all pass.'
+task_title: 'FR-25b: extend TokenUsage with cached_tokens + reasoning_tokens'
+task_url: https://linear.app/cloud-ai/issue/CLO-378/fr-25b-extend-tokenusage-with-cached-tokens-reasoning-tokens
