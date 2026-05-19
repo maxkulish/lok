@@ -21,9 +21,9 @@ linear:
   branch_actual: feat/clo-373-codex
 workflow:
   current_phase: complete
-  status: active
+  status: complete
   created_at: '2026-05-19T10:39:32.397Z'
-  updated_at: '2026-05-19T14:44:06.824Z'
+  updated_at: '2026-05-19T14:46:37.734Z'
 phases:
   discovery:
     status: complete
@@ -272,8 +272,17 @@ phases:
     pr_number: 21
     ci_passed: true
     reviews_addressed: true
+    merged_at: '2026-05-19T14:44:34Z'
+    merge_commit: 11cf1c9c467fd726928ab8478e9244b13ab4ae74
   complete:
-    status: pending
+    status: complete
+    merged_at: '2026-05-19T14:44:34Z'
+    merge_commit: 11cf1c9c467fd726928ab8478e9244b13ab4ae74
+    aggregation_files_updated: true
+    lessons_learned:
+      - L1 - Do not assume every item.completed has a paired item.started
+      - L2 - Scrub gates must distinguish credential tokens from usage-token fields
+    lessons_file: .pi/lessons/clo-373-codex-fixtures-lessons.md
 history:
   - timestamp: '2026-05-19T10:39:32.397Z'
     action: workflow_started
@@ -542,5 +551,30 @@ history:
     action: phase_transition
     phase: pr
     details: Transitioned from pr to complete
+  - timestamp: '2026-05-19T14:44:52.656Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #21 merged. Merge commit 11cf1c9c467fd726928ab8478e9244b13ab4ae74.'
+  - timestamp: '2026-05-19T14:44:56.917Z'
+    action: pr_merged
+    phase: pr
+    details: Merge commit 11cf1c9c467fd726928ab8478e9244b13ab4ae74
+  - timestamp: '2026-05-19T14:45:51.442Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-373 --complete; PROJECT moved CLO-373 to
+      Recently Completed, ROADMAP marked CLO-373 Done and Phase 10 complete, DEPENDENCIES had no CLO-373 blocker rows to
+      change.
+  - timestamp: '2026-05-19T14:46:28.441Z'
+    action: lessons_extracted
+    phase: complete
+    details: '2 lessons recorded. File: .pi/lessons/clo-373-codex-fixtures-lessons.md'
+  - timestamp: '2026-05-19T14:46:37.734Z'
+    action: workflow_complete
+    phase: complete
+    details: >-
+      Task CLO-373 fully completed. PR #21 merged. FR-40 Codex fixture corpus is on main for downstream FR-3a parser
+      work.
 task_title: Capture Codex JSONL fixtures for parser test corpus (FR-40)
 task_url: https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40

@@ -15,7 +15,7 @@
 | Phase 7: MiniJinja Templates | 2 | 2 | Complete |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
-| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 4 | 3 | In Progress |
+| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 4 | 4 | Complete |
 
 ## Phase 2: Validation Pipeline
 
@@ -91,4 +91,4 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 release plan
 | [CLO-370](https://linear.app/cloud-ai/issue/CLO-370) | Add `usage` field to StepResult for end-to-end token observability (FR-25a) | Done | CLO-207 |
 | [CLO-371](https://linear.app/cloud-ai/issue/CLO-371) | Migrate `Backend::query` to `StepContext` + add async `health_check` + sweep Step call sites (FR-19a/19b/20a) | Done | CLO-370 |
 | [CLO-372](https://linear.app/cloud-ai/issue/CLO-372) | Thread `StepContext` through non-Step `Backend::query` call sites (FR-20b) | Done | CLO-371 |
-| [CLO-373](https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40) | Capture Codex JSONL fixtures for parser test corpus (FR-40) | In Progress | CLO-372 |
+| [CLO-373](https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40) | Capture Codex JSONL fixtures for parser test corpus (FR-40) | Done | CLO-372 |
