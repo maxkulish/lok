@@ -2,6 +2,7 @@
 mod bedrock;
 mod claude;
 mod codex;
+mod codex_event;
 mod context;
 mod gemini;
 mod ollama;

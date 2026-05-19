@@ -71,25 +71,11 @@ impl CodexBackend {
         argv
     }
 
-    fn parse_output(&self, output: &str) -> String {
-        // Parse JSON output from codex
-        // Look for agent_message in item.completed events
-        for line in output.lines() {
-            if line.contains("\"type\":\"item.completed\"") && line.contains("agent_message") {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                    if let Some(text) = json
-                        .get("item")
-                        .and_then(|i| i.get("text"))
-                        .and_then(|t| t.as_str())
-                    {
-                        return text.to_string();
-                    }
-                }
-            }
-        }
-
-        // Fallback: return raw output
-        output.to_string()
+    fn parse_output(
+        &self,
+        output: &str,
+    ) -> std::result::Result<super::codex_event::ParsedTurn, super::BackendError> {
+        super::codex_event::parse_jsonl_stream(output)
     }
 }
 
@@ -133,11 +119,28 @@ impl super::Backend for CodexBackend {
 
         let exit_code = output.status.code().unwrap_or(-1);
         let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout);
 
         if !output.status.success() {
+            // Try to extract a structured error from the JSONL stream before falling back
+            // to stderr. Codex may emit turn.failed or error events on stdout even when
+            // the process exits non-zero (e.g. bad model, rate limited).
+            if let Err(jsonl_err) = self.parse_output(&stdout) {
+                let propagated = match jsonl_err {
+                    super::BackendError::ExecutionFailed { message, .. } => {
+                        super::BackendError::ExecutionFailed {
+                            message,
+                            exit_code: Some(exit_code),
+                        }
+                    }
+                    other => other,
+                };
+                return Err(propagated);
+            }
+
+            // JSONL parsed successfully but process still exited non-zero — fall back to stderr
             let msg = format!("Codex failed: {}", stderr_str);
             let err = super::BackendError::from(anyhow::anyhow!("{}", msg));
-            // Preserve exit_code that From<anyhow::Error> would discard
             let err = if let super::BackendError::ExecutionFailed { message, .. } = err {
                 super::BackendError::ExecutionFailed {
                     message,
@@ -149,16 +152,16 @@ impl super::Backend for CodexBackend {
             return Err(err);
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let parsed_stdout = self.parse_output(&stdout);
+        let parsed = self.parse_output(&stdout)?;
         Ok(super::QueryOutput::from_process(
-            parsed_stdout,
+            parsed.agent_message.unwrap_or_default(),
             stderr_str,
             exit_code,
             "codex",
             start.elapsed(),
         )
-        .with_model(effective_model))
+        .with_model(effective_model)
+        .with_usage(parsed.usage))
     }
 
     fn is_available(&self) -> bool {
