@@ -27,6 +27,7 @@ name = "gemini_review"
 timeout = 300000
 retries = 3
 continue_on_error = true
+depends_on = ["health_check"]
 shell = """
 # Skip if health check showed Gemini unreachable
 if echo '{{ steps.health_check.output }}' | grep -q 'gemini=false'; then
@@ -85,6 +86,7 @@ name = "ollama_review"
 timeout = 300000
 retries = 3
 continue_on_error = true
+depends_on = ["health_check"]
 shell = """
 # Skip if health check showed Ollama unreachable
 if echo '{{ steps.health_check.output }}' | grep -q 'ollama=false'; then
@@ -293,14 +295,18 @@ cat >> docs/reviews/{{ arg.2 }}-review-ollama.md << 'ENDOLLAMA'
 {{ steps.ollama_review.output }}
 ENDOLLAMA
 
-# Write Claude fallback review only if it ran
-FALLBACK_OUTPUT='{{ steps.claude_fallback.output }}'
-if [ -n "$FALLBACK_OUTPUT" ] && ! echo "$FALLBACK_OUTPUT" | grep -q 'REVIEW_FAILED'; then
-  printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Claude (fallback)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Note**: External reviewers failed; this is the fallback review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-claude-fallback.md
-  cat >> docs/reviews/{{ arg.2 }}-review-claude-fallback.md << 'ENDFALLBACK'
+# Write Claude fallback review only if it ran. Stage the rendered output in a
+# temp file first so apostrophes in the review body cannot break out of a bash
+# single-quoted variable.
+FALLBACK_TMP=$(mktemp -t lok-fallback.XXXXXX)
+cat > "$FALLBACK_TMP" << 'ENDFALLBACK'
 {{ steps.claude_fallback.output }}
 ENDFALLBACK
+if [ -s "$FALLBACK_TMP" ] && ! grep -q 'REVIEW_FAILED' "$FALLBACK_TMP"; then
+  printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Claude (fallback)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Note**: External reviewers failed; this is the fallback review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-claude-fallback.md
+  cat "$FALLBACK_TMP" >> docs/reviews/{{ arg.2 }}-review-claude-fallback.md
 fi
+rm -f "$FALLBACK_TMP"
 
 printf '%s\n' '# Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Reviewers**: Gemini 3.1 Pro, Codex/Ollama (glm-5:cloud), Claude (fallback if needed)' '' '---' '' > docs/reviews/{{ arg.2 }}-review-synthesis.md
 cat >> docs/reviews/{{ arg.2 }}-review-synthesis.md << 'ENDSYNTH'
