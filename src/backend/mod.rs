@@ -155,11 +155,25 @@ impl TokenUsage {
     }
 
     pub fn saturating_add(&self, other: &Self) -> Self {
-        Self::new(
-            self.prompt_tokens.saturating_add(other.prompt_tokens),
-            self.completion_tokens
+        Self {
+            prompt_tokens: self.prompt_tokens.saturating_add(other.prompt_tokens),
+            completion_tokens: self
+                .completion_tokens
                 .saturating_add(other.completion_tokens),
-        )
+            total_tokens: self.total_tokens.saturating_add(other.total_tokens),
+            cached_tokens: sum_opt(self.cached_tokens, other.cached_tokens),
+            reasoning_tokens: sum_opt(self.reasoning_tokens, other.reasoning_tokens),
+        }
+    }
+}
+
+/// Saturating addition for `Option<u32>`: `None` + `None` = `None`,
+/// `Some(x)` + `None` = `Some(x)`, `Some(x)` + `Some(y)` = `Some(x.saturating_add(y))`.
+fn sum_opt(a: Option<u32>, b: Option<u32>) -> Option<u32> {
+    match (a, b) {
+        (None, None) => None,
+        (Some(x), None) | (None, Some(x)) => Some(x),
+        (Some(x), Some(y)) => Some(x.saturating_add(y)),
     }
 }
 
@@ -892,6 +906,7 @@ mod tests {
                 prompt_tokens: 5,
                 completion_tokens: 10,
                 total_tokens: 15,
+                ..Default::default()
             })
         );
     }
