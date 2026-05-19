@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-05-18
+**Last Updated**: 2026-05-19
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-373](https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40) | Capture Codex JSONL fixtures for parser test corpus (FR-40) | In Progress | Phase 10 | - |
 
 ## Up Next (Prioritized Backlog)
 
