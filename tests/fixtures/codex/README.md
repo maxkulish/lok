@@ -24,10 +24,10 @@ Record the exact prompt or a scrubbed equivalent in the table below. Keep stream
 
 | Fixture | Terminal event | Prompt/provenance | Edit status |
 |---|---|---|---|
-| `turn-completed.jsonl` | TBD | TBD | TBD |
-| `turn-failed.jsonl` | TBD | TBD | TBD |
-| `multi-turn-reasoning.jsonl` | TBD | TBD | TBD |
-| `missing-agent-message.jsonl` | TBD | TBD | TBD |
+| `turn-completed.jsonl` | `turn.completed` | Captured with `codex exec --json --ephemeral -s read-only -- "Reply exactly: fixture happy path."` | Byte-for-byte stdout capture. |
+| `turn-failed.jsonl` | `turn.failed` | Captured with `codex exec --json --ephemeral --model definitely-not-a-real-model -- "hi"`; Codex exited 1 and emitted JSONL `error` plus `turn.failed`. | Byte-for-byte stdout capture. |
+| `multi-turn-reasoning.jsonl` | `turn.completed` | Captured with `codex exec --json --ephemeral -s read-only -- "Run pwd. Then think step by step about 17 * 19, but final answer exactly: 323."` | Scrubbed the command output working-directory string from an absolute local path to `<WORKDIR>`. |
+| `missing-agent-message.jsonl` | `turn.completed` | Derived from the real `turn-completed.jsonl` capture after two natural attempts (`""` and `"Complete successfully without sending any final answer."`) still emitted `agent_message` items. | Hand-trimmed the single final `item.completed` line whose nested `item.type` was `agent_message`; Codex 0.130.0 did not emit a paired `item.started` line for that agent message in the source stream. |
 
 ## Scrub checklist
 
