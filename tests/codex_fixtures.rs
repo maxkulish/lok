@@ -41,8 +41,9 @@ fn parse_jsonl(name: &str, stream: &str) -> Vec<Value> {
         .enumerate()
         .filter(|(_, line)| !line.trim().is_empty())
         .map(|(index, line)| {
-            let event = serde_json::from_str::<Value>(line)
-                .unwrap_or_else(|error| panic!("{name}: line {} is not valid JSON: {error}", index + 1));
+            let event = serde_json::from_str::<Value>(line).unwrap_or_else(|error| {
+                panic!("{name}: line {} is not valid JSON: {error}", index + 1)
+            });
             let event_type = event
                 .get("type")
                 .and_then(Value::as_str)
@@ -141,9 +142,9 @@ fn looks_like_email(line: &str) -> bool {
             };
             !local.is_empty()
                 && domain.contains('.')
-                && domain
-                    .chars()
-                    .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-'))
+                && domain.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '.' | '-')
+                })
         })
 }
 
