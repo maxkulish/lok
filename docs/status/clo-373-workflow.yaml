@@ -20,10 +20,10 @@ linear:
   branch_suggested: kmamemo/clo-373-capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40
   branch_actual: feat/clo-373-codex
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-05-19T10:39:32.397Z'
-  updated_at: '2026-05-19T14:20:43.597Z'
+  updated_at: '2026-05-19T14:34:52.320Z'
 phases:
   discovery:
     status: complete
@@ -180,7 +180,7 @@ phases:
     plan_file: docs/plans/clo-373-codex-jsonl-fixtures.md
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
       - eac2930
       - a078b8b
@@ -188,6 +188,7 @@ phases:
       - a4e1d7b
       - f2f3cba
       - 96e44fc
+      - 327501b
     assumptions_revalidated: true
     assumption_outcomes:
       - text: Codex CLI 0.130.0 is the recorded version for the captured streams.
@@ -239,8 +240,34 @@ phases:
         evidence: >-
           wc -c tests/fixtures/codex/*.jsonl reported 1,790 bytes total; size caps are asserted in
           tests/codex_fixtures.rs:16-17 and fixtures_do_not_exceed_reviewable_size_caps passed.
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-373-codex-validation.md
+    gemini_validation_report: docs/reviews/clo-373-gemini-validation.md
+    validation_synthesis_report: docs/reviews/clo-373-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_fix_iteration_count: 1
+    token_usage:
+      - recorded_at: '2026-05-19T14:33:32.932Z'
+        provider: codex
+        model: gpt-5.5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-05-19T14:33:32.932Z'
+        provider: gemini
+        model: gemini-2.5-pro
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-gemini
+      - recorded_at: '2026-05-19T14:33:32.932Z'
+        provider: claude
+        model: unknown via lok pre-pr-validation synthesis
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
   pr:
-    status: pending
+    status: in_progress
   complete:
     status: pending
 history:
@@ -457,5 +484,29 @@ history:
     details: >-
       All sub-tasks landed. fmt+clippy+test green. 6 commits. One design assumption diverged in documented provenance:
       missing-agent-message source stream had no paired item.started for the trimmed agent message.
+  - timestamp: '2026-05-19T14:33:04.014Z'
+    action: validation_fix_iteration_applied
+    phase: implement
+    details: >-
+      Applied the single synthesis-approved fix iteration: reverted out-of-scope workflow/template/Cargo diff to main,
+      tightened token-looking scrub gate/README regex, stripped discovery trailing whitespace, appended synthesis
+      re-validation, and re-ran cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --test
+      codex_fixtures successfully. Commit 327501b.
+  - timestamp: '2026-05-19T14:33:32.932Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL. Gemini: PASS_WITH_NOTES. Synthesis: PASS_WITH_NOTES. Single synthesis-approved fix iteration applied;
+      full cargo fmt --check && cargo clippy -- -D warnings && cargo test is green.
+  - timestamp: '2026-05-19T14:34:04.949Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-19T14:34:52.320Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate green: cargo fmt --check, cargo clippy -- -D warnings, cargo clippy --tests, and cargo test all
+      pass
 task_title: Capture Codex JSONL fixtures for parser test corpus (FR-40)
 task_url: https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40
