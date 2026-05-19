@@ -109,16 +109,34 @@ pub struct TokenUsage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    /// Tokens served from prompt cache (Anthropic `cache_read_input_tokens`,
+    /// Codex `cached_input_tokens`). `None` when the backend does not report it.
+    /// NOT included in `total_tokens`; surfaced separately so cache savings are
+    /// visible to run summary / JSON output.
+    ///
+    /// **Note**: This value is reported directly by the upstream API and may
+    /// exceed `prompt_tokens` in edge cases (e.g. server-side caching on a
+    /// different message). It is stored as-reported; no validation is applied.
+    pub cached_tokens: Option<u32>,
+    /// Reasoning / thinking tokens billed in addition to completion
+    /// (Codex `reasoning_output_tokens`, o-series). `None` when not reported.
+    /// NOT included in `total_tokens`.
+    pub reasoning_tokens: Option<u32>,
 }
 
 impl TokenUsage {
     /// Construct a `TokenUsage` from prompt and completion counts, computing `total_tokens`
     /// via `saturating_add` so that `u32::MAX + 1` clamps to `u32::MAX` instead of panicking.
+    ///
+    /// `cached_tokens` and `reasoning_tokens` default to `None`; use [`with_cached`](Self::with_cached)
+    /// and [`with_reasoning`](Self::with_reasoning) to set them.
     pub fn new(prompt_tokens: u32, completion_tokens: u32) -> Self {
         Self {
             prompt_tokens,
             completion_tokens,
             total_tokens: prompt_tokens.saturating_add(completion_tokens),
+            cached_tokens: None,
+            reasoning_tokens: None,
         }
     }
 
