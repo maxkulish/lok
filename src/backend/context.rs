@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
 use std::time::Duration;
@@ -55,8 +56,8 @@ pub struct HealthStatus;
 
 /// Sandbox permission levels for subprocess backends.
 /// Maps to Codex `-s` and Gemini `--approval-mode`.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum SandboxMode {
     ReadOnly,
     WorkspaceWrite,
@@ -117,5 +118,25 @@ mod tests {
         // Verify StepContext can be passed by value (e.g. through RetryExecutor)
         fn assert_copy<T: Copy>() {}
         assert_copy::<StepContext>();
+    }
+
+    #[test]
+    fn test_sandbox_mode_serde_roundtrip() {
+        // Verify kebab-case YAML parsing via JSON (same serde rename rules)
+        let json = r#""read-only""#;
+        let mode: SandboxMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, SandboxMode::ReadOnly);
+
+        let json = r#""workspace-write""#;
+        let mode: SandboxMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, SandboxMode::WorkspaceWrite);
+
+        let json = r#""danger-full-access""#;
+        let mode: SandboxMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, SandboxMode::DangerFullAccess);
+
+        // Round-trip serialize + deserialize
+        let serialized = serde_json::to_value(SandboxMode::ReadOnly).unwrap();
+        assert_eq!(serialized, serde_json::json!("read-only"));
     }
 }

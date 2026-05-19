@@ -37,6 +37,39 @@ impl GeminiBackend {
             .collect::<Vec<_>>()
             .join("\n")
     }
+
+    /// Build the shell command string that `query()` executes. Centralises sandbox/approval-mode
+    /// mapping so tests exercise the same code path as production.
+    fn build_shell_cmd(
+        command: &str,
+        args: &[String],
+        model: Option<&str>,
+        sandbox: Option<super::SandboxMode>,
+        prompt: &str,
+    ) -> String {
+        // Shell-escape each component: wrap in single quotes, escape internal single quotes
+        let escape = |s: &str| s.replace("'", "'\\''");
+        let escaped_command = format!("'{}'", escape(command));
+        let escaped_args = args
+            .iter()
+            .map(|a| format!("'{}'", escape(a)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let escaped_prompt = escape(prompt);
+        let model_flag = model
+            .map(|m| format!(" --model '{}'", escape(m)))
+            .unwrap_or_default();
+        let approval_flag = match sandbox {
+            Some(super::SandboxMode::ReadOnly) => " --approval-mode plan",
+            Some(super::SandboxMode::WorkspaceWrite) => " --approval-mode auto_edit",
+            Some(super::SandboxMode::DangerFullAccess) => " --approval-mode yolo",
+            None => "",
+        };
+        format!(
+            "echo '' | {} {} {}{} '{}'",
+            escaped_command, escaped_args, model_flag, approval_flag, escaped_prompt
+        )
+    }
 }
 
 #[async_trait]
@@ -55,23 +88,19 @@ impl super::Backend for GeminiBackend {
         let cwd = ctx.cwd;
         let model = ctx.model;
 
-        // Gemini CLI requires stdin to be a pipe (not null/tty), so we use shell
-        // to pipe empty input: echo '' | npx @google/gemini-cli 'prompt'
-        let escaped_prompt = prompt.replace("'", "'\\''");
+        // Gemini CLI requires stdin to be a pipe (not null/tty), so we wrap in `sh -c`
+        // and pipe empty stdin: echo '' | npx @google/gemini-cli 'prompt'
         let effective_model: Option<String> = model
             .filter(|m| !m.is_empty())
             .map(String::from)
             .or_else(|| self.default_model.clone());
-        let model_flag = effective_model
-            .as_ref()
-            .map(|m| format!(" --model '{}'", m.replace("'", "'\\''")))
-            .unwrap_or_default();
-        let shell_cmd = format!(
-            "echo '' | {} {}{} '{}'",
+
+        let shell_cmd = Self::build_shell_cmd(
             &self.command,
-            self.args.join(" "),
-            model_flag,
-            escaped_prompt
+            &self.args,
+            effective_model.as_deref(),
+            ctx.sandbox,
+            prompt,
         );
 
         let mut cmd = Command::new("sh");
@@ -121,5 +150,80 @@ impl super::Backend for GeminiBackend {
 
     fn is_available(&self) -> bool {
         which::which(&self.command).is_ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::SandboxMode;
+    use super::GeminiBackend;
+
+    fn args() -> Vec<String> {
+        vec!["@google/gemini-cli".to_string()]
+    }
+
+    #[test]
+    fn gemini_sandbox_none_no_approval_flag() {
+        let cmd = GeminiBackend::build_shell_cmd("npx", &args(), None, None, "hello");
+        assert!(!cmd.contains("--approval-mode"));
+    }
+
+    #[test]
+    fn gemini_sandbox_read_only_adds_plan() {
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &args(),
+            None,
+            Some(SandboxMode::ReadOnly),
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode plan"));
+    }
+
+    #[test]
+    fn gemini_sandbox_workspace_write_adds_auto_edit() {
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &args(),
+            None,
+            Some(SandboxMode::WorkspaceWrite),
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode auto_edit"));
+    }
+
+    #[test]
+    fn gemini_sandbox_danger_adds_yolo() {
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &args(),
+            None,
+            Some(SandboxMode::DangerFullAccess),
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode yolo"));
+    }
+
+    #[test]
+    fn gemini_sandbox_prompt_is_escaped() {
+        let cmd = GeminiBackend::build_shell_cmd("npx", &args(), None, None, "it's fine");
+        assert!(
+            cmd.contains("'\\''"),
+            "expected shell-escaped single quote in: {}",
+            cmd
+        );
+    }
+
+    #[test]
+    fn gemini_model_flag_appended_and_quoted() {
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &args(),
+            Some("gemini-2.5-pro"),
+            Some(SandboxMode::ReadOnly),
+            "hello",
+        );
+        assert!(cmd.contains("--model 'gemini-2.5-pro'"));
+        assert!(cmd.contains("--approval-mode plan"));
     }
 }

@@ -12,5 +12,4 @@
 
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
-| [CLO-372](https://linear.app/cloud-ai/issue/CLO-372) | CLO-371 merged | 2026-05-18 |
 | [CLO-374](https://linear.app/cloud-ai/issue/CLO-374) | CLO-371 merged | 2026-05-18 |

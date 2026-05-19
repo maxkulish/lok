@@ -14,6 +14,7 @@ use crate::apply_verify::{
     Rollback, Verification, VerifyResult,
 };
 use crate::backend;
+use crate::backend::SandboxMode;
 use crate::config::Config;
 use crate::context::{resolve_format_command, resolve_verify_command, CodebaseContext};
 use crate::git_agent;
@@ -158,7 +159,7 @@ impl Workflow {
 
 /// Build a `StepContext` from a `Step` and current workflow defaults.
 ///
-/// History/sandbox/schema/options remain empty until their follow-on CLOs land.
+/// History/schema/options remain empty until their follow-on CLOs land.
 fn step_context<'a>(
     step: &'a Step,
     workflow: &Workflow,
@@ -166,6 +167,7 @@ fn step_context<'a>(
     cwd: &'a Path,
 ) -> backend::StepContext<'a> {
     backend::StepContext {
+        sandbox: step.sandbox,
         timeout: workflow
             .step_timeout(step)
             .map(std::time::Duration::from_millis),
@@ -288,6 +290,13 @@ pub struct Step {
     /// Timeout for this step in milliseconds (default: 120000 = 2 minutes)
     #[serde(default)]
     pub timeout: Option<u64>,
+
+    // Sandbox
+    /// Sandbox mode for subprocess backends (FR-21).
+    /// Controls Codex `-s` and Gemini `--approval-mode`.
+    /// None = backend default (read-only).
+    #[serde(default)]
+    pub sandbox: Option<SandboxMode>,
 
     // Consensus strategy for multi-backend steps
     /// How to combine responses when multiple backends respond
@@ -4019,6 +4028,7 @@ line2"}"#;
                 min_deps_success: None,
                 timeout: None,
                 consensus: None,
+                sandbox: None,
                 validate: None,
             },
             Step {
@@ -4041,6 +4051,7 @@ line2"}"#;
                 min_deps_success: None,
                 timeout: None,
                 consensus: None,
+                sandbox: None,
                 validate: None,
             },
         ];
@@ -4085,6 +4096,7 @@ line2"}"#;
             continue_on_error: None,
             min_deps_success: Some(2), // Requires 2 deps but has none
             timeout: None,
+            sandbox: None,
             consensus: None,
             validate: None,
         }];
@@ -4134,6 +4146,7 @@ line2"}"#;
                 min_deps_success: None,
                 timeout: None,
                 consensus: None,
+                sandbox: None,
                 validate: None,
             },
             Step {
@@ -4156,6 +4169,7 @@ line2"}"#;
                 min_deps_success: None,
                 timeout: None,
                 consensus: None,
+                sandbox: None,
                 validate: None,
             },
         ];
