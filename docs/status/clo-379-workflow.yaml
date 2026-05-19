@@ -18,10 +18,10 @@ linear:
   priority: High
   branch_actual: feat/clo-379-codex-json
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-05-19T19:53:29.331Z'
-  updated_at: '2026-05-19T20:35:33.357Z'
+  updated_at: '2026-05-19T20:53:09.753Z'
 phases:
   discovery:
     status: complete
@@ -91,10 +91,12 @@ phases:
     plan_file: docs/plans/clo-379-event-driven-codex-parser.md
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
       - 4b8489b
       - c64b937
+      - 4e00fd2
+      - acd6334
     assumption_outcomes:
       - confidence: high
         evidence: Turn-completed fixture test at src/backend/codex_event.rs::fixture_turn_completed_returns_happy_path_message
@@ -135,8 +137,15 @@ phases:
         outcome: held
         text: Codex never emits more than one agent_message per turn in current versions.
     assumptions_revalidated: true
+    codex_report: docs/reviews/clo-379-codex-validation.md
+    codex_validated: true
+    codex_verdict: FAIL
+    gemini_validation_report: docs/reviews/clo-379-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-379-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
   pr:
-    status: pending
+    status: in_progress
   complete:
     status: pending
 history:
@@ -230,5 +239,20 @@ history:
     details: >-
       All sub-tasks landed. fmt+clippy+test green. 2 commits. 518 tests pass including 22 codex_event unit tests and 4
       fixture-driven tests.
+  - timestamp: '2026-05-19T20:52:36.381Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL (structured report with 3 findings). Gemini: REVIEW_FAILED (tooling artifact, Gemini CLI refused
+      untrusted directory). Synthesis: PASS_WITH_NOTES. Fix iteration applied: JSONL parsing on non-zero exit +
+      tests/codex_parse_output.rs created. 1053 tests passing.
+  - timestamp: '2026-05-19T20:52:39.848Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-19T20:53:09.753Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + test all pass (1053 tests, 0 errors)'
 task_title: 'FR-3a: event-driven Codex JSONL parser (replace substring match)'
 task_url: https://linear.app/cloud-ai/issue/CLO-379/fr-3a-event-driven-codex-jsonl-parser-replace-substring-match
