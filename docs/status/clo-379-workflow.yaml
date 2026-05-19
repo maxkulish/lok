@@ -1,0 +1,171 @@
+task_id: CLO-379
+task_type: development
+classification_reason: Feature request with implementation scope, acceptance criteria, and mechanical code changes. No spec/ops markers.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  branch_suggested: kmamemo/clo-379-fr-3a-event-driven-codex-jsonl-parser-replace-substring
+  priority: High
+  branch_actual: feat/clo-379-codex-json
+workflow:
+  current_phase: implement
+  status: active
+  created_at: '2026-05-19T19:53:29.331Z'
+  updated_at: '2026-05-19T20:24:05.248Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: Event-driven serde enum
+    approaches_identified: 3
+    approved: true
+    baseline_score: 2
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-379.md
+    prd_created: false
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-379-event-driven-codex-parser.md
+    discovery_context_used: true
+    draft_ready: true
+    draft_source: claude-designer
+    assumptions:
+      - confidence: high
+        text: The four existing fixtures faithfully represent Codex 0.130.0 wire format and exhaust FR-3a event types.
+        verification: cargo test --test codex_fixtures passes; new parser tests consume same files.
+      - confidence: high
+        text: >-
+          Reusing BackendError::ExecutionFailed { message, exit_code: None } for turn.failed and stream error events is
+          the correct mapping.
+        verification: >-
+          Discovery report §Approach 1 recorded this choice; reviewers can flag if Backend variant preferred (see Open
+          questions).
+      - confidence: medium
+        text: >-
+          The PRD's missing-agent_message → BackendError::Parse rule applies when turn.completed is observed but the
+          turn contained no agent_message item.
+        verification: Integration test asserts Err(Parse) for missing-agent-message.jsonl fixture.
+      - confidence: medium
+        text: >-
+          The Codex stream always emits exactly one terminal event per invocation (turn.completed, turn.failed, or
+          top-level error).
+        verification: Existing fixture coverage; synthetic truncated unit test covers stream-end-without-terminal.
+      - confidence: low
+        text: >-
+          Tool-related items and reasoning items will continue to share the item.completed envelope with a type
+          discriminator on the inner item object.
+        verification: >-
+          multi-turn-reasoning.jsonl shows command_execution items; CodexItem::Other #[serde(other)] arm is
+          forward-compat hatch.
+      - confidence: low
+        text: Codex never emits more than one agent_message per turn in current versions.
+        verification: Covered by synthetic unit test for defensive last-wins behavior.
+    assumptions_surfaced: true
+    applied_suggestions:
+      - Fix integration test visibility with pub(crate) for parse_jsonl_stream
+      - Accept ThreadStarted empty-struct (no thread_id needed)
+      - Accept CodexUsage u32 defaults (Codex always emits populated usage)
+    flagged_suggestions:
+      - id: unit-variant-syntax
+        reason: Cosmetic nit; ThreadStarted {} vs ThreadStarted — no functional impact, skip for now.
+    review_completed: true
+    review_gemini: docs/reviews/clo-379-design-gemini.md
+    review_synthesis: docs/reviews/clo-379-design-synthesis.md
+    review_verdict: approve_with_changes
+    human_review_completed: true
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-379-event-driven-codex-parser.md
+    approved: true
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-19T19:53:29.331Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-379 as development
+  - timestamp: '2026-05-19T19:55:00.424Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: Feature request (FR-3a) with clear implementation scope in src/backend/codex.rs,
+      defined event model, and mechanical acceptance criteria. No spec/ops label or operational title prefix.
+  - timestamp: '2026-05-19T19:55:08.940Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-19T19:56:27.714Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-379-codex-json checked out from main
+  - timestamp: '2026-05-19T19:59:48.687Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: Event-driven serde enum. Baseline 2/10. 3 approaches considered. Forward-compatible, type-safe, matches
+      PRD exactly.
+  - timestamp: '2026-05-19T19:59:55.401Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-19T20:04:42.853Z'
+    action: design_draft_ready
+    phase: design
+    details: Draft generated by claude-designer at docs/designs/clo-379-event-driven-codex-parser.md
+  - timestamp: '2026-05-19T20:05:02.913Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '6 assumptions surfaced (high: 2, medium: 2, low: 2). See design doc § Assumptions.'
+  - timestamp: '2026-05-19T20:11:36.826Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: PASS_WITH_NOTES (approve_with_changes). 3 applied, 1 flagged. Workflow template bug prevented
+      auto-pipeline; manual review substituted.
+  - timestamp: '2026-05-19T20:13:11.919Z'
+    action: design_human_review_complete
+    phase: design
+    details: Plannotator annotate session closed with no annotations.
+  - timestamp: '2026-05-19T20:13:20.432Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design ready for plan phase. 8 sections verified, 6 assumptions surfaced, review PASS_WITH_NOTES (4 minor
+      findings, 1 flagged).
+  - timestamp: '2026-05-19T20:13:20.433Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-19T20:24:00.460Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 4 sub-tasks at docs/plans/clo-379-event-driven-codex-parser.md
+  - timestamp: '2026-05-19T20:24:05.245Z'
+    action: plan_approved
+    phase: plan
+    details: >-
+      Plan approved. 4 sub-tasks queued: ST1 codex_event.rs types+parser, ST2 refactor parse_output+query, ST3
+      integration tests, ST4 clippy/gate.
+  - timestamp: '2026-05-19T20:24:05.248Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+task_title: 'FR-3a: event-driven Codex JSONL parser (replace substring match)'
+task_url: https://linear.app/cloud-ai/issue/CLO-379/fr-3a-event-driven-codex-jsonl-parser-replace-substring-match

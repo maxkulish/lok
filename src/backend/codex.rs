@@ -71,25 +71,11 @@ impl CodexBackend {
         argv
     }
 
-    fn parse_output(&self, output: &str) -> String {
-        // Parse JSON output from codex
-        // Look for agent_message in item.completed events
-        for line in output.lines() {
-            if line.contains("\"type\":\"item.completed\"") && line.contains("agent_message") {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                    if let Some(text) = json
-                        .get("item")
-                        .and_then(|i| i.get("text"))
-                        .and_then(|t| t.as_str())
-                    {
-                        return text.to_string();
-                    }
-                }
-            }
-        }
-
-        // Fallback: return raw output
-        output.to_string()
+    fn parse_output(
+        &self,
+        output: &str,
+    ) -> std::result::Result<super::codex_event::ParsedTurn, super::BackendError> {
+        super::codex_event::parse_jsonl_stream(output)
     }
 }
 
@@ -150,15 +136,16 @@ impl super::Backend for CodexBackend {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let parsed_stdout = self.parse_output(&stdout);
+        let parsed = self.parse_output(&stdout)?;
         Ok(super::QueryOutput::from_process(
-            parsed_stdout,
+            parsed.agent_message.unwrap_or_default(),
             stderr_str,
             exit_code,
             "codex",
             start.elapsed(),
         )
-        .with_model(effective_model))
+        .with_model(effective_model)
+        .with_usage(parsed.usage))
     }
 
     fn is_available(&self) -> bool {

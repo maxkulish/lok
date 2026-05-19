@@ -2,6 +2,8 @@
 mod bedrock;
 mod claude;
 mod codex;
+mod codex_event;
+pub(crate) use codex_event::parse_jsonl_stream;
 mod context;
 mod gemini;
 mod ollama;
