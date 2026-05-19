@@ -23,7 +23,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-19T10:39:32.397Z'
-  updated_at: '2026-05-19T14:18:53.903Z'
+  updated_at: '2026-05-19T14:20:43.597Z'
 phases:
   discovery:
     status: complete
@@ -180,13 +180,65 @@ phases:
     plan_file: docs/plans/clo-373-codex-jsonl-fixtures.md
     approved: true
   implement:
-    status: in_progress
+    status: validating
     commits:
       - eac2930
       - a078b8b
       - d3da388
       - a4e1d7b
       - f2f3cba
+      - 96e44fc
+    assumptions_revalidated: true
+    assumption_outcomes:
+      - text: Codex CLI 0.130.0 is the recorded version for the captured streams.
+        outcome: held
+        evidence: tests/fixtures/codex/version.txt:1 and tests/fixtures/codex/README.md:7 record codex-cli 0.130.0.
+      - text: Codex 0.130.0 JSONL event names match the documented set in codex-quick-ref and PRD §11.4.
+        outcome: held
+        evidence: >-
+          tests/codex_fixtures.rs:6-14 defines the known event set; every_fixture_is_line_valid_jsonl passed in cargo
+          test --test codex_fixtures.
+      - text: Codex agent-message item type is represented as item.type == "agent_message" inside item.completed events.
+        outcome: held
+        evidence: tests/codex_fixtures.rs:78-79 and turn_completed_fixture_is_valid_jsonl_with_agent_message passed.
+      - text: >-
+          This task remains fixture/test-only and does not introduce new backend carrying structs, public re-exports, or
+          programmatic shell command construction.
+        outcome: held
+        evidence: >-
+          git diff 5283b0e..HEAD --name-only shows only .gitattributes, docs, tests/codex_fixtures.rs, and
+          tests/fixtures/codex; no src/backend/codex.rs or shell helper changes in the CLO-373 implementation commits.
+      - text: >-
+          A prompt that asks Codex to think step by step and produce a short answer reliably yields
+          reasoning_output_tokens > 0 on a reasoning-capable model.
+        outcome: held
+        evidence: >-
+          tests/fixtures/codex/README.md:29 records the reasoning prompt;
+          multi_turn_reasoning_fixture_reports_reasoning_tokens passed and asserts reasoning_output_tokens > 0 at
+          tests/codex_fixtures.rs:256-262.
+      - text: >-
+          A no-final-agent-message fixture can be produced without inventing synthetic JSONL, either from a natural
+          Codex 0.130.0 turn.completed stream or by paired-line trimming of a real turn.completed stream.
+        outcome: violated
+        evidence: >-
+          tests/fixtures/codex/README.md:30 documents two natural attempts and the actual fallback: Codex emitted no
+          paired item.started for the final agent_message, so only the real item.completed agent_message line was
+          trimmed.
+      - text: Scrubbed JSONL remains JSON-valid after replacement.
+        outcome: held
+        evidence: >-
+          python3 JSONL validation over tests/fixtures/codex/*.jsonl passed; every_fixture_is_line_valid_jsonl passed in
+          cargo test --test codex_fixtures.
+      - text: The scrub gate patterns catch common leakage classes for this corpus.
+        outcome: held
+        evidence: >-
+          fixtures_do_not_contain_obvious_sensitive_text passed; implemented in tests/codex_fixtures.rs:94-132 and
+          invoked at tests/codex_fixtures.rs:196-203.
+      - text: The four fixtures together stay under a reviewable size target of 50 KB total and 20 KB per fixture.
+        outcome: held
+        evidence: >-
+          wc -c tests/fixtures/codex/*.jsonl reported 1,790 bytes total; size caps are asserted in
+          tests/codex_fixtures.rs:16-17 and fixtures_do_not_exceed_reviewable_size_caps passed.
   pr:
     status: pending
   complete:
@@ -380,5 +432,30 @@ history:
     details: >-
       ST5 landed: full pre-merge gate cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
       passed; fixture corpus is 1,790 bytes total and src/backend/codex.rs is unchanged. Commit f2f3cba.
+  - timestamp: '2026-05-19T14:19:11.051Z'
+    action: implementation_docs_committed
+    phase: implement
+    details: >-
+      Committed CLO-373 discovery/design/plan/review/status artifacts and project dashboard updates so validation can
+      inspect committed task context. Commit 96e44fc.
+  - timestamp: '2026-05-19T14:19:26.581Z'
+    action: unrelated_changes_stashed
+    phase: implement
+    details: >-
+      Stashed unrelated design-review workflow/workflow.rs condition-alias edits before pre-PR validation so CLO-373
+      validation reviews only fixture-corpus scope. Stash name: clo-373-unrelated-design-review-workflow-fix.
+  - timestamp: '2026-05-19T14:20:32.158Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      9 assumptions reviewed. held: 8, violated: 1, untested: 0. Violation: Codex 0.130.0 did not emit a paired
+      item.started for the source stream's final agent_message, so missing-agent-message trimmed the single actual
+      item.completed agent_message line and documented that provenance.
+  - timestamp: '2026-05-19T14:20:43.597Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed. fmt+clippy+test green. 6 commits. One design assumption diverged in documented provenance:
+      missing-agent-message source stream had no paired item.started for the trimmed agent message.
 task_title: Capture Codex JSONL fixtures for parser test corpus (FR-40)
 task_url: https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40

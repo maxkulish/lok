@@ -37,14 +37,14 @@ Check for:
 
 - Home paths and usernames: `/Users/`, `/home/`, `C:\\Users\\`, `$HOME`, `<USERNAME>`.
 - Temporary or project-private paths: `/tmp/`, `/var/folders/`, repo-specific scratch paths.
-- Credentials and auth markers: `Bearer `, `api_key`, `api-key`, `apikey`, `token`, `secret`, `password`.
-- Token-looking long alphanumeric values.
+- Credentials and auth markers: `Bearer `, `api_key`, `api-key`, `apikey`, quoted `token` keys, `access_token`, `auth_token`, `secret`, `password`.
+- Token-looking long high-entropy alphanumeric/base64 values.
 - Unredacted email addresses.
 
 Suggested gate:
 
 ```bash
-rg '<HOME>|/Users/|/home/|C:\\Users\\|<USERNAME>|/tmp/|/var/folders/|Bearer |api[_-]?key|apikey|token|secret|password|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' \
+rg '<HOME>|/Users/|/home/|C:\\Users\\|<USERNAME>|/tmp/|/var/folders/|Bearer |api[_-]?key|apikey|access[_-]?token|auth[_-]?token|"token"[[:space:]]*:|token=|secret|password|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' \
   tests/fixtures/codex/*.jsonl
 ```
 

@@ -116,6 +116,8 @@ fn assert_no_unscrubbed_sensitive_text(name: &str, stream: &str) {
             "apikey",
             "access_token",
             "auth_token",
+            "\"token\":",
+            "token=",
             "secret=",
             "secret\":",
             "password=",
@@ -129,9 +131,34 @@ fn assert_no_unscrubbed_sensitive_text(name: &str, stream: &str) {
     }
 
     assert!(
+        !stream
+            .split(|character: char| {
+                !(character.is_ascii_alphanumeric()
+                    || matches!(character, '+' | '/' | '=' | '-' | '_'))
+            })
+            .any(looks_like_high_entropy_token),
+        "{name}: fixture contains a token-looking high-entropy string"
+    );
+
+    assert!(
         !stream.lines().any(looks_like_email),
         "{name}: fixture contains an unredacted email-looking string"
     );
+}
+
+fn looks_like_high_entropy_token(candidate: &str) -> bool {
+    let trimmed = candidate.trim_matches(|character| matches!(character, '-' | '_' | '='));
+    trimmed.len() >= 32
+        && trimmed
+            .chars()
+            .any(|character| character.is_ascii_uppercase())
+        && trimmed
+            .chars()
+            .any(|character| character.is_ascii_lowercase())
+        && trimmed.chars().any(|character| character.is_ascii_digit())
+        && trimmed.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '+' | '/' | '=' | '-' | '_')
+        })
 }
 
 fn looks_like_email(line: &str) -> bool {
