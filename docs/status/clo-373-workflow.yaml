@@ -20,10 +20,10 @@ linear:
   branch_suggested: kmamemo/clo-373-capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40
   branch_actual: feat/clo-373-codex
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: active
   created_at: '2026-05-19T10:39:32.397Z'
-  updated_at: '2026-05-19T14:35:47.457Z'
+  updated_at: '2026-05-19T14:44:06.824Z'
 phases:
   discovery:
     status: complete
@@ -267,10 +267,11 @@ phases:
         completion_tokens: 0
         task_label: pre-pr-validation-synthesis
   pr:
-    status: in_progress
+    status: complete
     pr_url: https://github.com/maxkulish/lok/pull/21
     pr_number: 21
     ci_passed: true
+    reviews_addressed: true
   complete:
     status: pending
 history:
@@ -519,5 +520,27 @@ history:
     action: ci_passed
     phase: pr
     details: 'No GitHub checks reported for PR #21 (statusCheckRollup empty); local mandatory pre-flight gate is green.'
+  - timestamp: '2026-05-19T14:43:17.654Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      1 thread resolved; replies posted 1/1; /gemini review trailer verified on every reply. Gemini-code-assist
+      re-reviewed and said the fix addresses the compilation issue; thread PRRT_kwDOR0Ln1c6DMIq2 resolved.
+  - timestamp: '2026-05-19T14:43:37.850Z'
+    action: ci_iteration
+    phase: pr
+    details: >-
+      After PR review fix commit 6d26ab1, GitHub still reports no checks; reran local full PR gate (fmt, clippy -D
+      warnings, clippy --tests, cargo test) and it passed.
+  - timestamp: '2026-05-19T14:44:04.542Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: >-
+      Mandatory pre-merge re-fetch passed: no inline comments newer than review_addressed timestamp
+      2026-05-19T14:43:17.654Z.
+  - timestamp: '2026-05-19T14:44:06.824Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
 task_title: Capture Codex JSONL fixtures for parser test corpus (FR-40)
 task_url: https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40
