@@ -21,7 +21,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-19T19:53:29.331Z'
-  updated_at: '2026-05-19T20:29:56.889Z'
+  updated_at: '2026-05-19T20:35:33.357Z'
 phases:
   discovery:
     status: complete
@@ -91,9 +91,50 @@ phases:
     plan_file: docs/plans/clo-379-event-driven-codex-parser.md
     approved: true
   implement:
-    status: pending
+    status: validating
     commits:
       - 4b8489b
+      - c64b937
+    assumption_outcomes:
+      - confidence: high
+        evidence: Turn-completed fixture test at src/backend/codex_event.rs::fixture_turn_completed_returns_happy_path_message
+        outcome: held
+        text: The four existing fixtures faithfully represent Codex 0.130.0 wire format and exhaust FR-3a event types.
+      - confidence: high
+        evidence: >-
+          Used ExecutionFailed { exit_code: None, .. } for turn.failed and top-level error events, matching design
+          decision.
+        outcome: held
+        text: >-
+          Reusing BackendError::ExecutionFailed { message, exit_code: None } for turn.failed and stream error events is
+          the correct mapping.
+      - confidence: medium
+        evidence: >-
+          Test fixture_missing_agent_message_returns_parse_error passes, asserting Err(Parse) for
+          missing-agent-message.jsonl.
+        outcome: held
+        text: >-
+          The PRD's missing-agent_message → BackendError::Parse rule applies when turn.completed is observed but the
+          turn contained no agent_message item.
+      - confidence: medium
+        evidence: Test truncated_stream_returns_parse_error asserts Parse for no-terminal stream.
+        outcome: held
+        text: >-
+          The Codex stream always emits exactly one terminal event per invocation (turn.completed, turn.failed, or
+          top-level error).
+      - confidence: low
+        evidence: >-
+          multi-turn-reasoning.jsonl shows command_execution items deserializing to CodexItem::Other; #[serde(other)]
+          arm works.
+        outcome: held
+        text: >-
+          Tool-related items and reasoning items will continue to share the item.completed envelope with a type
+          discriminator on the inner item object.
+      - confidence: low
+        evidence: Test multiple_agent_messages_in_turn_returns_last covers last-wins behavior defensively.
+        outcome: held
+        text: Codex never emits more than one agent_message per turn in current versions.
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -175,5 +216,19 @@ history:
     details: >-
       ST1+ST2 landed: codex_event.rs with serde types+parser state machine; refactored codex.rs parse_output to return
       Result and wired through query. Commit 4b8489b.
+  - timestamp: '2026-05-19T20:35:02.312Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST3+ST4 landed: fixture-driven tests in codex_event.rs, fmt+clippy+test green. Commit c64b937.'
+  - timestamp: '2026-05-19T20:35:24.281Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: '6 assumptions reviewed. held: 6, violated: 0, untested: 0. All assumptions held; no design divergence.'
+  - timestamp: '2026-05-19T20:35:33.357Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed. fmt+clippy+test green. 2 commits. 518 tests pass including 22 codex_event unit tests and 4
+      fixture-driven tests.
 task_title: 'FR-3a: event-driven Codex JSONL parser (replace substring match)'
 task_url: https://linear.app/cloud-ai/issue/CLO-379/fr-3a-event-driven-codex-jsonl-parser-replace-substring-match
