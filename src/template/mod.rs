@@ -70,6 +70,12 @@ impl TemplateEngine {
     pub fn new() -> Self {
         let mut env = minijinja::Environment::new();
         env.set_undefined_behavior(UndefinedBehavior::SemiStrict);
+        env.set_syntax(
+            minijinja::syntax::SyntaxConfig::builder()
+                .comment_delimiters("{#%", "%#}")
+                .build()
+                .expect("comment_delimiters {#% / %#} are valid"),
+        );
         filters::register_filters(&mut env);
         Self { env }
     }
@@ -205,6 +211,22 @@ mod tests {
         steps.insert("s".to_string(), make_step("s", "FAIL", false));
         let ctx = TemplateContext::new(&steps, &[], &[]);
         assert!(!engine.eval_expression("steps.s.success", &ctx).unwrap());
+    }
+
+    #[test]
+    fn test_bash_string_length_passthrough() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("h".to_string(), make_step("h", "ok", true));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        let result = engine
+            .render(
+                r#"echo "{{ steps.h.output }}"; [ ${#OUTPUT} -lt 100 ] && echo short"#,
+                &ctx,
+            )
+            .unwrap();
+        assert!(result.contains("${#OUTPUT}"));
+        assert!(result.contains("echo \"ok\""));
     }
 
     #[test]

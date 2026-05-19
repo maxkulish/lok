@@ -55,7 +55,7 @@ which = "7"
 aws-config = { version = "1", optional = true }
 aws-sdk-bedrockruntime = { version = "1", optional = true }
 chrono = { version = "0.4.43", features = ["serde"] }
-minijinja = "2"
+minijinja = { version = "2", features = ["custom_syntax"] }
 rand = "0.8"
 
 [target.'cfg(unix)'.dependencies]
