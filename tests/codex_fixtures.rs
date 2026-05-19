@@ -109,7 +109,7 @@ fn assert_no_unscrubbed_sensitive_text(name: &str, stream: &str) {
         );
     }
 
-    for lower_line in stream.lines().map(str::to_ascii_lowercase) {
+    for lower_line in stream.lines().map(|line| line.to_ascii_lowercase()) {
         for marker in [
             "api_key",
             "api-key",

@@ -23,7 +23,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-19T10:39:32.397Z'
-  updated_at: '2026-05-19T14:35:20.835Z'
+  updated_at: '2026-05-19T14:35:47.457Z'
 phases:
   discovery:
     status: complete
@@ -270,6 +270,7 @@ phases:
     status: in_progress
     pr_url: https://github.com/maxkulish/lok/pull/21
     pr_number: 21
+    ci_passed: true
   complete:
     status: pending
 history:
@@ -514,5 +515,9 @@ history:
     action: pr_created
     phase: pr
     details: 'PR #21 opened: https://github.com/maxkulish/lok/pull/21'
+  - timestamp: '2026-05-19T14:35:47.457Z'
+    action: ci_passed
+    phase: pr
+    details: 'No GitHub checks reported for PR #21 (statusCheckRollup empty); local mandatory pre-flight gate is green.'
 task_title: Capture Codex JSONL fixtures for parser test corpus (FR-40)
 task_url: https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40
