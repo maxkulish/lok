@@ -82,12 +82,21 @@ pub(crate) struct ParsedTurn {
     pub usage: Option<TokenUsage>,
 }
 
-/// Parse a Codex JSONL stream and extract the final agent_message text from the last
-/// `turn.completed` event. Returns `BackendError` on `turn.failed`, stream-level `error`,
-/// or when no `turn.completed` is found.
-pub(crate) fn parse_jsonl_stream(stream: &str) -> Result<ParsedTurn, BackendError> {
+#[derive(Debug, Default)]
+pub(crate) struct CodexStreamDiagnostics {
+    pub agent_message: Option<String>,
+    pub usage: Option<TokenUsage>,
+    pub terminal_error: Option<BackendError>,
+    pub parse_error: Option<BackendError>,
+}
+
+/// Parse a Codex JSONL stream and extract the final `turn.completed` artifacts.
+/// This keeps the full parse outcome (including soft failures) in a single diagnostics
+/// struct so callers can independently apply precedence rules.
+pub(crate) fn parse_jsonl_diagnostics(stream: &str) -> CodexStreamDiagnostics {
     let mut last_completed_turn: ParsedTurn = ParsedTurn::default();
     let mut current_turn_agent_message: Option<String> = None;
+    let mut diagnostics = CodexStreamDiagnostics::default();
 
     for line in stream.lines() {
         let trimmed = line.trim();
@@ -134,17 +143,19 @@ pub(crate) fn parse_jsonl_stream(stream: &str) -> Result<ParsedTurn, BackendErro
                 let msg = error
                     .and_then(|e| e.message)
                     .unwrap_or_else(|| "Codex turn failed".to_string());
-                return Err(BackendError::ExecutionFailed {
+                diagnostics.terminal_error = Some(BackendError::ExecutionFailed {
                     message: msg,
                     exit_code: None,
                 });
+                break;
             }
             CodexEvent::Error { message } => {
                 let msg = message.unwrap_or_else(|| "Codex error event".to_string());
-                return Err(BackendError::ExecutionFailed {
+                diagnostics.terminal_error = Some(BackendError::ExecutionFailed {
                     message: msg,
                     exit_code: None,
                 });
+                break;
             }
             CodexEvent::ThreadStarted { .. } | CodexEvent::Unknown => {
                 // Skipping non-extraction event
@@ -152,21 +163,47 @@ pub(crate) fn parse_jsonl_stream(stream: &str) -> Result<ParsedTurn, BackendErro
         }
     }
 
-    // If we never saw a turn.completed, that's a parse failure
-    if last_completed_turn.agent_message.is_none() && last_completed_turn.usage.is_none() {
-        return Err(BackendError::Parse {
-            message: "Codex JSONL stream ended without turn.completed event".to_string(),
-        });
+    if diagnostics.terminal_error.is_none() {
+        diagnostics.agent_message = last_completed_turn.agent_message;
+        diagnostics.usage = last_completed_turn.usage;
+
+        // If we never saw a turn.completed, that's a parse failure
+        if diagnostics.agent_message.is_none() && diagnostics.usage.is_none() {
+            diagnostics.parse_error = Some(BackendError::Parse {
+                message: "Codex JSONL stream ended without turn.completed event".to_string(),
+            });
+            return diagnostics;
+        }
+
+        // turn.completed observed but no agent_message for that turn
+        if diagnostics.agent_message.is_none() {
+            diagnostics.parse_error = Some(BackendError::Parse {
+                message: "turn.completed without agent_message".to_string(),
+            });
+        }
     }
 
-    // turn.completed observed but no agent_message for that turn
-    if last_completed_turn.agent_message.is_none() {
-        return Err(BackendError::Parse {
-            message: "turn.completed without agent_message".to_string(),
-        });
+    diagnostics
+}
+
+/// Parse a Codex JSONL stream and extract the final agent_message from the last
+/// `turn.completed` event. Returns `BackendError` on `turn.failed`, stream-level `error`,
+/// or when no `turn.completed`/agent message is found.
+#[allow(dead_code)]
+pub(crate) fn parse_jsonl_stream(stream: &str) -> Result<ParsedTurn, BackendError> {
+    let diagnostics = parse_jsonl_diagnostics(stream);
+
+    if let Some(err) = diagnostics.terminal_error {
+        return Err(err);
     }
 
-    Ok(last_completed_turn)
+    diagnostics.parse_error.map_or(
+        Ok(ParsedTurn {
+            agent_message: diagnostics.agent_message,
+            usage: diagnostics.usage,
+        }),
+        Err,
+    )
 }
 
 #[cfg(test)]
@@ -283,6 +320,49 @@ mod tests {
         let result = parse_jsonl_stream(stream).unwrap();
         assert_eq!(result.agent_message, Some("second turn".to_string()));
         assert_eq!(result.usage, Some(TokenUsage::new(8, 4)));
+    }
+
+    #[test]
+    fn diagnostics_preserves_usage_when_agent_message_missing() {
+        let stream = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/codex/missing-agent-message.jsonl"
+        ))
+        .expect("missing-agent-message.jsonl exists");
+        let diagnostics = parse_jsonl_diagnostics(&stream);
+
+        assert!(diagnostics.agent_message.is_none());
+        assert!(diagnostics.usage.is_some());
+        assert!(diagnostics.parse_error.is_some());
+        let parse_err = diagnostics.parse_error.unwrap();
+        let message = match parse_err {
+            BackendError::Parse { message } => message,
+            other => panic!("expected Parse error, got {:?}", other),
+        };
+        assert!(
+            message.contains("turn.completed without agent_message"),
+            "expected turn.completed without agent_message parse error, got {message}"
+        );
+    }
+
+    #[test]
+    fn diagnostics_reports_turn_failed_as_terminal_error() {
+        let stream = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/codex/turn-failed.jsonl"
+        ))
+        .expect("turn-failed.jsonl exists");
+        let diagnostics = parse_jsonl_diagnostics(&stream);
+
+        assert!(diagnostics.terminal_error.is_some());
+        assert!(diagnostics.parse_error.is_none());
+        let err = diagnostics.terminal_error.unwrap();
+
+        assert!(
+            matches!(err, BackendError::ExecutionFailed { .. }),
+            "expected terminal ExecutionFailed, got {:?}",
+            err
+        );
     }
 
     #[test]
