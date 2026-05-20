@@ -324,16 +324,13 @@ pub const NO_TIMEOUT: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 /// 1. Step-level timeout (highest priority)
 /// 2. Backend-level timeout (medium priority)
 /// 3. Global defaults timeout (lowest priority)
-/// Falls back to `DEFAULT_TIMEOUT` (300s) if all three are `None`.
+///    Falls back to `DEFAULT_TIMEOUT` (300s) if all three are `None`.
 pub fn effective_timeout(
     step_timeout: Option<Duration>,
     backend_name: &str,
     config: &Config,
 ) -> Duration {
-    let backend_timeout = config
-        .backends
-        .get(backend_name)
-        .and_then(|b| b.timeout);
+    let backend_timeout = config.backends.get(backend_name).and_then(|b| b.timeout);
     step_timeout
         .or(backend_timeout)
         .or(config.defaults.timeout)
@@ -653,11 +650,7 @@ mod tests {
     fn test_effective_timeout_step_overrides_all() {
         let config = Config::default();
         assert_eq!(
-            effective_timeout(
-                Some(Duration::from_secs(10)),
-                "gemini",
-                &config
-            ),
+            effective_timeout(Some(Duration::from_secs(10)), "gemini", &config),
             Duration::from_secs(10)
         );
     }
@@ -665,11 +658,7 @@ mod tests {
     #[test]
     fn test_effective_timeout_backend_overrides_global() {
         let mut config = Config::default();
-        config
-            .backends
-            .get_mut("gemini")
-            .unwrap()
-            .timeout = Some(Duration::from_secs(60));
+        config.backends.get_mut("gemini").unwrap().timeout = Some(Duration::from_secs(60));
         assert_eq!(
             effective_timeout(None, "gemini", &config),
             Duration::from_secs(60)
@@ -701,10 +690,7 @@ mod tests {
         let mut config = Config::default();
         // Set global to 0 → maps to NO_TIMEOUT
         config.defaults.timeout = Some(Duration::from_secs(0));
-        assert_eq!(
-            effective_timeout(None, "codex", &config),
-            NO_TIMEOUT
-        );
+        assert_eq!(effective_timeout(None, "codex", &config), NO_TIMEOUT);
     }
 
     #[test]

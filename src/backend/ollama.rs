@@ -56,9 +56,7 @@ impl OllamaBackend {
         } else {
             timeout
         };
-        let client = Client::builder()
-            .timeout(timeout)
-            .build()?;
+        let client = Client::builder().timeout(timeout).build()?;
 
         Ok(Self {
             client,

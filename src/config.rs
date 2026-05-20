@@ -31,7 +31,11 @@ pub struct Config {
 pub struct Defaults {
     #[serde(default = "default_parallel")]
     pub parallel: bool,
-    #[serde(default, deserialize_with = "deser_duration_seconds", serialize_with = "serialize_duration_seconds")]
+    #[serde(
+        default,
+        deserialize_with = "deser_duration_seconds",
+        serialize_with = "serialize_duration_seconds"
+    )]
     pub timeout: Option<Duration>,
     #[serde(default = "default_retries")]
     pub max_retries: usize,
@@ -283,6 +287,7 @@ mod serde_duration_tests {
     #[test]
     fn test_deser_duration_invalid_string() {
         #[derive(Deserialize, Debug)]
+        #[allow(dead_code)]
         struct S {
             #[serde(deserialize_with = "deser_duration_seconds")]
             timeout: Option<Duration>,
@@ -290,11 +295,12 @@ mod serde_duration_tests {
         let result = toml::from_str::<S>("timeout = \"not_a_duration\"");
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("invalid duration") || err.contains("duration string"),
-            "error should mention 'invalid duration' or 'duration string', got: {err}");
+        assert!(
+            err.contains("invalid duration") || err.contains("duration string"),
+            "error should mention 'invalid duration' or 'duration string', got: {err}"
+        );
     }
 }
-
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
@@ -310,7 +316,11 @@ pub struct BackendConfig {
     pub model: Option<String>,
     /// Per-backend timeout duration (overrides defaults.timeout). Accepts
     /// human-readable strings like "30s" or raw integers (seconds).
-    #[serde(default, deserialize_with = "deser_duration_seconds", serialize_with = "serialize_duration_seconds")]
+    #[serde(
+        default,
+        deserialize_with = "deser_duration_seconds",
+        serialize_with = "serialize_duration_seconds"
+    )]
     pub timeout: Option<Duration>,
     /// Per-backend retry limit (overrides defaults.max_retries)
     pub max_retries: Option<usize>,

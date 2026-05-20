@@ -77,7 +77,6 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tokio::process::Command;
 
-
 /// Minimum timeout value in milliseconds (values 1 to MIN-1 are rejected)
 const MIN_TIMEOUT_MS: u64 = 100;
 
@@ -1786,7 +1785,8 @@ impl WorkflowRunner {
                                     };
 
                                     let ctx = step_context(step, &self.config, &backend_name, &iter_prompt, &cwd);
-                                    match tokio::time::timeout(timeout_duration, backend.query(ctx)).await {
+                                    let iter_timeout = ctx.timeout.expect("step_context always sets timeout");
+                                    match tokio::time::timeout(iter_timeout, backend.query(ctx)).await {
                                         Ok(Ok(qo)) => {
                                             iter_output = qo.stdout;
                                             iter_usage = qo.usage;
@@ -1798,7 +1798,7 @@ impl WorkflowRunner {
                                             all_success = false;
                                         }
                                         Err(_) => {
-                                            iter_output = format!("Error: Step timed out after {}s", timeout_duration.as_secs());
+                                            iter_output = format!("Error: Step timed out after {}s", iter_timeout.as_secs());
                                             iter_success = false;
                                             all_success = false;
                                         }
@@ -1987,7 +1987,8 @@ impl WorkflowRunner {
                                 let cfg = config.clone();
                                 let prompt = prompt.clone();
                                 let cwd = cwd.clone();
-                                let timeout_dur = timeout_duration;
+
+
                                 let model_override = model_override.clone();
 
                                 handles.push(tokio::spawn(async move {
@@ -2003,18 +2004,19 @@ impl WorkflowRunner {
                                     if !backend.is_available() {
                                         return (bn.clone(), Err(format!("Backend {} not available", bn)));
                                     }
+                                    let timeout_for_backend = crate::backend::effective_timeout(step_timeout, &bn, &cfg);
                                     let ctx = backend::StepContext {
-                                        timeout: step_timeout,
+                                        timeout: Some(timeout_for_backend),
                                         ..backend::StepContext::from_prompt(
                                             &prompt,
                                             &cwd,
                                             model_override.as_deref(),
                                         )
                                     };
-                                    match tokio::time::timeout(timeout_dur, backend.query(ctx)).await {
+                                    match tokio::time::timeout(timeout_for_backend, backend.query(ctx)).await {
                                         Ok(Ok(qo)) => (bn.clone(), Ok((qo.stdout, qo.usage))),
                                         Ok(Err(e)) => (bn.clone(), Err(e.to_string())),
-                                        Err(_) => (bn.clone(), Err(format!("Timeout after {}s", timeout_dur.as_secs()))),
+                                        Err(_) => (bn.clone(), Err(format!("Timeout after {}s", timeout_for_backend.as_secs()))),
                                     }
                                 }));
                             }
@@ -2115,11 +2117,9 @@ impl WorkflowRunner {
                                     if let Some(synth_config) = config.backends.get(synth_backend_name) {
                                         let retry_policy = backend::get_retry_policy(synth_config, &config.defaults);
                                         if let Ok(synth_backend) = backend::create_backend(synth_backend_name, synth_config, retry_policy) {
-                                            let ctx = backend::StepContext {
-                                                timeout: step_timeout,
-                                                ..backend::StepContext::from_prompt(&synth_prompt, &cwd, None)
-                                            };
-                                            match tokio::time::timeout(timeout_duration, synth_backend.query(ctx)).await {
+                                        let ctx = step_context(step, &config, synth_backend_name, &synth_prompt, &cwd);
+                                        let synth_timeout = ctx.timeout.expect("step_context always sets timeout");
+                                        match tokio::time::timeout(synth_timeout, synth_backend.query(ctx)).await {
                                                 Ok(Ok(qo)) => {
                                                     let synthesized = qo.stdout;
                                                     if let Some(u) = qo.usage {
@@ -2259,7 +2259,8 @@ impl WorkflowRunner {
                             // Record backend query
 
                             let ctx = step_context(step, &config, &backend_name, &prompt, &cwd);
-                            match tokio::time::timeout(timeout_duration, backend.query(ctx)).await {
+                            let query_timeout = ctx.timeout.expect("step_context always sets timeout");
+                            match tokio::time::timeout(query_timeout, backend.query(ctx)).await {
                                 Ok(Ok(qo)) => {
                                     text = qo.stdout;
                                     step_stderr = qo.stderr;
@@ -2286,10 +2287,10 @@ impl WorkflowRunner {
                                     println!("  {} {} {} (will retry)", "⚠".yellow(), backend_name.to_uppercase(), summary);
                                 }
                                 Err(_) => {
-                                    last_error = format!("Step timed out after {}s", timeout_duration.as_secs());
+                                    last_error = format!("Step timed out after {}s", query_timeout.as_secs());
                                     if attempt == max_retries {
                                         let elapsed_ms = start.elapsed().as_millis() as u64;
-                                        println!("  {} {} timed out after {}s", "✗".red(), backend_name.to_uppercase(), timeout_duration.as_secs());
+                                        println!("  {} {} timed out after {}s", "✗".red(), backend_name.to_uppercase(), query_timeout.as_secs());
                                         // Record step complete (failure)
                                         return StepResult::error(step_name, format!("Error: {}", last_error), elapsed_ms, Some(backend_name), StepFailureKind::Timeout);
                                     }
