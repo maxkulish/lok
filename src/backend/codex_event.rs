@@ -186,9 +186,9 @@ mod tests {
         let e: CodexEvent = serde_json::from_str(s).unwrap();
         if let CodexEvent::TurnCompleted { usage: Some(u) } = e {
             assert_eq!(u.input_tokens, 10);
-            assert_eq!(u.cached_input_tokens, 5);
+            assert_eq!(u.cached_input_tokens, Some(5));
             assert_eq!(u.output_tokens, 20);
-            assert_eq!(u.reasoning_output_tokens, 3);
+            assert_eq!(u.reasoning_output_tokens, Some(3));
         } else {
             panic!("expected TurnCompleted with usage, got {:?}", e);
         }
@@ -403,6 +403,59 @@ not valid json
     }
 
     #[test]
+    fn turn_completed_with_cached_and_reasoning_populates_token_usage() {
+        let stream = r#"{"type":"turn.started"}
+{"type":"item.completed","item":{"type":"agent_message","text":"msg"}}
+{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":5,"output_tokens":20,"reasoning_output_tokens":3}}"#;
+        let result = parse_jsonl_stream(stream).unwrap();
+        let usage = result.usage.expect("usage should be present");
+        assert_eq!(usage.prompt_tokens, 10);
+        assert_eq!(usage.completion_tokens, 20);
+        assert_eq!(usage.total_tokens, 30);
+        assert_eq!(usage.cached_tokens, Some(5));
+        assert_eq!(usage.reasoning_tokens, Some(3));
+    }
+
+    #[test]
+    fn turn_completed_omitting_cached_and_reasoning_yields_none() {
+        let stream = r#"{"type":"turn.started"}
+{"type":"item.completed","item":{"type":"agent_message","text":"msg"}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":20}}"#;
+        let result = parse_jsonl_stream(stream).unwrap();
+        let usage = result.usage.expect("usage should be present");
+        assert_eq!(usage.cached_tokens, None);
+        assert_eq!(usage.reasoning_tokens, None);
+    }
+
+    #[test]
+    fn turn_completed_reasoning_zero_is_some_not_none() {
+        // When reasoning_output_tokens is present but zero, should be Some(0), not None
+        let stream = r#"{"type":"turn.started"}
+{"type":"item.completed","item":{"type":"agent_message","text":"msg"}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":20,"cached_input_tokens":0,"reasoning_output_tokens":0}}"#;
+        let result = parse_jsonl_stream(stream).unwrap();
+        let usage = result.usage.expect("usage should be present");
+        assert_eq!(usage.cached_tokens, Some(0));
+        assert_eq!(usage.reasoning_tokens, Some(0));
+    }
+
+    #[test]
+    fn multi_turn_last_turn_cached_and_reasoning_win() {
+        let stream = r#"{"type":"thread.started","thread_id":"t1"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"type":"agent_message","text":"first turn"}}
+{"type":"turn.completed","usage":{"input_tokens":5,"cached_input_tokens":2,"output_tokens":3,"reasoning_output_tokens":1}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"type":"agent_message","text":"second turn"}}
+{"type":"turn.completed","usage":{"input_tokens":8,"cached_input_tokens":10,"output_tokens":4,"reasoning_output_tokens":6}}"#;
+        let result = parse_jsonl_stream(stream).unwrap();
+        assert_eq!(result.agent_message, Some("second turn".to_string()));
+        let usage = result.usage.expect("usage should be present");
+        assert_eq!(usage.cached_tokens, Some(10));
+        assert_eq!(usage.reasoning_tokens, Some(6));
+    }
+
+    #[test]
     fn unknown_event_in_stream_is_skipped() {
         let stream = r#"{"type":"thread.started","thread_id":"t1"}
 {"type":"future.unknown","data":"whatever"}
@@ -431,6 +484,8 @@ not valid json
         let usage = result.usage.expect("turn.completed should have usage");
         assert_eq!(usage.prompt_tokens, 23057);
         assert_eq!(usage.completion_tokens, 7);
+        assert_eq!(usage.cached_tokens, Some(7552));
+        assert_eq!(usage.reasoning_tokens, Some(0));
     }
 
     #[test]
@@ -445,6 +500,8 @@ not valid json
         let usage = result.usage.expect("turn.completed should have usage");
         assert_eq!(usage.prompt_tokens, 46243);
         assert_eq!(usage.completion_tokens, 95);
+        assert_eq!(usage.cached_tokens, Some(30464));
+        assert_eq!(usage.reasoning_tokens, Some(51));
     }
 
     #[test]
