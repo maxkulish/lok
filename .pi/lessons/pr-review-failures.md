@@ -99,3 +99,26 @@ may want the stale feedback addressed against the new code shape.
 
 **How to apply:** `pr.md` §3.5.4 contains the `git diff` check and
 gating language.
+
+---
+
+## L6 - Bot-review completion is an observed review, not a timer
+
+**Source incident:** PR #24 (CLO-382) was merged at 07:07:48Z, 261s
+after PR creation. Gemini posted its review at 07:08:16Z and the
+blocking inline comment at 07:08:17Z. A 180s minimum wait would not
+have caught this; merging before observing the bot review missed a
+high-priority inline comment.
+
+**Rule:** For repos with installed bot reviewers, the PR phase must
+wait for a bot review on the current head commit (`pull_request.head.sha`)
+before concluding review fetching. A timeout is not proof that review is
+clean. If installed bots do not produce a current-head review by the
+10-minute deadline, block for user guidance rather than recording
+`reviews_addressed: true`.
+
+**How to apply:** `pr-review-cycle.md` step 1 polls
+`repos/<owner>/<repo>/pulls/<n>/reviews` for `gemini-code-assist` or
+`copilot-pull-request-reviewer` on the current head SHA, then fetches
+inline comments and GraphQL review threads. Step 2 only permits a skip
+when recent closed PRs confirm those bots are not installed.
