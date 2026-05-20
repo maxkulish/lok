@@ -314,16 +314,33 @@ pub fn get_retry_policy(config: &BackendConfig, defaults: &crate::config::Defaul
     }
 }
 
-const NO_TIMEOUT_SECS: u64 = 365 * 24 * 60 * 60;
+/// Default timeout applied when no timeout is configured at any layer.
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
 
-fn effective_timeout_secs(timeout_secs: u64) -> u64 {
-    if timeout_secs == 0 {
-        // Preserve the existing convention where 0 disables timeout by mapping
-        // it to a near-infinite duration used by the outer timeout wrapper.
-        NO_TIMEOUT_SECS
-    } else {
-        timeout_secs
-    }
+/// Near-infinite sentinel: map timeout=0 to this (existing convention for "no timeout").
+pub const NO_TIMEOUT: Duration = Duration::from_secs(365 * 24 * 60 * 60);
+
+/// Resolve the effective timeout for a step using the three-layer priority:
+/// 1. Step-level timeout (highest priority)
+/// 2. Backend-level timeout (medium priority)
+/// 3. Global defaults timeout (lowest priority)
+///    Falls back to `DEFAULT_TIMEOUT` (300s) if all three are `None`.
+pub fn effective_timeout(
+    step_timeout: Option<Duration>,
+    backend_name: &str,
+    config: &Config,
+) -> Duration {
+    let backend_timeout = config.backends.get(backend_name).and_then(|b| b.timeout);
+    step_timeout
+        .or(backend_timeout)
+        .or(config.defaults.timeout)
+        .map(|mut d| {
+            if d.is_zero() {
+                d = NO_TIMEOUT;
+            }
+            d
+        })
+        .unwrap_or(DEFAULT_TIMEOUT)
 }
 
 pub fn step_context_for_backend<'a>(
@@ -332,14 +349,14 @@ pub fn step_context_for_backend<'a>(
     config: &'a Config,
     backend_name: &str,
 ) -> StepContext<'a> {
-    let backend_config = config.backends.get(backend_name);
-    let timeout_secs = backend_config
-        .and_then(|backend| backend.timeout)
-        .unwrap_or(config.defaults.timeout);
-    let model = backend_config.and_then(|backend| backend.model.as_deref());
+    let timeout = Some(effective_timeout(None, backend_name, config));
+    let model = config
+        .backends
+        .get(backend_name)
+        .and_then(|backend| backend.model.as_deref());
 
     StepContext {
-        timeout: Some(Duration::from_secs(effective_timeout_secs(timeout_secs))),
+        timeout,
         ..StepContext::from_prompt(prompt, cwd, model)
     }
 }
@@ -627,6 +644,65 @@ pub fn list_backends(config: &Config) -> Result<()> {
 mod tests {
     use super::*;
 
+    // ── effective_timeout tests (FR-23) ──
+
+    #[test]
+    fn test_effective_timeout_step_overrides_all() {
+        let config = Config::default();
+        assert_eq!(
+            effective_timeout(Some(Duration::from_secs(10)), "gemini", &config),
+            Duration::from_secs(10)
+        );
+    }
+
+    #[test]
+    fn test_effective_timeout_backend_overrides_global() {
+        let mut config = Config::default();
+        config.backends.get_mut("gemini").unwrap().timeout = Some(Duration::from_secs(60));
+        assert_eq!(
+            effective_timeout(None, "gemini", &config),
+            Duration::from_secs(60)
+        );
+    }
+
+    #[test]
+    fn test_effective_timeout_global_only() {
+        let mut config = Config::default();
+        config.defaults.timeout = Some(Duration::from_secs(30));
+        assert_eq!(
+            effective_timeout(None, "codex", &config),
+            Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn test_effective_timeout_fallback_default() {
+        let config = Config::default();
+        // None at every layer → DEFAULT_TIMEOUT (300s)
+        assert_eq!(
+            effective_timeout(None, "nonexistent-backend", &config),
+            DEFAULT_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn test_effective_timeout_zero_is_sentinel() {
+        let mut config = Config::default();
+        // Set global to 0 → maps to NO_TIMEOUT
+        config.defaults.timeout = Some(Duration::from_secs(0));
+        assert_eq!(effective_timeout(None, "codex", &config), NO_TIMEOUT);
+    }
+
+    #[test]
+    fn test_effective_timeout_backend_absent_falls_through() {
+        let mut config = Config::default();
+        config.defaults.timeout = Some(Duration::from_secs(45));
+        assert_eq!(
+            effective_timeout(None, "unknown-backend", &config),
+            Duration::from_secs(45)
+        );
+    }
+
     #[test]
     fn test_step_context_for_backend_uses_backend_model() {
         let mut config = Config::default();
@@ -651,7 +727,7 @@ mod tests {
             .backends
             .get_mut("ollama")
             .expect("default ollama backend exists")
-            .timeout = Some(42);
+            .timeout = Some(Duration::from_secs(42));
 
         let ctx = step_context_for_backend("hello", Path::new("/tmp"), &config, "ollama");
 
@@ -661,7 +737,7 @@ mod tests {
     #[test]
     fn test_step_context_for_backend_falls_back_to_default_timeout() {
         let mut config = Config::default();
-        config.defaults.timeout = 17;
+        config.defaults.timeout = Some(Duration::from_secs(17));
         config
             .backends
             .get_mut("ollama")
@@ -687,7 +763,7 @@ mod tests {
     #[test]
     fn test_step_context_for_backend_preserves_zero_as_no_timeout() {
         let mut config = Config::default();
-        config.defaults.timeout = 0;
+        config.defaults.timeout = Some(Duration::from_secs(0));
         config
             .backends
             .get_mut("ollama")
@@ -751,7 +827,7 @@ mod tests {
             .get_mut("ollama")
             .expect("default ollama backend exists");
         backend_config.model = Some("run-query-model".to_string());
-        backend_config.timeout = Some(13);
+        backend_config.timeout = Some(Duration::from_secs(13));
 
         let results = run_query_with_config(&[backend], "hello", Path::new("."), &config)
             .await

@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
+use serde::de::{self, Visitor};
+use serde::ser;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
@@ -28,8 +31,12 @@ pub struct Config {
 pub struct Defaults {
     #[serde(default = "default_parallel")]
     pub parallel: bool,
-    #[serde(default = "default_timeout")]
-    pub timeout: u64,
+    #[serde(
+        default,
+        deserialize_with = "deser_duration_seconds",
+        serialize_with = "serialize_duration_seconds"
+    )]
+    pub timeout: Option<Duration>,
     #[serde(default = "default_retries")]
     pub max_retries: usize,
     #[serde(default = "default_retry_delay_ms")]
@@ -47,10 +54,6 @@ fn default_parallel() -> bool {
     true
 }
 
-fn default_timeout() -> u64 {
-    300
-}
-
 fn default_retries() -> usize {
     0
 }
@@ -63,7 +66,7 @@ impl Default for Defaults {
     fn default() -> Self {
         Self {
             parallel: default_parallel(),
-            timeout: default_timeout(),
+            timeout: None,
             max_retries: default_retries(),
             retry_delay_ms: default_retry_delay_ms(),
             command_wrapper: None,
@@ -98,6 +101,242 @@ impl Default for ConductorConfig {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Custom serde deserializers for duration fields (FR-23)
+// ---------------------------------------------------------------------------
+
+/// Deserialize an `Option<Duration>` from a human-readable duration string
+/// ("30s", "5m", "1h") or a raw integer (interpreted as **seconds**).
+/// Used for config-level fields (`Defaults.timeout`, `BackendConfig.timeout`).
+pub fn deser_duration_seconds<'de, D: de::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Duration>, D::Error> {
+    d.deserialize_any(DurationSecondsVisitor)
+}
+
+/// Deserialize an `Option<Duration>` from a human-readable duration string
+/// ("30s", "5m", "1h") or a raw integer (interpreted as **milliseconds**).
+/// Used for workflow-level fields (`Step.timeout`, `Workflow.timeout`).
+pub fn deser_duration_millis<'de, D: de::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Duration>, D::Error> {
+    d.deserialize_any(DurationMillisVisitor)
+}
+
+/// Serialize an `Option<Duration>` as an integer (seconds).
+/// Used for config-level fields (`Defaults.timeout`, `BackendConfig.timeout`).
+pub fn serialize_duration_seconds<S: ser::Serializer>(
+    val: &Option<Duration>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    match val {
+        Some(d) => s.serialize_u64(d.as_secs()),
+        None => s.serialize_none(),
+    }
+}
+
+/// Serialize an `Option<Duration>` as an integer (milliseconds).
+/// Used for workflow-level fields (`Step.timeout`, `Workflow.timeout`).
+pub fn serialize_duration_millis<S: ser::Serializer>(
+    val: &Option<Duration>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    match val {
+        Some(d) => s.serialize_u64(d.as_millis() as u64),
+        None => s.serialize_none(),
+    }
+}
+
+struct DurationSecondsVisitor;
+
+impl<'de> Visitor<'de> for DurationSecondsVisitor {
+    type Value = Option<Duration>;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a duration string like \"30s\" or an integer (seconds)")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        humantime::parse_duration(v)
+            .map(Some)
+            .map_err(|e| de::Error::custom(format!("invalid duration string: {e}")))
+    }
+
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+        if v < 0 {
+            return Err(de::Error::invalid_value(
+                de::Unexpected::Signed(v),
+                &"non-negative integer or duration string",
+            ));
+        }
+        Ok(Some(Duration::from_secs(v as u64)))
+    }
+
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+        Ok(Some(Duration::from_secs(v)))
+    }
+
+    fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+}
+
+struct DurationMillisVisitor;
+
+impl<'de> Visitor<'de> for DurationMillisVisitor {
+    type Value = Option<Duration>;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a duration string like \"30s\" or an integer (milliseconds)")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        humantime::parse_duration(v)
+            .map(Some)
+            .map_err(|e| de::Error::custom(format!("invalid duration string: {e}")))
+    }
+
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+        if v < 0 {
+            return Err(de::Error::invalid_value(
+                de::Unexpected::Signed(v),
+                &"non-negative integer or duration string",
+            ));
+        }
+        Ok(Some(Duration::from_millis(v as u64)))
+    }
+
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+        Ok(Some(Duration::from_millis(v)))
+    }
+
+    fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod serde_duration_tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn roundtrip_seconds_toml(input: &str) -> Option<Duration> {
+        #[derive(Deserialize)]
+        struct S {
+            #[serde(deserialize_with = "deser_duration_seconds")]
+            timeout: Option<Duration>,
+        }
+        toml::from_str::<S>(input).unwrap().timeout
+    }
+
+    fn roundtrip_millis_toml(input: &str) -> Option<Duration> {
+        #[derive(Deserialize)]
+        struct S {
+            #[serde(deserialize_with = "deser_duration_millis")]
+            timeout: Option<Duration>,
+        }
+        toml::from_str::<S>(input).unwrap().timeout
+    }
+
+    #[test]
+    fn test_deser_duration_seconds_string() {
+        assert_eq!(
+            roundtrip_seconds_toml("timeout = \"30s\""),
+            Some(Duration::from_secs(30))
+        );
+        assert_eq!(
+            roundtrip_seconds_toml("timeout = \"5m\""),
+            Some(Duration::from_secs(300))
+        );
+        assert_eq!(
+            roundtrip_seconds_toml("timeout = \"1h\""),
+            Some(Duration::from_secs(3600))
+        );
+    }
+
+    #[test]
+    fn test_deser_duration_seconds_int() {
+        assert_eq!(
+            roundtrip_seconds_toml("timeout = 30"),
+            Some(Duration::from_secs(30))
+        );
+    }
+
+    #[test]
+    fn test_deser_duration_seconds_none() {
+        #[derive(Deserialize)]
+        struct S {
+            #[serde(default, deserialize_with = "deser_duration_seconds")]
+            timeout: Option<Duration>,
+        }
+        assert_eq!(toml::from_str::<S>("").unwrap().timeout, None);
+    }
+
+    #[test]
+    fn test_deser_duration_millis_string() {
+        assert_eq!(
+            roundtrip_millis_toml("timeout = \"30s\""),
+            Some(Duration::from_secs(30))
+        );
+    }
+
+    #[test]
+    fn test_deser_duration_millis_int() {
+        assert_eq!(
+            roundtrip_millis_toml("timeout = 30000"),
+            Some(Duration::from_secs(30))
+        );
+    }
+
+    #[test]
+    fn test_deser_duration_invalid_string() {
+        #[derive(Deserialize, Debug)]
+        #[allow(dead_code)]
+        struct S {
+            #[serde(deserialize_with = "deser_duration_seconds")]
+            timeout: Option<Duration>,
+        }
+        let result = toml::from_str::<S>("timeout = \"not_a_duration\"");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("invalid duration") || err.contains("duration string"),
+            "error should mention 'invalid duration' or 'duration string', got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_deser_duration_negative_int_rejected() {
+        #[derive(Deserialize, Debug)]
+        #[allow(dead_code)]
+        struct S {
+            #[serde(deserialize_with = "deser_duration_seconds")]
+            timeout: Option<Duration>,
+        }
+        let result = toml::from_str::<S>("timeout = -1");
+        assert!(
+            result.is_err(),
+            "negative integer timeout should be rejected, got: {:?}",
+            result
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("invalid value")
+                || err.contains("non-negative")
+                || err.contains("negative"),
+            "error should mention invalid value or negative, got: {err}"
+        );
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct BackendConfig {
@@ -110,8 +349,14 @@ pub struct BackendConfig {
     pub skip_lines: usize,
     pub api_key_env: Option<String>,
     pub model: Option<String>,
-    /// Per-backend timeout in seconds (overrides defaults.timeout)
-    pub timeout: Option<u64>,
+    /// Per-backend timeout duration (overrides defaults.timeout). Accepts
+    /// human-readable strings like "30s" or raw integers (seconds).
+    #[serde(
+        default,
+        deserialize_with = "deser_duration_seconds",
+        serialize_with = "serialize_duration_seconds"
+    )]
+    pub timeout: Option<Duration>,
     /// Per-backend retry limit (overrides defaults.max_retries)
     pub max_retries: Option<usize>,
     /// Per-backend retry delay in milliseconds (overrides defaults.retry_delay_ms)
@@ -175,7 +420,7 @@ impl Default for Config {
                 skip_lines: 1,
                 api_key_env: None,
                 model: None,
-                timeout: Some(600), // Gemini goes agentic, needs more time
+                timeout: Some(Duration::from_secs(600)), // Gemini goes agentic, needs more time
                 max_retries: None,
                 retry_delay_ms: None,
             },
@@ -370,7 +615,7 @@ mod tests {
 
         // Check defaults
         assert!(config.defaults.parallel);
-        assert_eq!(config.defaults.timeout, 300);
+        assert_eq!(config.defaults.timeout, None);
 
         // Check default backends exist
         assert!(config.backends.contains_key("codex"));
@@ -475,7 +720,7 @@ timeout = 60
         let config: Config = toml::from_str(toml_str).unwrap();
 
         assert!(!config.defaults.parallel);
-        assert_eq!(config.defaults.timeout, 60);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(60)));
         assert!(config.backends.is_empty());
         assert!(config.tasks.is_empty());
     }
@@ -613,7 +858,7 @@ timeout = 60
         .unwrap();
         deep_merge(&mut base, overlay);
         let config: Config = base.try_into().unwrap();
-        assert_eq!(config.defaults.timeout, 60);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(60)));
         assert!(config.defaults.parallel); // not overridden, stays true
     }
 
@@ -637,7 +882,7 @@ parallel = false
         deep_merge(&mut base, overlay);
         let config: Config = base.try_into().unwrap();
         assert!(!config.defaults.parallel); // false overrides true
-        assert_eq!(config.defaults.timeout, 300); // unchanged
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(300))); // unchanged
     }
 
     #[test]
@@ -696,7 +941,7 @@ timeout = 60
         .unwrap();
         deep_merge(&mut base, overlay);
         let config: Config = base.try_into().unwrap();
-        assert_eq!(config.defaults.timeout, 60);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(60)));
         // Everything else from defaults preserved
         assert!(config.defaults.parallel);
         assert!(!config.backends.is_empty());
@@ -728,7 +973,7 @@ args = ["exec", "--json", "-s", "full-auto"]
         let config: Config = base.try_into().unwrap();
         // Nothing changes
         assert!(config.defaults.parallel);
-        assert_eq!(config.defaults.timeout, 300);
+        assert_eq!(config.defaults.timeout, None);
         assert_eq!(config.backends.len(), 4);
     }
 
@@ -738,7 +983,7 @@ args = ["exec", "--json", "-s", "full-auto"]
         let config = load_config_from_paths(tmp.path(), None, None).unwrap();
         // Should return defaults when no config files exist
         assert!(config.defaults.parallel);
-        assert_eq!(config.defaults.timeout, 300);
+        assert_eq!(config.defaults.timeout, None);
         assert_eq!(config.backends.len(), 4);
     }
 
@@ -754,7 +999,7 @@ timeout = 60
         )
         .unwrap();
         let config = load_config_from_paths(tmp.path(), None, None).unwrap();
-        assert_eq!(config.defaults.timeout, 60);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(60)));
         // Defaults for everything else
         assert!(config.defaults.parallel);
         assert_eq!(config.backends.len(), 4);
@@ -795,7 +1040,7 @@ parallel = false
         let config = load_config_from_paths(cwd.path(), Some(home.path()), None).unwrap();
 
         // Project wins for timeout
-        assert_eq!(config.defaults.timeout, 30);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(30)));
         // Project wins for parallel
         assert!(!config.defaults.parallel);
         // User's custom backend preserved
@@ -819,7 +1064,7 @@ timeout = 999
 
         let config = load_config_from_paths(tmp.path(), None, Some(&explicit)).unwrap();
 
-        assert_eq!(config.defaults.timeout, 999);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(999)));
         // Explicit path still merges with defaults - not hollow
         assert_eq!(config.backends.len(), 4);
         assert!(config.defaults.parallel);
