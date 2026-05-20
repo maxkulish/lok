@@ -58,17 +58,16 @@ pub(super) enum CodexItem {
     Other,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(super) struct CodexUsage {
     #[serde(default)]
     pub input_tokens: u32,
     #[serde(default)]
-    pub cached_input_tokens: u32,
-    #[serde(default)]
     pub output_tokens: u32,
     #[serde(default)]
-    pub reasoning_output_tokens: u32,
+    pub cached_input_tokens: Option<u32>,
+    #[serde(default)]
+    pub reasoning_output_tokens: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,7 +118,11 @@ pub(crate) fn parse_jsonl_stream(stream: &str) -> Result<ParsedTurn, BackendErro
                 // No-op; we only care about item.completed for extraction
             }
             CodexEvent::TurnCompleted { usage } => {
-                let token_usage = usage.map(|u| TokenUsage::new(u.input_tokens, u.output_tokens));
+                let token_usage = usage.map(|u| {
+                    TokenUsage::new(u.input_tokens, u.output_tokens)
+                        .with_cached(u.cached_input_tokens)
+                        .with_reasoning(u.reasoning_output_tokens)
+                });
                 last_completed_turn = ParsedTurn {
                     agent_message: current_turn_agent_message.clone(),
                     usage: token_usage,
