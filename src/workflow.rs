@@ -160,6 +160,7 @@ impl Workflow {
 /// Build a `StepContext` from a `Step` and current workflow defaults.
 ///
 /// History/schema/options remain empty until their follow-on CLOs land.
+#[allow(dead_code)]
 fn step_context<'a>(
     step: &'a Step,
     workflow: &Workflow,
@@ -1789,7 +1790,18 @@ impl WorkflowRunner {
                                         }
                                     };
 
-                                    let ctx = step_context(step, workflow, &iter_prompt, &cwd);
+                                    let ctx = backend::StepContext {
+                                        prompt: &iter_prompt,
+                                        cwd: &cwd,
+                                        history: &[],
+                                        model: model_override.as_deref(),
+                                        sandbox: step_sandbox,
+                                        apply_edits: step_apply_edits,
+                                        schema: None,
+                                        options: None,
+                                        timeout: step_timeout
+                                            .map(std::time::Duration::from_millis),
+                                    };
                                     match tokio::time::timeout(timeout_duration, backend.query(ctx)).await {
                                         Ok(Ok(qo)) => {
                                             iter_output = qo.stdout;
@@ -2266,7 +2278,18 @@ impl WorkflowRunner {
 
                             // Record backend query
 
-                            let ctx = step_context(step, workflow, &prompt, &cwd);
+                            let ctx = backend::StepContext {
+                                prompt: &prompt,
+                                cwd: &cwd,
+                                history: &[],
+                                model: model_override.as_deref(),
+                                sandbox: step_sandbox,
+                                apply_edits: step_apply_edits,
+                                schema: None,
+                                options: None,
+                                timeout: step_timeout
+                                    .map(std::time::Duration::from_millis),
+                            };
                             match tokio::time::timeout(timeout_duration, backend.query(ctx)).await {
                                 Ok(Ok(qo)) => {
                                     text = qo.stdout;

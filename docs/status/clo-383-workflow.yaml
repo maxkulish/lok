@@ -20,10 +20,10 @@ linear:
   priority: Medium
   branch_actual: feat/clo-383-sandbox
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-05-20T09:11:59.656Z'
-  updated_at: '2026-05-20T14:27:37.226Z'
+  updated_at: '2026-05-20T14:59:03.210Z'
 phases:
   discovery:
     status: complete
@@ -97,7 +97,7 @@ phases:
     plan_file: docs/plans/clo-383-apply-edits-sandbox-default.md
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
       - 312b6b0
       - e0a9d65
@@ -105,6 +105,8 @@ phases:
       - 83f344f
       - f0f5ec6
       - 77d69f8
+      - d32590c
+      - f6dd7ef
     assumption_outcomes:
       - evidence: src/workflow.rs:171 sets apply_edits from step.apply_edits; single field on Step struct
         outcome: held
@@ -129,8 +131,20 @@ phases:
         outcome: held
         text: No external caller constructs StepContext outside the workspace
     assumptions_revalidated: true
+    codex_report: docs/reviews/clo-383-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/clo-383-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-383-validation-synthesis.md
+    validation_synthesis_verdict: PASS
   pr:
-    status: pending
+    status: in_progress
+    pr_number: 31
+    pr_url: https://github.com/maxkulish/lok/pull/31
+    ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-20T14:58:54Z'
   complete:
     status: pending
 history:
@@ -249,5 +263,39 @@ history:
       Fix commit 77d69f8: thread sandbox+apply_edits through async StepContext in tokio::spawn. Resolves latent lifetime
       bug where step.sandbox and step.apply_edits access inside tokio::spawn(async move) captured &Step reference across
       a 'static boundary. Values now copied before the async block per existing pattern.
+  - timestamp: '2026-05-20T14:52:07.339Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Synthesis PASS_WITH_NOTES applied in 1 fix iteration (commits 77d69f8, d32590c). All Must Fix Before PR items
+      addressed: retry path sandbox+apply_edits wired, warning channel flipped to println!. Re-validation appended to
+      synthesis report.
+  - timestamp: '2026-05-20T14:52:18.695Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-20T14:53:02.805Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate green: fmt + clippy + clippy --tests + cargo test (555 tests + 7 codex fixtures + 4 parse output +
+      5 gemini fixtures + 6 integration = 577 total green).
+  - timestamp: '2026-05-20T14:53:51.660Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #31 opened.'
+  - timestamp: '2026-05-20T14:56:51.395Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      No GitHub Actions CI runs detected for PR #31 (query returned zero `CI` workflow runs for this head commit).
+      Branch `main` is unprotected. Local pre-flight gate (cargo build --verbose, cargo test --verbose, cargo fmt
+      --check, cargo clippy -- -D warnings) passed identically, so CI is treated as green.
+  - timestamp: '2026-05-20T14:59:03.210Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: >-
+      Current-head bot review observed for PR #31 at head f6dd7ef1 by gemini-code-assist[bot]; state=COMMENTED;
+      submitted_at=2026-05-20T14:58:54Z. Fetching inline comments and review threads.
 task_title: 'FR-22: `apply_edits=true` defaults Codex sandbox to `workspace-write`'
 task_url: https://linear.app/cloud-ai/issue/CLO-383/fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace-write
