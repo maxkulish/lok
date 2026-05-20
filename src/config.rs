@@ -167,7 +167,11 @@ impl Default for Config {
             BackendConfig {
                 enabled: true,
                 command: Some("npx".to_string()),
-                args: vec!["@google/gemini-cli".to_string()],
+                args: vec![
+                    "@google/gemini-cli".to_string(),
+                    "--output-format".to_string(),
+                    "json".to_string(),
+                ],
                 skip_lines: 1,
                 api_key_env: None,
                 model: None,
