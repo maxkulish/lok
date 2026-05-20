@@ -1,0 +1,228 @@
+task_id: CLO-380
+task_type: development
+classification_reason: >-
+  No explicit **Type**/label signal in issue body/labels and title does not match operational patterns; defaulting to
+  development
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  priority: High
+  branch_suggested: kmamemo/clo-380-fr-3b-codex-o-output-last-message-authoritative-result-extraction
+  branch_actual: feat/clo-380-fr-3b-o-output-last-message
+workflow:
+  current_phase: implement
+  status: active
+  created_at: '2026-05-20T09:10:59.865Z'
+  updated_at: '2026-05-20T10:08:51.460Z'
+phases:
+  discovery:
+    status: complete
+    approved: true
+    problem_framed: true
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    prd_created: false
+    discovery_report: docs/discovery/clo-380.md
+    discovery_debt: []
+    baseline_score: 4
+    approaches_identified: 2
+    approach_chosen: Temp-file authoritative result with JSONL fallback
+  design:
+    status: complete
+    design_doc: docs/designs/clo-380-codex-output-last-message.md
+    draft_ready: true
+    draft_source: claude-designer
+    discovery_context_used: true
+    token_usage:
+      - recorded_at: '2026-05-20T09:37:33.661Z'
+        provider: claude
+        model: unknown
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-draft-claude-designer-no-token-counts
+      - recorded_at: '2026-05-20T09:40:15.886Z'
+        provider: gemini
+        model: gemini-3.1-pro-preview
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-gemini-no-token-counts
+      - recorded_at: '2026-05-20T09:40:15.886Z'
+        provider: pi
+        model: manual-synthesis
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-synthesis-manual
+    assumptions_surfaced: true
+    assumptions:
+      - text: >-
+          Codex CLI v0.119.0+ accepts -o <path> for codex exec and writes the final assistant message there on
+          successful turns.
+        confidence: high
+        verification: >-
+          Capture new FR-3b fixtures with the repository's Codex CLI and document the command in
+          tests/fixtures/codex/README.md.
+      - text: >-
+          Always passing -o to older Codex versions fails noisily with a non-zero exit rather than silently changing
+          behavior.
+        confidence: medium
+        verification: >-
+          Implementation smoke-test with a stub command that rejects -o; no cheap real older-binary check is required
+          for this slice.
+      - text: turn.failed and top-level JSONL error events are authoritative failures even when -o contains text.
+        confidence: high
+        verification: Unit test the turn-failed.jsonl plus populated last-message case and assert BackendError::ExecutionFailed.
+      - text: tempfile::NamedTempFile RAII cleanup is sufficient for success and error paths.
+        confidence: high
+        verification: >-
+          Unit tests assert the path disappears after the owning NamedTempFile is dropped; this follows the existing
+          dependency contract rather than adding manual cleanup code.
+      - text: Parser and fixture tests must not assume every item.completed has a matching item.started.
+        confidence: high
+        verification: >-
+          Apply .pi/lessons/clo-373-codex-fixtures-lessons.md § L1; FR-3b fixtures assert only needed semantics, not
+          invented event pairing.
+      - text: Fixture scrub checks must distinguish credential tokens from legitimate usage token fields.
+        confidence: high
+        verification: >-
+          Apply .pi/lessons/clo-373-codex-fixtures-lessons.md § L2; extend the existing scrub gate to .txt companions
+          while retaining explicit credential-key/high-entropy checks.
+      - text: build_argv_prefix() remains the single source of truth for Codex argv construction.
+        confidence: high
+        verification: >-
+          Apply .pi/lessons/clo-371-stepcontext-migration-lessons.md § L3; all query-time flags (-s, --model, -o) are
+          asserted through that helper's tests.
+      - text: >-
+          tempfile::NamedTempFile creates the last-message file with private permissions appropriate for temporary LLM
+          output.
+        confidence: high
+        verification: Rely on the crate contract and add a Unix-only unit assertion for owner-read/write mode when available.
+    review_completed: true
+    review_gemini: docs/reviews/clo-380-design-gemini.md
+    review_synthesis: docs/reviews/clo-380-design-synthesis.md
+    review_verdict: approve_with_changes
+    applied_suggestions:
+      - Preserve leading whitespace in read_last_message; trim only trailing CR/LF.
+      - Use tokio::fs::read_to_string for async last-message file reads inside CodexBackend::query.
+      - Add NamedTempFile private-permission assumption and test note for sensitive temporary LLM output.
+    flagged_suggestions:
+      - id: older-codex-auto-retry-without-o
+        reason: >-
+          Deferred as out of scope for CLO-380; design intentionally always passes -o and validates noisy failure with a
+          stub. Runtime version/capability gating can be added later if unsupported Codex versions are common.
+    human_review_completed: true
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-380-codex-output-last-message.md
+    approved: true
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-20T09:10:59.865Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-380 as development
+  - timestamp: '2026-05-20T09:11:07.927Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: no explicit **Type**/label signal for specification/operational and title indicates
+      feature work without mechanical implementation keyword; fallback rule applies
+  - timestamp: '2026-05-20T09:11:08.695Z'
+    action: linear_status_set_todo
+    phase: init
+    details: Updated Linear issue status from Backlog to Todo
+  - timestamp: '2026-05-20T09:11:09.278Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-20T09:11:17.127Z'
+    action: branch_created
+    phase: discovery
+    details: Created branch feat/clo-380-fr-3b-o-output-last-message from main (via origin/main due existing main worktree)
+  - timestamp: '2026-05-20T09:11:45.379Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: Add temporary last-message file as authoritative success path. Baseline 4/10. 2 approaches considered;
+      selected the minimal extension path to keep FR-3b focused and parser-based fallback intact.
+  - timestamp: '2026-05-20T09:11:47.872Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-20T09:33:05.342Z'
+    action: design_lessons_consulted
+    phase: design
+    details: >-
+      Read applicable lessons: CLO-371 StepContext, CLO-373 Codex fixtures, CLO-374 sandbox routing, CLO-378 TokenUsage,
+      CLO-382 Gemini structured output. Relevant lessons will be cited in assumptions/test plan.
+  - timestamp: '2026-05-20T09:37:33.661Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated by claude-designer at docs/designs/clo-380-codex-output-last-message.md and edited after soft-gate
+      review to align fatal-error precedence, usage diagnostics, and lessons.
+  - timestamp: '2026-05-20T09:37:41.074Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '7 assumptions surfaced (high: 6, medium: 1, low: 0). See design doc § Assumptions.'
+  - timestamp: '2026-05-20T09:38:10.740Z'
+    action: design_review_workflow_fixed
+    phase: design
+    details: >-
+      Applied known CLO-382 lesson to .lok/workflows/design-review.toml by adding depends_on = ["health_check"] to
+      gemini_review and ollama_review so steps.health_check.output resolves.
+  - timestamp: '2026-05-20T09:38:33.142Z'
+    action: design_review_workflow_fixed_refs
+    phase: design
+    details: >-
+      Removed unsupported steps.health_check.output interpolation from design-review shell steps after depends_on alone
+      did not satisfy lok variable resolution in shell fields.
+  - timestamp: '2026-05-20T09:40:15.886Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: approve_with_changes. 3 applied, 1 flagged. Direct Gemini review used after lok design-review
+      workflow interpolation failed.
+  - timestamp: '2026-05-20T10:08:11.942Z'
+    action: design_human_review_complete
+    phase: design
+    details: Plannotator annotate session resolved docs/designs/clo-380-codex-output-last-message.md with no annotations.
+  - timestamp: '2026-05-20T10:08:12.827Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design re-read and aligned with API boundaries, test plan, and rollout scope; final open points moved to follow-up
+      assumptions. READY for plan phase.
+  - timestamp: '2026-05-20T10:08:13.610Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-20T10:08:49.315Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 5 sub-tasks at docs/plans/clo-380-codex-output-last-message.md
+  - timestamp: '2026-05-20T10:08:50.410Z'
+    action: plan_approved
+    phase: plan
+    details: Plan approved. 5 sub-tasks queued across parser, Codex query path, fixtures, and pre-merge gate.
+  - timestamp: '2026-05-20T10:08:51.460Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+task_title: 'FR-3b: Codex `-o`/`--output-last-message` authoritative result extraction'
+task_url: https://linear.app/cloud-ai/issue/CLO-380/fr-3b-codex-o-output-last-message-authoritative-result-extraction

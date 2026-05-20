@@ -22,12 +22,12 @@ Record the exact prompt or a scrubbed equivalent in the table below. Keep stream
 
 ## Fixture inventory
 
-| Fixture | Terminal event | Prompt/provenance | Edit status |
-|---|---|---|---|
-| `turn-completed.jsonl` | `turn.completed` | Captured with `codex exec --json --ephemeral -s read-only -- "Reply exactly: fixture happy path."` | Byte-for-byte stdout capture. |
-| `turn-failed.jsonl` | `turn.failed` | Captured with `codex exec --json --ephemeral --model definitely-not-a-real-model -- "hi"`; Codex exited 1 and emitted JSONL `error` plus `turn.failed`. | Byte-for-byte stdout capture. |
-| `multi-turn-reasoning.jsonl` | `turn.completed` | Captured with `codex exec --json --ephemeral -s read-only -- "Run pwd. Then think step by step about 17 * 19, but final answer exactly: 323."` | Scrubbed the command output working-directory string from an absolute local path to `<WORKDIR>`. |
-| `missing-agent-message.jsonl` | `turn.completed` | Derived from the real `turn-completed.jsonl` capture after two natural attempts (`""` and `"Complete successfully without sending any final answer."`) still emitted `agent_message` items. | Hand-trimmed the single final `item.completed` line whose nested `item.type` was `agent_message`; Codex 0.130.0 did not emit a paired `item.started` line for that agent message in the source stream. |
+| Fixture | Terminal event | Companion | Prompt/provenance | Edit status |
+|---|---|---|---|---|
+| `turn-completed.jsonl` | `turn.completed` | `turn-completed.last-message.txt` (**present, non-empty**) | Captured with `codex exec --json --ephemeral -s read-only -- "Reply exactly: fixture happy path (from -o file)."` | Byte-for-byte stdout capture. |
+| `turn-failed.jsonl` | `turn.failed` | `turn-failed.last-message.txt` (**present, non-empty**) | Captured with `codex exec --json --ephemeral -s read-only --model definitely-not-a-real-model -- "hi"` (and checked failure text from `-o` path remains a string) | Byte-for-byte stdout capture. |
+| `multi-turn-reasoning.jsonl` | `turn.completed` | `multi-turn-reasoning.last-message.txt` (**present, empty**) | Captured with `codex exec --json --ephemeral -s read-only -- "Run pwd. Then think step by step about 17 * 19, but final answer exactly: 323."` | Scrubbed the command output working-directory string from an absolute local path to `<WORKDIR>`. |
+| `missing-agent-message.jsonl` | `turn.completed` | `missing-agent-message.last-message.txt` (**present, non-empty**) | Derived from the real `turn-completed.jsonl` capture after two natural attempts (`""` and `"Complete successfully without sending any final answer."`) still emitted `agent_message` items. | Hand-trimmed the single final `item.completed` line whose nested `item.type` was `agent_message`; Codex 0.130.0 did not emit a paired `item.started` line for that agent message in the source stream. |
 
 ## Scrub checklist
 
@@ -45,7 +45,7 @@ Suggested gate:
 
 ```bash
 rg '<HOME>|/Users/|/home/|C:\\Users\\|<USERNAME>|/tmp/|/var/folders/|Bearer |api[_-]?key|apikey|access[_-]?token|auth[_-]?token|"token"[[:space:]]*:|token=|secret|password|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' \
-  tests/fixtures/codex/*.jsonl
+  tests/fixtures/codex/*.jsonl tests/fixtures/codex/*.last-message.txt
 ```
 
 This grep is intentionally conservative. A clean grep is not a proof that no secret exists; manual review is still required.
