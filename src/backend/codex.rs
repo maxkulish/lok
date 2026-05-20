@@ -37,12 +37,29 @@ impl CodexBackend {
         })
     }
 
+    fn resolve_effective_sandbox(
+        sandbox: Option<super::SandboxMode>,
+        apply_edits: bool,
+    ) -> Option<super::SandboxMode> {
+        match (apply_edits, sandbox) {
+            (true, None) => Some(super::SandboxMode::WorkspaceWrite),
+            (true, Some(super::SandboxMode::ReadOnly)) => {
+                eprintln!(
+                    "[WARN] apply_edits=true but sandbox is read-only; edits will be parsed but the sandbox prevents writes"
+                );
+                Some(super::SandboxMode::ReadOnly)
+            }
+            (_, other) => other,
+        }
+    }
+
     /// Build the argv prefix for a Codex invocation, up to but not including the `--` separator
     /// and the prompt itself. Centralises the sandbox-injection logic so tests exercise the
     /// same code path that `query()` runs.
     fn build_argv_prefix(
         base_args: &[String],
         sandbox: Option<super::SandboxMode>,
+        apply_edits: bool,
         model: Option<&str>,
     ) -> Vec<String> {
         let mut argv: Vec<String> = if base_args.is_empty() {
@@ -55,7 +72,8 @@ impl CodexBackend {
             base_args.to_vec()
         };
 
-        let mode = sandbox.unwrap_or(super::SandboxMode::ReadOnly);
+        let effective = Self::resolve_effective_sandbox(sandbox, apply_edits);
+        let mode = effective.unwrap_or(super::SandboxMode::ReadOnly);
         let mode_str = match mode {
             super::SandboxMode::ReadOnly => "read-only",
             super::SandboxMode::WorkspaceWrite => "workspace-write",
@@ -100,7 +118,12 @@ impl super::Backend for CodexBackend {
             .or_else(|| self.default_model.clone());
 
         let mut cmd = Command::new(&self.command);
-        let argv = Self::build_argv_prefix(&self.args, ctx.sandbox, effective_model.as_deref());
+        let argv = Self::build_argv_prefix(
+            &self.args,
+            ctx.sandbox,
+            ctx.apply_edits,
+            effective_model.as_deref(),
+        );
         cmd.args(&argv);
 
         cmd.arg("--") // Prevent prompt from being interpreted as flags
@@ -176,28 +199,28 @@ mod tests {
 
     #[test]
     fn codex_sandbox_default_none_uses_read_only() {
-        let argv = CodexBackend::build_argv_prefix(&[], None, None);
+        let argv = CodexBackend::build_argv_prefix(&[], None, false, None);
         let idx = argv.iter().position(|a| a == "-s").unwrap();
         assert_eq!(argv[idx + 1], "read-only");
     }
 
     #[test]
     fn codex_sandbox_workspace_write() {
-        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::WorkspaceWrite), None);
+        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::WorkspaceWrite), false, None);
         let idx = argv.iter().position(|a| a == "-s").unwrap();
         assert_eq!(argv[idx + 1], "workspace-write");
     }
 
     #[test]
     fn codex_sandbox_danger_full_access() {
-        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::DangerFullAccess), None);
+        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::DangerFullAccess), false, None);
         let idx = argv.iter().position(|a| a == "-s").unwrap();
         assert_eq!(argv[idx + 1], "danger-full-access");
     }
 
     #[test]
     fn codex_defaults_include_ephemeral() {
-        let argv = CodexBackend::build_argv_prefix(&[], None, None);
+        let argv = CodexBackend::build_argv_prefix(&[], None, false, None);
         assert!(argv.contains(&"--ephemeral".to_string()));
     }
 
@@ -205,7 +228,7 @@ mod tests {
     fn codex_custom_args_preserved_before_sandbox() {
         let custom = vec!["exec".to_string(), "--json".to_string()];
         let argv =
-            CodexBackend::build_argv_prefix(&custom, Some(SandboxMode::WorkspaceWrite), None);
+            CodexBackend::build_argv_prefix(&custom, Some(SandboxMode::WorkspaceWrite), false, None);
         assert_eq!(argv[0], "exec");
         assert_eq!(argv[1], "--json");
         let s_idx = argv.iter().position(|a| a == "-s").unwrap();
@@ -216,13 +239,13 @@ mod tests {
     #[test]
     fn codex_no_ephemeral_with_custom_args() {
         let custom = vec!["exec".to_string(), "--json".to_string()];
-        let argv = CodexBackend::build_argv_prefix(&custom, None, None);
+        let argv = CodexBackend::build_argv_prefix(&custom, None, false, None);
         assert!(!argv.contains(&"--ephemeral".to_string()));
     }
 
     #[test]
     fn codex_exactly_one_sandbox_flag_with_defaults() {
-        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::WorkspaceWrite), None);
+        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::WorkspaceWrite), false, None);
         let count = argv.iter().filter(|a| *a == "-s").count();
         assert_eq!(
             count, 1,
@@ -239,7 +262,7 @@ mod tests {
         let codex_cfg = cfg.backends.get("codex").expect("default codex backend");
         let backend = CodexBackend::new(codex_cfg).expect("backend constructs");
         let argv =
-            CodexBackend::build_argv_prefix(&backend.args, Some(SandboxMode::WorkspaceWrite), None);
+            CodexBackend::build_argv_prefix(&backend.args, Some(SandboxMode::WorkspaceWrite), false, None);
         assert!(
             argv.contains(&"--ephemeral".to_string()),
             "default config must yield --ephemeral; got {:?}",
@@ -254,8 +277,61 @@ mod tests {
     }
 
     #[test]
+    fn codex_apply_edits_true_no_sandbox_defaults_workspace_write() {
+        let argv = CodexBackend::build_argv_prefix(&[], None, true, None);
+        let idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(argv[idx + 1], "workspace-write");
+    }
+
+    #[test]
+    fn codex_apply_edits_true_explicit_workspace_write_preserved() {
+        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::WorkspaceWrite), true, None);
+        let idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(argv[idx + 1], "workspace-write");
+    }
+
+    #[test]
+    fn codex_apply_edits_true_explicit_danger_preserved() {
+        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::DangerFullAccess), true, None);
+        let idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(argv[idx + 1], "danger-full-access");
+    }
+
+    #[test]
+    fn codex_apply_edits_true_explicit_read_only_preserved() {
+        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::ReadOnly), true, None);
+        let idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(argv[idx + 1], "read-only");
+    }
+
+    #[test]
+    fn codex_apply_edits_false_no_sandbox_keeps_read_only_default() {
+        let argv = CodexBackend::build_argv_prefix(&[], None, false, None);
+        let idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(argv[idx + 1], "read-only");
+    }
+
+    #[test]
+    fn codex_apply_edits_false_explicit_workspace_write_preserved() {
+        let argv = CodexBackend::build_argv_prefix(&[], Some(SandboxMode::WorkspaceWrite), false, None);
+        let idx = argv.iter().position(|a| a == "-s").unwrap();
+        assert_eq!(argv[idx + 1], "workspace-write");
+    }
+
+    #[test]
+    fn codex_exactly_one_sandbox_flag_with_apply_edits_default() {
+        let argv = CodexBackend::build_argv_prefix(&[], None, true, None);
+        let count = argv.iter().filter(|a| *a == "-s").count();
+        assert_eq!(
+            count, 1,
+            "expected exactly one -s flag with apply_edits default; got argv {:?}",
+            argv
+        );
+    }
+
+    #[test]
     fn codex_model_flag_appended() {
-        let argv = CodexBackend::build_argv_prefix(&[], None, Some("gpt-5"));
+        let argv = CodexBackend::build_argv_prefix(&[], None, false, Some("gpt-5"));
         let idx = argv.iter().position(|a| a == "--model").unwrap();
         assert_eq!(argv[idx + 1], "gpt-5");
     }
