@@ -23,7 +23,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-20T00:00:00.000Z'
-  updated_at: '2026-05-20T10:29:53.634Z'
+  updated_at: '2026-05-20T12:32:08.373Z'
 phases:
   init:
     status: complete
@@ -100,6 +100,7 @@ phases:
   implement:
     commits:
       - '1990789'
+      - f289e6a
 history:
   - action: workflow_started
     details: Task initialized from Linear issue CLO-384
@@ -161,3 +162,9 @@ history:
     details: >-
       ST1 landed: humantime dep + duration deserializer helpers. 6 tests pass (seconds/millis string, int, none,
       invalid). Commit 1990789
+  - timestamp: '2026-05-20T12:32:08.373Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST2 landed: migrated Defaults.timeout and BackendConfig.timeout from u64/Option<u64> to Option<Duration> with
+      custom serde. Removed default_timeout(). Updated all callers. Commit f289e6a
