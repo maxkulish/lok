@@ -23,7 +23,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-20T09:11:59.656Z'
-  updated_at: '2026-05-20T10:15:28.165Z'
+  updated_at: '2026-05-20T10:22:14.347Z'
 phases:
   discovery:
     status: complete
@@ -101,6 +101,7 @@ phases:
     commits:
       - 312b6b0
       - e0a9d65
+      - 00e9b86
   pr:
     status: pending
   complete:
@@ -192,5 +193,9 @@ history:
     action: subtask_complete
     phase: implement
     details: 'ST2 landed: wire apply_edits through workflow::step_context(). Commit e0a9d65. All 541 tests passing.'
+  - timestamp: '2026-05-20T10:22:14.347Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST3 landed: Codex backend effective-sandbox resolution + 7 unit tests. Commit 00e9b86.'
 task_title: 'FR-22: `apply_edits=true` defaults Codex sandbox to `workspace-write`'
 task_url: https://linear.app/cloud-ai/issue/CLO-383/fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace-write
