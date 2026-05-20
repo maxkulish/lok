@@ -1,7 +1,7 @@
 # Review Synthesis: CLO-383
 
-**Synthesized**: 2026-05-20  
-**Pipeline**: Manual review (single reviewer: Claude, lok design-review workflow failed on shell-step variable resolution)  
+**Synthesized**: 2026-05-20
+**Pipeline**: Manual review (single reviewer: Claude, lok design-review workflow failed on shell-step variable resolution)
 
 ---
 

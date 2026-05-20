@@ -314,8 +314,14 @@ mod tests {
 
     #[test]
     fn gemini_build_shell_cmd_preserves_output_format_flag() {
-        let cmd =
-            GeminiBackend::build_shell_cmd("npx", &default_args_with_flag(), None, None, false, "hello");
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &default_args_with_flag(),
+            None,
+            None,
+            false,
+            "hello",
+        );
         assert!(cmd.contains("--output-format"), "cmd: {}", cmd);
         assert!(cmd.contains("json"), "cmd: {}", cmd);
     }

@@ -1,7 +1,7 @@
 # Design Review: CLO-383
 
-**Reviewer**: Claude (manual, in lieu of broken lok pipeline)  
-**Reviewed**: 2026-05-20  
+**Reviewer**: Claude (manual, in lieu of broken lok pipeline)
+**Reviewed**: 2026-05-20
 **Pipeline**: Manual review (lok design-review workflow had variable-resolution failures in shell steps)
 
 ---
