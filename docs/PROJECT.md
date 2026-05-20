@@ -6,7 +6,9 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
+| [CLO-378](https://linear.app/cloud-ai/issue/CLO-378/fr-25b-extend-tokenusage-with-cached-tokens-reasoning-tokens) | FR-25b: extend TokenUsage with cached_tokens + reasoning_tokens | In Progress | Init | - |
 | [CLO-381](https://linear.app/cloud-ai/issue/CLO-381/fr-25-codex-backend-extracts-usage-from-turncompleted-events) | FR-25: Codex backend extracts `usage` from `turn.completed` events | In Progress | Implement | - |
+| [CLO-382](https://linear.app/cloud-ai/issue/CLO-382/fr-26-gemini-backend-extracts-token-counts-from-json-envelope) | FR-26: Gemini backend extracts token counts from JSON envelope | In Progress | Init | - |
 
 ## Up Next (Prioritized Backlog)
 

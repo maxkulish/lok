@@ -12,12 +12,25 @@ pub struct GeminiBackend {
     default_model: Option<String>,
 }
 
+/// Private representation of the Gemini CLI JSON envelope emitted when
+/// `--output-format json` is passed.
+#[derive(serde::Deserialize)]
+pub(crate) struct GeminiEnvelope {
+    response: String,
+    #[serde(default)]
+    stats: Option<serde_json::Value>,
+}
+
 impl GeminiBackend {
     pub fn new(config: &BackendConfig) -> Result<Self> {
         let command = config.command.clone().unwrap_or_else(|| "npx".to_string());
 
         let args = if config.args.is_empty() {
-            vec!["@google/gemini-cli".to_string()]
+            vec![
+                "@google/gemini-cli".to_string(),
+                "--output-format".to_string(),
+                "json".to_string(),
+            ]
         } else {
             config.args.clone()
         };
@@ -38,6 +51,76 @@ impl GeminiBackend {
             .join("\n")
     }
 
+    pub(crate) fn parse_gemini_envelope(stdout: &str) -> Option<GeminiEnvelope> {
+        serde_json::from_str(stdout).ok()
+    }
+
+    pub(crate) fn envelope_to_usage(stats: Option<serde_json::Value>) -> Option<super::TokenUsage> {
+        let stats = stats?;
+        Self::extract_usage_from_stats(&stats)
+    }
+
+    fn extract_usage_from_stats(stats: &serde_json::Value) -> Option<super::TokenUsage> {
+        // Real Gemini CLI (≥0.42) shape: stats.models.<model>.tokens { prompt, candidates, cached, thoughts }
+        if let Some(models) = stats.get("models").and_then(|m| m.as_object()) {
+            let mut prompt: u32 = 0;
+            let mut candidates: u32 = 0;
+            let mut cached: u32 = 0;
+            let mut thoughts: u32 = 0;
+            let mut prompt_seen = false;
+            let mut candidates_seen = false;
+
+            for (_, model) in models {
+                if let Some(tokens) = model.get("tokens").and_then(|t| t.as_object()) {
+                    if let Some(v) = tokens.get("prompt").and_then(|v| v.as_u64()) {
+                        prompt = prompt.saturating_add(v as u32);
+                        prompt_seen = true;
+                    }
+                    if let Some(v) = tokens.get("candidates").and_then(|v| v.as_u64()) {
+                        candidates = candidates.saturating_add(v as u32);
+                        candidates_seen = true;
+                    }
+                    if let Some(v) = tokens.get("cached").and_then(|v| v.as_u64()) {
+                        cached = cached.saturating_add(v as u32);
+                    }
+                    if let Some(v) = tokens.get("thoughts").and_then(|v| v.as_u64()) {
+                        thoughts = thoughts.saturating_add(v as u32);
+                    }
+                }
+            }
+
+            if prompt_seen && candidates_seen {
+                return Some(
+                    super::TokenUsage::new(prompt, candidates)
+                        .with_cached(if cached > 0 { Some(cached) } else { None })
+                        .with_reasoning(if thoughts > 0 { Some(thoughts) } else { None }),
+                );
+            }
+        }
+
+        // Fallback: PRD-assumed flat shape (stats.promptTokenCount / candidatesTokenCount).
+        // Kept for forward-compatibility in case a future CLI version flattens the schema.
+        if let Some(prompt) = stats
+            .get("promptTokenCount")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32)
+        {
+            if let Some(candidates) = stats
+                .get("candidatesTokenCount")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32)
+            {
+                let cached = stats
+                    .get("cachedContentTokenCount")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+                return Some(super::TokenUsage::new(prompt, candidates).with_cached(cached));
+            }
+        }
+
+        None
+    }
+
     /// Build the shell command string that `query()` executes. Centralises sandbox/approval-mode
     /// mapping so tests exercise the same code path as production.
     fn build_shell_cmd(
@@ -48,7 +131,7 @@ impl GeminiBackend {
         prompt: &str,
     ) -> String {
         // Shell-escape each component: wrap in single quotes, escape internal single quotes
-        let escape = |s: &str| s.replace("'", "'\\''");
+        let escape = |s: &str| s.replace("'", "'\\\''");
         let escaped_command = format!("'{}'", escape(command));
         let escaped_args = args
             .iter()
@@ -137,15 +220,19 @@ impl super::Backend for GeminiBackend {
             return Err(err);
         }
 
-        let parsed_stdout = self.parse_output(&stdout);
+        let (response_text, usage) = match Self::parse_gemini_envelope(&stdout) {
+            Some(env) => (env.response, Self::envelope_to_usage(env.stats)),
+            None => (self.parse_output(&stdout), None),
+        };
         Ok(super::QueryOutput::from_process(
-            parsed_stdout,
+            response_text,
             stderr_str,
             exit_code,
             "gemini",
             start.elapsed(),
         )
-        .with_model(effective_model))
+        .with_model(effective_model)
+        .with_usage(usage))
     }
 
     fn is_available(&self) -> bool {
@@ -160,6 +247,58 @@ mod tests {
 
     fn args() -> Vec<String> {
         vec!["@google/gemini-cli".to_string()]
+    }
+
+    fn default_args_with_flag() -> Vec<String> {
+        vec![
+            "@google/gemini-cli".to_string(),
+            "--output-format".to_string(),
+            "json".to_string(),
+        ]
+    }
+
+    #[test]
+    fn gemini_default_config_includes_output_format_json() {
+        let cfg = crate::config::Config::default();
+        let gemini_cfg = cfg
+            .backends
+            .get("gemini")
+            .expect("default gemini backend exists");
+        let backend = GeminiBackend::new(gemini_cfg).expect("backend constructs");
+        assert!(
+            backend.args.contains(&"--output-format".to_string()),
+            "default args must include --output-format; got {:?}",
+            backend.args
+        );
+        assert!(
+            backend.args.contains(&"json".to_string()),
+            "default args must include json; got {:?}",
+            backend.args
+        );
+    }
+
+    #[test]
+    fn gemini_custom_args_without_flag_preserved() {
+        let mut cfg = crate::config::Config::default();
+        let gemini_cfg = cfg
+            .backends
+            .get_mut("gemini")
+            .expect("default gemini backend exists");
+        gemini_cfg.args = vec!["@google/gemini-cli".to_string(), "--skip-trust".to_string()];
+        let backend = GeminiBackend::new(gemini_cfg).expect("backend constructs");
+        assert!(
+            !backend.args.contains(&"--output-format".to_string()),
+            "custom args should not auto-inject flag; got {:?}",
+            backend.args
+        );
+    }
+
+    #[test]
+    fn gemini_build_shell_cmd_preserves_output_format_flag() {
+        let cmd =
+            GeminiBackend::build_shell_cmd("npx", &default_args_with_flag(), None, None, "hello");
+        assert!(cmd.contains("--output-format"), "cmd: {}", cmd);
+        assert!(cmd.contains("json"), "cmd: {}", cmd);
     }
 
     #[test]
@@ -208,7 +347,7 @@ mod tests {
     fn gemini_sandbox_prompt_is_escaped() {
         let cmd = GeminiBackend::build_shell_cmd("npx", &args(), None, None, "it's fine");
         assert!(
-            cmd.contains("'\\''"),
+            cmd.contains("'\\\''"),
             "expected shell-escaped single quote in: {}",
             cmd
         );
@@ -225,5 +364,69 @@ mod tests {
         );
         assert!(cmd.contains("--model 'gemini-2.5-pro'"));
         assert!(cmd.contains("--approval-mode plan"));
+    }
+
+    #[test]
+    fn gemini_parse_envelope_extracts_usage() {
+        let json = r#"{"response":"ok.","stats":{"models":{"gemini-test":{"tokens":{"prompt":100,"candidates":50,"cached":10,"thoughts":5}}}}}"#;
+        let env = GeminiBackend::parse_gemini_envelope(json).expect("valid envelope");
+        assert_eq!(env.response, "ok.");
+        let usage = GeminiBackend::envelope_to_usage(env.stats).expect("usage extracted");
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.completion_tokens, 50);
+        assert_eq!(usage.total_tokens, 150);
+        assert_eq!(usage.cached_tokens, Some(10));
+        assert_eq!(usage.reasoning_tokens, Some(5));
+    }
+
+    #[test]
+    fn gemini_parse_envelope_without_stats_returns_no_usage() {
+        let json = r#"{"response":"ok."}"#;
+        let env = GeminiBackend::parse_gemini_envelope(json).expect("valid envelope");
+        assert_eq!(env.response, "ok.");
+        assert!(GeminiBackend::envelope_to_usage(env.stats).is_none());
+    }
+
+    #[test]
+    fn gemini_parse_envelope_malformed_returns_none() {
+        let json = r#"{"response": "ok.", "stats": {"#;
+        assert!(GeminiBackend::parse_gemini_envelope(json).is_none());
+    }
+
+    #[test]
+    fn gemini_parse_envelope_missing_response_returns_none() {
+        let json = r#"{"stats":{"promptTokenCount":10,"candidatesTokenCount":5}}"#;
+        assert!(GeminiBackend::parse_gemini_envelope(json).is_none());
+    }
+
+    #[test]
+    fn gemini_parse_envelope_flat_stats_fallback() {
+        let json = r#"{"response":"hi","stats":{"promptTokenCount":42,"candidatesTokenCount":7,"cachedContentTokenCount":3}}"#;
+        let env = GeminiBackend::parse_gemini_envelope(json).expect("valid envelope");
+        let usage = GeminiBackend::envelope_to_usage(env.stats).expect("usage extracted");
+        assert_eq!(usage.prompt_tokens, 42);
+        assert_eq!(usage.completion_tokens, 7);
+        assert_eq!(usage.cached_tokens, Some(3));
+    }
+
+    #[test]
+    fn gemini_parse_envelope_sums_across_models() {
+        let json = r#"{"response":"ok.","stats":{"models":{"m1":{"tokens":{"prompt":30,"candidates":20}},"m2":{"tokens":{"prompt":70,"candidates":30,"cached":5,"thoughts":2}}}}}"#;
+        let env = GeminiBackend::parse_gemini_envelope(json).expect("valid envelope");
+        let usage = GeminiBackend::envelope_to_usage(env.stats).expect("usage extracted");
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.completion_tokens, 50);
+        assert_eq!(usage.total_tokens, 150);
+        assert_eq!(usage.cached_tokens, Some(5));
+        assert_eq!(usage.reasoning_tokens, Some(2));
+    }
+
+    #[test]
+    fn gemini_parse_envelope_ignores_zero_cached_and_thoughts() {
+        let json = r#"{"response":"ok.","stats":{"models":{"m1":{"tokens":{"prompt":10,"candidates":5,"cached":0,"thoughts":0}}}}}"#;
+        let env = GeminiBackend::parse_gemini_envelope(json).expect("valid envelope");
+        let usage = GeminiBackend::envelope_to_usage(env.stats).expect("usage extracted");
+        assert_eq!(usage.cached_tokens, None);
+        assert_eq!(usage.reasoning_tokens, None);
     }
 }
