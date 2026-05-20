@@ -77,8 +77,6 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tokio::process::Command;
 
-/// Default timeout for workflow steps in milliseconds (2 minutes)
-const DEFAULT_STEP_TIMEOUT_MS: u64 = 120_000;
 
 /// Minimum timeout value in milliseconds (values 1 to MIN-1 are rejected)
 const MIN_TIMEOUT_MS: u64 = 100;
@@ -111,8 +109,12 @@ pub struct Workflow {
     #[serde(default)]
     pub continue_on_error: bool,
     /// Default timeout for all steps in milliseconds (steps can override)
-    #[serde(default)]
-    pub timeout: Option<u64>,
+    #[serde(
+        default,
+        deserialize_with = "crate::config::deser_duration_millis",
+        serialize_with = "crate::config::serialize_duration_millis"
+    )]
+    pub timeout: Option<std::time::Duration>,
 }
 
 impl Workflow {
@@ -131,13 +133,14 @@ impl Workflow {
                 }
             }
             // Validate timeout: 0 means no timeout, but values between 1 and MIN are likely mistakes
-            let effective_timeout = self.step_timeout(step);
+            let effective_timeout = step.timeout.or(self.timeout);
             if let Some(timeout) = effective_timeout {
-                if timeout > 0 && timeout < MIN_TIMEOUT_MS {
+                let timeout_ms = timeout.as_millis() as u64;
+                if timeout_ms > 0 && timeout_ms < MIN_TIMEOUT_MS {
                     return Err(WorkflowError::TimeoutTooSmall {
                         workflow: self.name.clone(),
                         step: step.name.clone(),
-                        timeout,
+                        timeout: timeout_ms,
                         min: MIN_TIMEOUT_MS,
                     });
                 }
@@ -150,27 +153,27 @@ impl Workflow {
     pub fn step_continue_on_error(&self, step: &Step) -> bool {
         step.continue_on_error.unwrap_or(self.continue_on_error)
     }
-
-    /// Get the effective timeout for a step (step-level overrides workflow-level)
-    pub fn step_timeout(&self, step: &Step) -> Option<u64> {
-        step.timeout.or(self.timeout)
-    }
 }
 
-/// Build a `StepContext` from a `Step` and current workflow defaults.
+/// Build a `StepContext` from a `Step` and configuration.
 ///
-/// History/schema/options remain empty until their follow-on CLOs land.
+/// Resolves the effective timeout via the three-layer priority
+/// (step > backend > global > DEFAULT_TIMEOUT) using `effective_timeout`.
 fn step_context<'a>(
     step: &'a Step,
-    workflow: &Workflow,
+    config: &crate::config::Config,
+    backend_name: &str,
     prompt: &'a str,
     cwd: &'a Path,
 ) -> backend::StepContext<'a> {
+    let timeout = Some(crate::backend::effective_timeout(
+        step.timeout,
+        backend_name,
+        config,
+    ));
     backend::StepContext {
         sandbox: step.sandbox,
-        timeout: workflow
-            .step_timeout(step)
-            .map(std::time::Duration::from_millis),
+        timeout,
         ..backend::StepContext::from_prompt(prompt, cwd, step.model.as_deref())
     }
 }
@@ -287,9 +290,14 @@ pub struct Step {
     pub min_deps_success: Option<usize>,
 
     // Timeout
-    /// Timeout for this step in milliseconds (default: 120000 = 2 minutes)
-    #[serde(default)]
-    pub timeout: Option<u64>,
+    /// Timeout for this step (default: workflow-level or 120s)
+    /// Accepts human-readable strings like "30s" or raw integers (milliseconds)
+    #[serde(
+        default,
+        deserialize_with = "crate::config::deser_duration_millis",
+        serialize_with = "crate::config::serialize_duration_millis"
+    )]
+    pub timeout: Option<std::time::Duration>,
 
     // Sandbox
     /// Sandbox mode for subprocess backends (FR-21).
@@ -1679,7 +1687,7 @@ impl WorkflowRunner {
                     let fix_retries = step.fix_retries;
                     let max_retries = step.retries;
                     let retry_delay = step.retry_delay;
-                    let step_timeout = workflow.step_timeout(step);
+                    let step_timeout = step.timeout.or(workflow.timeout);
                     let validate_config = step.validate.clone();
 
                     async move {
@@ -1687,11 +1695,11 @@ impl WorkflowRunner {
                         let start = std::time::Instant::now();
 
                         // Calculate timeout duration (default 120s, 0 means no timeout)
-                        let timeout_ms = step_timeout.unwrap_or(DEFAULT_STEP_TIMEOUT_MS);
-                        let timeout_duration = if timeout_ms == 0 {
+                        let timeout_ms = step_timeout.unwrap_or(std::time::Duration::from_secs(120));
+                        let timeout_duration = if timeout_ms.is_zero() {
                             std::time::Duration::from_secs(365 * 24 * 60 * 60) // 1 year = effectively no timeout
                         } else {
-                            std::time::Duration::from_millis(timeout_ms)
+                            timeout_ms
                         };
 
                         // Handle for_each loop steps
@@ -1777,7 +1785,7 @@ impl WorkflowRunner {
                                         }
                                     };
 
-                                    let ctx = step_context(step, workflow, &iter_prompt, &cwd);
+                                    let ctx = step_context(step, &self.config, &backend_name, &iter_prompt, &cwd);
                                     match tokio::time::timeout(timeout_duration, backend.query(ctx)).await {
                                         Ok(Ok(qo)) => {
                                             iter_output = qo.stdout;
@@ -1996,8 +2004,7 @@ impl WorkflowRunner {
                                         return (bn.clone(), Err(format!("Backend {} not available", bn)));
                                     }
                                     let ctx = backend::StepContext {
-                                        timeout: step_timeout
-                                            .map(std::time::Duration::from_millis),
+                                        timeout: step_timeout,
                                         ..backend::StepContext::from_prompt(
                                             &prompt,
                                             &cwd,
@@ -2109,8 +2116,7 @@ impl WorkflowRunner {
                                         let retry_policy = backend::get_retry_policy(synth_config, &config.defaults);
                                         if let Ok(synth_backend) = backend::create_backend(synth_backend_name, synth_config, retry_policy) {
                                             let ctx = backend::StepContext {
-                                                timeout: step_timeout
-                                                    .map(std::time::Duration::from_millis),
+                                                timeout: step_timeout,
                                                 ..backend::StepContext::from_prompt(&synth_prompt, &cwd, None)
                                             };
                                             match tokio::time::timeout(timeout_duration, synth_backend.query(ctx)).await {
@@ -2252,7 +2258,7 @@ impl WorkflowRunner {
 
                             // Record backend query
 
-                            let ctx = step_context(step, workflow, &prompt, &cwd);
+                            let ctx = step_context(step, &config, &backend_name, &prompt, &cwd);
                             match tokio::time::timeout(timeout_duration, backend.query(ctx)).await {
                                 Ok(Ok(qo)) => {
                                     text = qo.stdout;
@@ -2470,7 +2476,7 @@ impl WorkflowRunner {
                                         Err(_) => println!(
                                             "    {} Format timed out after {}ms",
                                             "⚠".yellow(),
-                                            timeout_ms
+                                            timeout_duration.as_millis()
                                         ),
                                     }
                                 }
@@ -2515,7 +2521,7 @@ impl WorkflowRunner {
                                                 step_name,
                                                 format!(
                                                     "Verification timed out after {}ms\n\nOriginal output:\n{}",
-                                                    timeout_ms, current_text
+                                                    timeout_duration.as_millis(), current_text
                                                 ),
                                                 elapsed_ms,
                                                 Some(backend_name.clone()),
