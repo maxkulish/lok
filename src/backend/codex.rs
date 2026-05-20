@@ -91,8 +91,8 @@ impl CodexBackend {
     }
 
     async fn read_last_message(path: &Path) -> Option<String> {
-        let stdout = tokio::fs::read_to_string(path).await.ok()?;
-        let message = stdout.trim_end_matches(&['\n', '\r'][..]);
+        let content = tokio::fs::read_to_string(path).await.ok()?;
+        let message = content.trim_end_matches(&['\n', '\r'][..]);
 
         if message.trim().is_empty() {
             return None;
@@ -174,16 +174,7 @@ impl super::Backend for CodexBackend {
                 // JSONL parsing fails (for example, older codex versions rejecting -o).
                 let msg = format!("Codex failed: {}", stderr_str);
                 let err = super::BackendError::from(anyhow::anyhow!("{}", msg));
-                let err = match err {
-                    super::BackendError::ExecutionFailed { message, .. } => {
-                        super::BackendError::ExecutionFailed {
-                            message,
-                            exit_code: Some(exit_code),
-                        }
-                    }
-                    other => other,
-                };
-                return Err(err);
+                return Err(Self::with_exit_code(err, exit_code));
             }
 
             if let Some(parse_err) = diagnostics.parse_error {
@@ -193,16 +184,7 @@ impl super::Backend for CodexBackend {
             // JSONL parsed successfully but process still exited non-zero — fall back to stderr
             let msg = format!("Codex failed: {}", stderr_str);
             let err = super::BackendError::from(anyhow::anyhow!("{}", msg));
-            let err = match err {
-                super::BackendError::ExecutionFailed { message, .. } => {
-                    super::BackendError::ExecutionFailed {
-                        message,
-                        exit_code: Some(exit_code),
-                    }
-                }
-                other => other,
-            };
-            return Err(err);
+            return Err(Self::with_exit_code(err, exit_code));
         }
 
         let text = Self::read_last_message(last_message_file.path())
