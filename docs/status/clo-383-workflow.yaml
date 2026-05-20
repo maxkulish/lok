@@ -1,0 +1,328 @@
+task_id: CLO-383
+task_type: development
+classification_reason: >-
+  PRD §4 feature request with mechanical ACs (If apply_edits=true + no sandbox → default to workspace-write). Builds on
+  CLO-374 routing. Title prefix FR-22 is implementation, not investigation/document.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  branch_suggested: kmamemo/clo-383-fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace
+  priority: Medium
+  branch_actual: feat/clo-383-sandbox
+workflow:
+  current_phase: complete
+  status: active
+  created_at: '2026-05-20T09:11:59.656Z'
+  updated_at: '2026-05-20T15:53:42.999Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: 'A: add apply_edits to StepContext, resolve in backends'
+    approaches_identified: 3
+    approved: true
+    baseline_score: 9
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-383.md
+    prd_created: false
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-383-apply-edits-sandbox-default.md
+    discovery_context_used: true
+    draft_ready: true
+    draft_source: claude-designer
+    assumptions:
+      - confidence: high
+        text: >-
+          apply_edits is a per-step boolean rather than a per-backend one; consensus steps that fan a single prompt to
+          multiple backends therefore want the same defaulting rule on every subprocess backend.
+        verification: >-
+          Verified by src/workflow.rs:248 (single apply_edits field on Step) and the discovery report's review of
+          step_context().
+      - confidence: high
+        text: >-
+          Only Codex and Gemini consume ctx.sandbox today; Claude / Ollama / Bedrock backends will continue to ignore
+          the new apply_edits field.
+        verification: Verified by greping ctx.sandbox usage during discovery; no other backend touches it.
+      - confidence: high
+        text: >-
+          StepContext is Copy and all its fields are POD, so adding a bool is zero-cost and does not break existing call
+          sites that destructure or spread it.
+        verification: Verified at src/backend/context.rs:11 and the existing test_step_context_is_copy test.
+      - confidence: medium
+        text: >-
+          Emitting a warning log line inside argv-builder functions is acceptable; println! / eprintln! already serves
+          diagnostics in the project (see src/conductor.rs, src/debate.rs).
+        verification: >-
+          grep println! / eprintln! under src/backend/; if absent, surface the warning from query() and pass an
+          effective_sandbox value out of the argv builder.
+      - confidence: medium
+        text: >-
+          The integration test can drive the resolution rule by exercising CodexBackend::build_argv_prefix and
+          GeminiBackend::build_shell_cmd directly, without spawning real Codex / Gemini binaries.
+        verification: >-
+          Existing FR-21 tests already follow this pattern (codex_sandbox_workspace_write,
+          gemini_sandbox_workspace_write_adds_auto_edit).
+      - confidence: low
+        text: >-
+          No external caller constructs StepContext with positional / struct-literal syntax outside the workspace. If a
+          downstream crate ever did, adding a field would be a breaking change; today the struct is crate-internal.
+        verification: cargo check across the workspace plus a grep for StepContext { outside src/.
+    assumptions_surfaced: true
+    applied_suggestions:
+      - 'Add compilation gate: grep for all StepContext { struct literals across src/ and tests/ before committing'
+      - Prefer returning resolved SandboxMode from builder for testability; stderr capture as fallback
+    flagged_suggestions: []
+    review_completed: true
+    review_gemini: docs/reviews/clo-383-design-gemini.md
+    review_synthesis: docs/reviews/clo-383-design-synthesis.md
+    review_verdict: approve_with_changes
+    human_review_completed: true
+    plannotator_annotations: ''
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-383-apply-edits-sandbox-default.md
+    approved: true
+  implement:
+    status: complete
+    commits:
+      - 312b6b0
+      - e0a9d65
+      - 00e9b86
+      - 83f344f
+      - f0f5ec6
+      - 77d69f8
+      - d32590c
+      - f6dd7ef
+    assumption_outcomes:
+      - evidence: src/workflow.rs:171 sets apply_edits from step.apply_edits; single field on Step struct
+        outcome: held
+        text: apply_edits is a per-step boolean rather than a per-backend one
+      - evidence: >-
+          Implementation added sandbox resolution only to CodexBackend::build_argv_prefix and
+          GeminiBackend::build_shell_cmd; no changes to other backends
+        outcome: held
+        text: Only Codex and Gemini consume ctx.sandbox today
+      - evidence: test_step_context_is_copy passes at src/backend/context.rs:132
+        outcome: held
+        text: StepContext is Copy and adding a bool is zero-cost
+      - evidence: resolve_effective_sandbox uses eprintln! for warnings in both backends
+        outcome: held
+        text: Emitting a warning log line inside argv-builder functions is acceptable
+      - evidence: >-
+          Unit tests call build_argv_prefix/build_shell_cmd directly without spawning binaries; codex_apply_edits_*,
+          gemini_apply_edits_* pass
+        outcome: held
+        text: Integration test can drive the resolution rule by exercising builders directly
+      - evidence: rg StepContext { across src/ tests/ found only spread-literal usages; cargo check compiles clean
+        outcome: held
+        text: No external caller constructs StepContext outside the workspace
+    assumptions_revalidated: true
+    codex_report: docs/reviews/clo-383-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/clo-383-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-383-validation-synthesis.md
+    validation_synthesis_verdict: PASS
+  pr:
+    status: complete
+    pr_number: 31
+    pr_url: https://github.com/maxkulish/lok/pull/31
+    ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-20T14:58:54Z'
+    merge_commit: 6933c4f
+    merged_at: '2026-05-20T15:52:09Z'
+    pre_merge_refetch_at: '2026-05-20T15:20:00Z'
+    pre_merge_refetch_passed: true
+    reviews_addressed: true
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-20T09:11:59.656Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-383 as development
+  - timestamp: '2026-05-20T09:12:27.974Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: Feature implementation PRD §4 FR-22 with mechanical acceptance criteria (Add/Implement
+      pattern, build on CLO-374 routing)
+  - timestamp: '2026-05-20T09:14:31.938Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-383 --start. Cleaned stale CLO-378 from Active
+      Work; added CLO-383 to Active Work. Phase 10 task count updated 7→8.
+  - timestamp: '2026-05-20T09:14:38.519Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-20T09:14:58.002Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-383-sandbox already checked out. Recording as branch_actual.
+  - timestamp: '2026-05-20T09:19:24.592Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: A. Baseline 9/10. 3 approaches considered (add apply_edits to StepContext / resolve in workflow.rs /
+      trait method). Chose: add apply_edits to StepContext, resolve defaulting in Codex+Gemini backends.
+  - timestamp: '2026-05-20T09:19:29.331Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-20T09:45:15.625Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated by claude-designer at docs/designs/clo-383-apply-edits-sandbox-default.md (312 lines, 8 sections).
+      Post-draft corrections: removed tracing references (project has no tracing dep).
+  - timestamp: '2026-05-20T09:45:29.113Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '5 assumptions surfaced (high: 3, medium: 2, low: 1). See design doc § Assumptions.'
+  - timestamp: '2026-05-20T09:48:28.873Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: approve_with_changes. 2 applied (compilation gate, prefer return-value for warnings), 0 flagged.
+      Reviews: gemini=workflow-failed, claude=manual-fallback.
+  - timestamp: '2026-05-20T09:56:25.253Z'
+    action: design_human_review_complete
+    phase: design
+    details: Plannotator annotate session closed with no annotations.
+  - timestamp: '2026-05-20T09:56:50.465Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design ready for plan phase. Doc: docs/designs/clo-383-apply-edits-sandbox-default.md. 8 sections, 6 assumptions,
+      8×2 test matrix, 3 open questions.
+  - timestamp: '2026-05-20T09:57:01.635Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-20T10:07:49.181Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 5 sub-tasks at docs/plans/clo-383-apply-edits-sandbox-default.md
+  - timestamp: '2026-05-20T10:07:59.814Z'
+    action: plan_approved
+    phase: plan
+    details: Plan approved. 5 sub-tasks queued (2×S, 2×M, 1×S).
+  - timestamp: '2026-05-20T10:08:02.243Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-20T10:14:22.575Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST1 landed: add apply_edits field to StepContext. Commit 312b6b0. Fixed 4 struct-literal call sites in retry.rs. 7
+      context tests passing.
+  - timestamp: '2026-05-20T10:15:28.165Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST2 landed: wire apply_edits through workflow::step_context(). Commit e0a9d65. All 541 tests passing.'
+  - timestamp: '2026-05-20T10:22:14.347Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST3 landed: Codex backend effective-sandbox resolution + 7 unit tests. Commit 00e9b86.'
+  - timestamp: '2026-05-20T10:24:10.128Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST4 landed: Gemini backend effective-sandbox resolution + 6 unit tests. Commit 83f344f.'
+  - timestamp: '2026-05-20T10:25:38.497Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST5 landed: pre-merge gate (fmt + clippy + all 555 tests green). Commit 6af0b84. rg StepContext { gate found 0
+      missing struct literals.
+  - timestamp: '2026-05-20T10:25:59.565Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: '6 assumptions reviewed. held: 6. No violations.'
+  - timestamp: '2026-05-20T10:26:04.108Z'
+    action: implementation_complete
+    phase: implement
+    details: 'All sub-tasks landed. fmt+clippy+test green (555 tests). 5 commits. Assumptions: 6 held, 0 violated.'
+  - timestamp: '2026-05-20T14:27:37.226Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      Fix commit 77d69f8: thread sandbox+apply_edits through async StepContext in tokio::spawn. Resolves latent lifetime
+      bug where step.sandbox and step.apply_edits access inside tokio::spawn(async move) captured &Step reference across
+      a 'static boundary. Values now copied before the async block per existing pattern.
+  - timestamp: '2026-05-20T14:52:07.339Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Synthesis PASS_WITH_NOTES applied in 1 fix iteration (commits 77d69f8, d32590c). All Must Fix Before PR items
+      addressed: retry path sandbox+apply_edits wired, warning channel flipped to println!. Re-validation appended to
+      synthesis report.
+  - timestamp: '2026-05-20T14:52:18.695Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-20T14:53:02.805Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate green: fmt + clippy + clippy --tests + cargo test (555 tests + 7 codex fixtures + 4 parse output +
+      5 gemini fixtures + 6 integration = 577 total green).
+  - timestamp: '2026-05-20T14:53:51.660Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #31 opened.'
+  - timestamp: '2026-05-20T14:56:51.395Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      No GitHub Actions CI runs detected for PR #31 (query returned zero `CI` workflow runs for this head commit).
+      Branch `main` is unprotected. Local pre-flight gate (cargo build --verbose, cargo test --verbose, cargo fmt
+      --check, cargo clippy -- -D warnings) passed identically, so CI is treated as green.
+  - timestamp: '2026-05-20T14:59:03.210Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: >-
+      Current-head bot review observed for PR #31 at head f6dd7ef1 by gemini-code-assist[bot]; state=COMMENTED;
+      submitted_at=2026-05-20T14:58:54Z. Fetching inline comments and review threads.
+  - timestamp: '2026-05-20T15:17:43.685Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      2 review threads addressed; 1 declined with rationale (builder pattern out of scope), 1 fixed (pre-captured
+      step_sandbox/step_apply_edits for all StepContext constructions in async move block). Both replies verified with
+      /gemini review trailer. Bot re-reviews acknowledged rationale and fix. Threads manually resolved.
+      Unresolved-thread re-check clean.
+  - timestamp: '2026-05-20T15:20:00.000Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads.'
+  - timestamp: '2026-05-20T15:52:42.462Z'
+    action: pr_merged
+    phase: pr
+    details: >-
+      PR #31 merged to main (commit 6933c4f). Pre-merge gate green (cargo fmt + cargo clippy + cargo test, 577 tests
+      pass). All review threads resolved. Linear CLO-383 moved to Done.
+  - timestamp: '2026-05-20T15:53:42.999Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+task_title: 'FR-22: `apply_edits=true` defaults Codex sandbox to `workspace-write`'
+task_url: https://linear.app/cloud-ai/issue/CLO-383/fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace-write

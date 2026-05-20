@@ -16,6 +16,26 @@ const TERMINAL_EVENT_TYPES: &[&str] = &["turn.completed", "turn.failed", "error"
 const MAX_FIXTURE_BYTES: u64 = 20_000;
 const MAX_CORPUS_BYTES: u64 = 50_000;
 
+enum LastMessageExpectation {
+    PresentNonEmpty,
+    PresentEmpty,
+}
+
+fn last_message_expectation(file_name: &str) -> LastMessageExpectation {
+    match file_name {
+        "turn-completed.jsonl" => LastMessageExpectation::PresentNonEmpty,
+        "missing-agent-message.jsonl" => LastMessageExpectation::PresentNonEmpty,
+        "turn-failed.jsonl" => LastMessageExpectation::PresentNonEmpty,
+        "multi-turn-reasoning.jsonl" => LastMessageExpectation::PresentEmpty,
+        other => panic!("unexpected fixture file name: {other}"),
+    }
+}
+
+fn expected_path(name: &str) -> String {
+    let stem = name.trim_end_matches(".jsonl");
+    format!("{stem}.last-message.txt")
+}
+
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/codex")
 }
@@ -33,6 +53,10 @@ fn jsonl_fixture_paths() -> Vec<PathBuf> {
 fn load_fixture(name: &str) -> String {
     fs::read_to_string(fixtures_dir().join(name))
         .unwrap_or_else(|error| panic!("failed to read {name}: {error}"))
+}
+
+fn last_message_path(name: &str) -> PathBuf {
+    fixtures_dir().join(expected_path(name))
 }
 
 fn parse_jsonl(name: &str, stream: &str) -> Vec<Value> {
@@ -193,6 +217,47 @@ fn every_fixture_is_line_valid_jsonl() {
 }
 
 #[test]
+fn fixture_last_message_companions_match_expected_state() {
+    let paths = jsonl_fixture_paths();
+
+    for path in paths {
+        let name = path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .expect("fixture path has utf-8 filename");
+        let expectation = last_message_expectation(name);
+        let companion = last_message_path(name);
+
+        match expectation {
+            LastMessageExpectation::PresentNonEmpty => {
+                assert!(
+                    companion.exists(),
+                    "expected companion file {companion:?} for {name}"
+                );
+                let content = fs::read_to_string(&companion)
+                    .unwrap_or_else(|error| panic!("failed to read {companion:?}: {error}"));
+                assert!(
+                    !content.trim().is_empty(),
+                    "expected non-empty companion text for {name}"
+                );
+            }
+            LastMessageExpectation::PresentEmpty => {
+                assert!(
+                    companion.exists(),
+                    "expected companion file {companion:?} for {name}"
+                );
+                let content = fs::read_to_string(&companion)
+                    .unwrap_or_else(|error| panic!("failed to read {companion:?}: {error}"));
+                assert!(
+                    content.trim().is_empty(),
+                    "expected empty companion text for {name}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn fixtures_do_not_exceed_reviewable_size_caps() {
     let mut corpus_bytes = 0;
 
@@ -227,6 +292,12 @@ fn fixtures_do_not_contain_obvious_sensitive_text() {
         let stream = fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {name}: {error}"));
         assert_no_unscrubbed_sensitive_text(name, &stream);
+
+        let companion = last_message_path(name);
+        let companion_stream = fs::read_to_string(&companion)
+            .unwrap_or_else(|error| panic!("failed to read {companion:?}: {error}"));
+        let companion_name = format!("{name} companion");
+        assert_no_unscrubbed_sensitive_text(&companion_name, &companion_stream);
     }
 }
 

@@ -121,6 +121,22 @@ impl GeminiBackend {
         None
     }
 
+    fn resolve_effective_sandbox(
+        sandbox: Option<super::SandboxMode>,
+        apply_edits: bool,
+    ) -> Option<super::SandboxMode> {
+        match (apply_edits, sandbox) {
+            (true, None) => Some(super::SandboxMode::WorkspaceWrite),
+            (true, Some(super::SandboxMode::ReadOnly)) => {
+                println!(
+                    "[WARN] apply_edits=true but sandbox is read-only; edits will be parsed but the sandbox prevents writes"
+                );
+                Some(super::SandboxMode::ReadOnly)
+            }
+            (_, other) => other,
+        }
+    }
+
     /// Build the shell command string that `query()` executes. Centralises sandbox/approval-mode
     /// mapping so tests exercise the same code path as production.
     fn build_shell_cmd(
@@ -128,8 +144,10 @@ impl GeminiBackend {
         args: &[String],
         model: Option<&str>,
         sandbox: Option<super::SandboxMode>,
+        apply_edits: bool,
         prompt: &str,
     ) -> String {
+        let effective = Self::resolve_effective_sandbox(sandbox, apply_edits);
         // Shell-escape each component: wrap in single quotes, escape internal single quotes
         let escape = |s: &str| s.replace("'", "'\\\''");
         let escaped_command = format!("'{}'", escape(command));
@@ -142,7 +160,7 @@ impl GeminiBackend {
         let model_flag = model
             .map(|m| format!(" --model '{}'", escape(m)))
             .unwrap_or_default();
-        let approval_flag = match sandbox {
+        let approval_flag = match effective {
             Some(super::SandboxMode::ReadOnly) => " --approval-mode plan",
             Some(super::SandboxMode::WorkspaceWrite) => " --approval-mode auto_edit",
             Some(super::SandboxMode::DangerFullAccess) => " --approval-mode yolo",
@@ -183,6 +201,7 @@ impl super::Backend for GeminiBackend {
             &self.args,
             effective_model.as_deref(),
             ctx.sandbox,
+            ctx.apply_edits,
             prompt,
         );
 
@@ -295,15 +314,21 @@ mod tests {
 
     #[test]
     fn gemini_build_shell_cmd_preserves_output_format_flag() {
-        let cmd =
-            GeminiBackend::build_shell_cmd("npx", &default_args_with_flag(), None, None, "hello");
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &default_args_with_flag(),
+            None,
+            None,
+            false,
+            "hello",
+        );
         assert!(cmd.contains("--output-format"), "cmd: {}", cmd);
         assert!(cmd.contains("json"), "cmd: {}", cmd);
     }
 
     #[test]
     fn gemini_sandbox_none_no_approval_flag() {
-        let cmd = GeminiBackend::build_shell_cmd("npx", &args(), None, None, "hello");
+        let cmd = GeminiBackend::build_shell_cmd("npx", &args(), None, None, false, "hello");
         assert!(!cmd.contains("--approval-mode"));
     }
 
@@ -314,6 +339,7 @@ mod tests {
             &args(),
             None,
             Some(SandboxMode::ReadOnly),
+            false,
             "hello",
         );
         assert!(cmd.contains("--approval-mode plan"));
@@ -326,6 +352,7 @@ mod tests {
             &args(),
             None,
             Some(SandboxMode::WorkspaceWrite),
+            false,
             "hello",
         );
         assert!(cmd.contains("--approval-mode auto_edit"));
@@ -338,6 +365,7 @@ mod tests {
             &args(),
             None,
             Some(SandboxMode::DangerFullAccess),
+            false,
             "hello",
         );
         assert!(cmd.contains("--approval-mode yolo"));
@@ -345,7 +373,7 @@ mod tests {
 
     #[test]
     fn gemini_sandbox_prompt_is_escaped() {
-        let cmd = GeminiBackend::build_shell_cmd("npx", &args(), None, None, "it's fine");
+        let cmd = GeminiBackend::build_shell_cmd("npx", &args(), None, None, false, "it's fine");
         assert!(
             cmd.contains("'\\\''"),
             "expected shell-escaped single quote in: {}",
@@ -360,6 +388,7 @@ mod tests {
             &args(),
             Some("gemini-2.5-pro"),
             Some(SandboxMode::ReadOnly),
+            false,
             "hello",
         );
         assert!(cmd.contains("--model 'gemini-2.5-pro'"));
@@ -428,5 +457,69 @@ mod tests {
         let usage = GeminiBackend::envelope_to_usage(env.stats).expect("usage extracted");
         assert_eq!(usage.cached_tokens, None);
         assert_eq!(usage.reasoning_tokens, None);
+    }
+
+    #[test]
+    fn gemini_apply_edits_true_no_sandbox_emits_auto_edit() {
+        let cmd = GeminiBackend::build_shell_cmd("npx", &args(), None, None, true, "hello");
+        assert!(cmd.contains("--approval-mode auto_edit"));
+    }
+
+    #[test]
+    fn gemini_apply_edits_true_explicit_plan_preserved() {
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &args(),
+            None,
+            Some(SandboxMode::ReadOnly),
+            true,
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode plan"));
+    }
+
+    #[test]
+    fn gemini_apply_edits_true_explicit_auto_edit_preserved() {
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &args(),
+            None,
+            Some(SandboxMode::WorkspaceWrite),
+            true,
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode auto_edit"));
+    }
+
+    #[test]
+    fn gemini_apply_edits_true_explicit_yolo_preserved() {
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &args(),
+            None,
+            Some(SandboxMode::DangerFullAccess),
+            true,
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode yolo"));
+    }
+
+    #[test]
+    fn gemini_apply_edits_false_no_sandbox_omits_approval_flag() {
+        let cmd = GeminiBackend::build_shell_cmd("npx", &args(), None, None, false, "hello");
+        assert!(!cmd.contains("--approval-mode"));
+    }
+
+    #[test]
+    fn gemini_apply_edits_false_explicit_auto_edit_preserved() {
+        let cmd = GeminiBackend::build_shell_cmd(
+            "npx",
+            &args(),
+            None,
+            Some(SandboxMode::WorkspaceWrite),
+            false,
+            "hello",
+        );
+        assert!(cmd.contains("--approval-mode auto_edit"));
     }
 }

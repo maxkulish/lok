@@ -159,7 +159,9 @@ update_workflow_state({
 })
 ```
 
-If lessons were extracted:
+If lessons were extracted, **write the file now** but do **not** commit
+it to `main` directly. It will ride in the post-merge docs PR (Step 6
+below).
 
 ```ts
 update_workflow_state({
@@ -187,7 +189,50 @@ include both paths in `details` (e.g. "Appended L6 to
 `.pi/lessons/pr-review-failures.md`") and set `lessons_file` to the
 topic file path.
 
-## Step 5 - Mark workflow complete
+## Step 5 - Post-merge docs PR (workflow YAML + lessons)
+
+The workflow YAML and any per-task lessons file are authored *after*
+the code PR is merged. Do **not** commit them directly to `main` (that
+breaks in worktree setups and on protected branches). Instead, open a
+small follow-up PR.
+
+```bash
+# Create a fresh branch from the just-merged main
+git fetch origin main
+git checkout -b feat/clo-XX-<slug>-workflow-docs origin/main
+git add docs/status/clo-XX-workflow.yaml
+git add .pi/lessons/clo-XX-<slug>-lessons.md      # if present
+git commit -m "docs(CLO-XX): workflow complete + lessons"
+git push -u origin feat/clo-XX-<slug>-workflow-docs
+
+gh pr create \
+  --title "docs(CLO-XX): workflow complete and lessons" \
+  --body "Post-merge documentation for CLO-XX." \
+  --base main
+
+gh pr merge <n> --merge --delete-branch
+```
+
+Record the docs PR in the workflow state under `phases.complete.docs_pr`:
+
+```ts
+update_workflow_state({
+  task_id: "CLO-XX",
+  phase: "complete",
+  action: "docs_pr_merged",
+  details: "Docs PR #<n> merged. Files: docs/status/clo-XX-workflow.yaml, .pi/lessons/...",
+  phase_updates: {
+    docs_pr_url: "<url>",
+    docs_pr_number: <n>,
+    docs_pr_merge_commit: "<sha>"
+  }
+})
+```
+
+If there are **no lessons** and **no workflow YAML changes** relative
+to `origin/main`, the entire post-merge docs PR can be skipped.
+
+## Step 6 - Mark workflow complete
 
 ```ts
 update_workflow_state({
@@ -202,15 +247,6 @@ update_workflow_state({
 
 The orchestrator runtime treats `complete` as terminal - no further
 `transition_phase` call is allowed.
-
-## Step 6 - Commit the workflow YAML
-
-```bash
-git checkout main && git pull
-git add docs/status/clo-XX-workflow.yaml
-git commit -m "docs(CLO-XX): mark workflow complete after PR #<n> merge"
-git push
-```
 
 ## Notes
 

@@ -27,6 +27,7 @@ name = "gemini_review"
 timeout = 300000
 retries = 3
 continue_on_error = true
+depends_on = ["health_check"]
 shell = """
 # Skip if health check showed Gemini unreachable
 if echo '{{ steps.health_check.output }}' | grep -q 'gemini=false'; then
@@ -85,6 +86,7 @@ name = "ollama_review"
 timeout = 300000
 retries = 3
 continue_on_error = true
+depends_on = ["health_check"]
 shell = """
 # Skip if health check showed Ollama unreachable
 if echo '{{ steps.health_check.output }}' | grep -q 'ollama=false'; then
