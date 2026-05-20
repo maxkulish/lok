@@ -23,7 +23,7 @@ workflow:
   current_phase: complete
   status: complete
   created_at: '2026-05-20T00:00:00.000Z'
-  updated_at: '2026-05-20T16:15:00.000Z'
+  updated_at: '2026-05-20T16:31:37.058Z'
 phases:
   init:
     status: complete
@@ -183,6 +183,16 @@ phases:
     pre_merge_refetch_at: '2026-05-20T16:12:00Z'
     bot_review_wait_completed: true
     bot_review_wait_completed_at: '2026-05-20T16:05:29Z'
+    merged_at: '2026-05-20T16:13:11Z'
+    merge_commit: 0e39df44e5d9bbd1b56c73fae609a4318d2e8a6a
+  complete:
+    merged_at: '2026-05-20T16:13:11Z'
+    merge_commit: 0e39df44e5d9bbd1b56c73fae609a4318d2e8a6a
+    aggregation_files_updated: true
+    lessons_learned:
+      - L1 - Backend client timeouts must not preempt `StepContext.timeout`
+      - L2 - Timeout refactors need a whole-runner grep gate
+    lessons_file: .pi/lessons/timeout-layering.md
 history:
   - action: workflow_started
     details: Task initialized from Linear issue CLO-384
@@ -315,8 +325,36 @@ history:
   - timestamp: '2026-05-20T16:13:29Z'
     action: linear_status_updated
     phase: pr
-    details: Linear CLO-384 status: Done
+    details: 'Linear CLO-384 status: Done'
   - timestamp: '2026-05-20T16:13:53Z'
     action: task_complete
     phase: complete
     details: CLO-384 complete. FR-23 per-step timeout layered override landed in main.
+  - timestamp: '2026-05-20T16:31:23.971Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #32 already merged at 2026-05-20T16:13:11Z. Merge commit 0e39df44e5d9bbd1b56c73fae609a4318d2e8a6a.'
+  - timestamp: '2026-05-20T16:31:27.102Z'
+    action: pr_merged
+    phase: pr
+    details: Merge commit 0e39df44e5d9bbd1b56c73fae609a4318d2e8a6a
+  - timestamp: '2026-05-20T16:31:29.498Z'
+    action: local_cleanup_complete
+    phase: complete
+    details: >-
+      Feature branch cleaned up locally; docs branch feat/clo-384-per-step-workflow-docs created from origin/main
+      because main is checked out in sibling worktree.
+  - timestamp: '2026-05-20T16:31:32.180Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-384 --complete; PROJECT Recently Completed and
+      ROADMAP Phase 10 updated, DEPENDENCIES had no CLO-384 blocker/unblock changes.
+  - timestamp: '2026-05-20T16:31:34.089Z'
+    action: linear_closed
+    phase: complete
+    details: Linear CLO-384 verified Done and merge comment posted with workflow YAML path.
+  - timestamp: '2026-05-20T16:31:37.058Z'
+    action: lessons_extracted
+    phase: complete
+    details: '2 lessons recorded. File: .pi/lessons/timeout-layering.md'

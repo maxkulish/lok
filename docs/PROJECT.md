@@ -19,6 +19,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-384](https://linear.app/cloud-ai/issue/CLO-384/fr-23-per-step-timeout-layered-override-step-backend-global) | FR-23: per-step `timeout` layered override (step > backend > global) | 2026-05-20 | Implemented layered timeout resolution with humantime config deserialization and unified effective timeout use across LLM, shell, format, and verify paths |
 | [CLO-380](https://linear.app/cloud-ai/issue/CLO-380/fr-3b-codex-o-output-last-message-authoritative-result-extraction) | FR-3b: Codex `-o`/`--output-last-message` authoritative result extraction | 2026-05-20 | Added authoritative last-message success-path with JSONL fallback and fixture-backed precedence tests |
 | [CLO-381](https://linear.app/cloud-ai/issue/CLO-381/fr-25-codex-backend-extracts-usage-from-turncompleted-events) | FR-25: Codex backend extracts `usage` from `turn.completed` events | 2026-05-20 | Wired cached_input_tokens and reasoning_output_tokens from Codex turn.completed usage |
 | [CLO-378](https://linear.app/cloud-ai/issue/CLO-378/fr-25b-extend-tokenusage-with-cached-tokens-reasoning-tokens) | FR-25b: extend TokenUsage with cached_tokens + reasoning_tokens | 2026-05-20 | Extended TokenUsage with cached_tokens + reasoning_tokens fields |
