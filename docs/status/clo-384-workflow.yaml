@@ -324,7 +324,7 @@ history:
   - timestamp: '2026-05-20T16:13:11Z'
     action: pr_merged
     phase: pr
-    details: PR
+    details: PR #32 squash-merged to main. Linear CLO-384 marked Done.
   - timestamp: '2026-05-20T16:13:29Z'
     action: linear_status_updated
     phase: pr
