@@ -20,97 +20,169 @@ This skill expects:
 - The author has push access and `gh` is authenticated as the PR
   author.
 
-It writes one `review_addressed` history event on success.
+It writes `bot_review_wait_completed` and `review_addressed` history events on success.
 
 ---
 
-## 1 - Wait for bot reviewers to post
+## 1 - Wait for bot reviewers deterministically
 
 Bot reviewers (`gemini-code-assist`, `copilot-pull-request-reviewer`)
-post inline review comments within minutes of a green CI run. Poll
-rather than blocking-sleep so the agent runtime does not truncate.
+post a GitHub review on the current head commit when their pass
+finishes. Poll for that observable review, not merely for elapsed time
+or CI status. PR #24 showed why: it was merged at +261s while Gemini
+posted the review and inline comment at +289s/+290s.
 
-**Three rules, all mandatory** (see `lessons/pr-review-failures.md`
-L1 + L2):
+**Rules, all mandatory** (see `lessons/pr-review-failures.md` L1, L2,
+L6):
 
 1. **CI presence is independent of bot reviewers.** Bots are GitHub
    Apps installed at repo/org level and post regardless of
    `.github/workflows/`. "No CI configured" is NEVER a valid reason to
    skip review fetching.
-2. **Minimum wait is 180s** from `pull_request.created_at`. Bots
-   routinely post in the 60-180s window. An empty poll inside that
-   window means nothing.
-3. **Loop early-exits only when comments are found.** When the loop
-   reaches max iterations with zero comments, proceed to step 2 below
-   (it confirms whether bots are installed at all).
+2. **Current-head bot review is the primary completion signal.** If a
+   bot review exists for `pull_request.head.sha`, proceed immediately
+   to fetch inline comments and review threads.
+3. **10 minutes is a hard timeout, not a success condition.** If bots
+   are installed but no current-head bot review appears by
+   `pull_request.created_at + 600s`, block for user guidance instead of
+   silently marking reviews addressed.
+4. **Only confirmed absence of installed bots may skip bot review.**
+   Absence is confirmed by inspecting recent closed PRs for bot reviews.
 
 ```bash
 PR=<n>
 REPO=maxkulish/lok
 PR_CREATED_AT=$(gh api repos/${REPO}/pulls/${PR} --jq .created_at)
-MIN_WAIT_UNTIL=$(date -u -j -v+180S -f "%Y-%m-%dT%H:%M:%SZ" "$PR_CREATED_AT" "+%s" 2>/dev/null \
-                 || date -u -d "$PR_CREATED_AT + 180 seconds" "+%s")
+HEAD_SHA=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
+BOT_RE='gemini-code-assist|copilot-pull-request-reviewer'
+DEADLINE=$(date -u -j -v+600S -f "%Y-%m-%dT%H:%M:%SZ" "$PR_CREATED_AT" "+%s" 2>/dev/null \
+           || date -u -d "$PR_CREATED_AT + 600 seconds" "+%s")
+BOT_REVIEW_SEEN=0
 
 for i in $(seq 1 60); do
-  count=$(gh api repos/${REPO}/pulls/${PR}/comments --paginate --jq 'length' 2>/dev/null || echo 0)
-  if [ "$count" -gt 0 ]; then
-    echo "Found ${count} inline review comment(s) after ${i} poll(s)"
+  BOT_REVIEW=$(gh api repos/${REPO}/pulls/${PR}/reviews --paginate --slurp \
+    | jq -c --arg head "$HEAD_SHA" --arg re "$BOT_RE" '
+      [.[][]
+       | select(.commit_id == $head)
+       | select(.user.login | test($re))
+       | {user:.user.login,state,submitted_at,commit_id}]
+      | last // empty
+    ')
+
+  if [ -n "$BOT_REVIEW" ]; then
+    echo "Current-head bot review observed: ${BOT_REVIEW}"
+    BOT_REVIEW_SEEN=1
     break
   fi
+
   now=$(date -u +%s)
-  if [ "$now" -ge "$MIN_WAIT_UNTIL" ] && [ "$i" -ge 60 ]; then
-    echo "10 min elapsed with zero inline comments; proceed to step 2"
+  if [ "$now" -ge "$DEADLINE" ]; then
+    echo "10 min elapsed with no current-head bot review; proceed to step 2"
     break
   fi
+
   sleep 10
 done
 ```
 
-## 2 - Confirm bots are (or are not) installed
+If `BOT_REVIEW_SEEN=1`, immediately record the wait gate, then proceed
+to step 3:
 
-Only run when step 1 finished with zero inline comments. Distinguishes
-"bots installed but had nothing to say" from "bots not installed for
-this repo". Conflating these is the PR #4 failure mode
-(`lessons/pr-review-failures.md` L1).
-
-```bash
-gh api "repos/${REPO}/pulls?state=closed&per_page=5" --jq '.[].number' \
-  | while read prev_pr; do
-      gh api "repos/${REPO}/pulls/${prev_pr}/reviews" \
-        --jq '.[] | select(.user.login | test("gemini-code-assist|copilot-pull-request-reviewer")) | .user.login'
-    done | sort -u
+```ts
+update_workflow_state({
+  task_id: "CLO-XX",
+  phase: "pr",
+  action: "bot_review_wait_completed",
+  details: "Current-head bot review observed for PR #<n> at head <sha>; fetching inline comments and review threads.",
+  phase_updates: {
+    bot_review_wait_completed: true,
+    bot_review_wait_completed_at: "<ISO-8601>"
+  }
+})
 ```
 
-Record the result in the `review_addressed` history event with an
-explicit, factual rationale.
+## 2 - Confirm bots are absent or block on timeout
 
-Acceptable rationales:
+Only run when step 1 timed out without a current-head bot review.
+Distinguish "bots are not installed" from "bots are installed but did
+not finish in time". Conflating these is the PR #4 / PR #24 failure
+mode (`lessons/pr-review-failures.md` L1, L2, L6).
 
-- `"Bots installed (gemini-code-assist, copilot-pull-request-reviewer
-  active on PR #<n-1>); waited 10 min on PR #<n>; zero inline comments
-  posted this run."`
-- `"Bots not installed (no gemini-code-assist or
-  copilot-pull-request-reviewer reviews on last 5 closed PRs); zero
-  inline comments expected."`
+```bash
+INSTALLED_BOTS=$(gh api "repos/${REPO}/pulls?state=closed&per_page=5" --jq '.[].number' \
+  | while read prev_pr; do
+      gh api "repos/${REPO}/pulls/${prev_pr}/reviews" --paginate --slurp \
+        | jq -r --arg re "$BOT_RE" '.[][] | select(.user.login | test($re)) | .user.login'
+    done | sort -u)
 
-Unacceptable rationales (see `lessons/pr-review-failures.md` L1 + L2):
+if [ -n "$INSTALLED_BOTS" ]; then
+  echo "GATE FAIL: bots installed but no current-head bot review by 10 min deadline:"
+  echo "$INSTALLED_BOTS"
+  exit 1
+fi
+```
+
+If bots are confirmed absent, record the wait gate and continue:
+
+```ts
+update_workflow_state({
+  task_id: "CLO-XX",
+  phase: "pr",
+  action: "bot_review_wait_completed",
+  details: "Bots not installed (no gemini-code-assist or copilot-pull-request-reviewer reviews on last 5 closed PRs); zero inline comments expected.",
+  phase_updates: {
+    bot_review_wait_completed: true,
+    bot_review_wait_completed_at: "<ISO-8601>"
+  }
+})
+```
+
+Unacceptable rationales (see `lessons/pr-review-failures.md` L1, L2,
+L6):
 
 - `"No CI configured."`
 - `"No CI or bot reviewers configured."`
-- Any rationale logged sooner than 180s after PR creation.
+- `"Waited 180 seconds; no comments."`
+- Any success rationale when installed bots have not produced a
+  current-head review and the 10-minute timeout path was hit.
 
-## 3 - Fetch all inline comments
+## 3 - Fetch all inline comments and review threads
 
 ```bash
+gh api repos/${REPO}/pulls/${PR}/reviews --paginate \
+  --jq '.[] | {id, state, submitted_at, commit_id, user: .user.login, body_preview: (.body[0:120])}'
+
 gh api repos/${REPO}/pulls/${PR}/comments --paginate \
-  --jq '.[] | {id, path, line: .original_line, body, user: .user.login, commit_id: .original_commit_id}'
+  --jq '.[] | {id, path, line: .original_line, body, user: .user.login, commit_id: .original_commit_id, in_reply_to_id}'
+
+gh api graphql -f query='
+query($owner:String!, $repo:String!, $pr:Int!) {
+  repository(owner:$owner, name:$repo) {
+    pullRequest(number:$pr) {
+      reviewThreads(first:100) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          comments(first:20) {
+            nodes { databaseId createdAt author { login } body }
+          }
+        }
+      }
+    }
+  }
+}' -f owner=maxkulish -f repo=lok -F pr=${PR}
 
 gh pr view ${PR} --json comments \
   --jq '.comments[] | {id: .databaseId, body, author: .author.login}'
 ```
 
 `--paginate` is required. Omitting it silently caps results at 30 and
-hides comments on large PRs.
+hides comments on large PRs. GraphQL thread state is required because a
+comment can exist while its thread has already been resolved or marked
+outdated.
 
 ## 4 - Categorize comments
 
@@ -257,9 +329,9 @@ thread as unresolved.
 ```bash
 AUTHOR=$(gh api user --jq .login)
 
-MISSING=$(gh api repos/${REPO}/pulls/${PR}/comments --paginate \
-  --jq --arg author "$AUTHOR" --arg since "$REPLY_PUSH_TS" '
-    .[]
+MISSING=$(gh api repos/${REPO}/pulls/${PR}/comments --paginate --slurp \
+  | jq -c --arg author "$AUTHOR" --arg since "$REPLY_PUSH_TS" '
+    .[][]
     | select(.user.login == $author)
     | select(.created_at >= $since)
     | select((.body | test("(^|\\n)/gemini review\\s*$")) | not)
@@ -291,11 +363,33 @@ re-review after the `/gemini review` trigger):
 
 ```bash
 gh pr view ${PR} --json reviews,reviewDecision
+
 gh api repos/${REPO}/pulls/${PR}/comments --paginate \
   --jq '.[] | select(.created_at > "<push_timestamp>") | {id, user: .user.login, body}'
+
+gh api graphql -f query='
+query($owner:String!, $repo:String!, $pr:Int!) {
+  repository(owner:$owner, name:$repo) {
+    pullRequest(number:$pr) {
+      reviewThreads(first:100) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          comments(last:1) { nodes { author { login } body createdAt } }
+        }
+      }
+    }
+  }
+}' -f owner=maxkulish -f repo=lok -F pr=${PR} \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+        | select(.isResolved == false)
+        | {id, path, line, isOutdated, latest_author: .comments.nodes[0].author.login, latest_body: (.comments.nodes[0].body[0:120])}'
 ```
 
-If new comments exist in unresolved threads, return to step 4 and
+If new comments or unresolved threads exist, return to step 4 and
 repeat. Threads already resolved by validator approval can be skipped.
 
 ## 10 - Log state
@@ -305,7 +399,7 @@ update_workflow_state({
   task_id: "CLO-XX",
   phase: "pr",
   action: "review_addressed",
-  details: "<N> threads resolved; replies posted N/N; /gemini review trailer verified on every reply (Gemini, Copilot, human alike).",
+  details: "<N> threads resolved; replies posted N/N; /gemini review trailer verified on every reply (Gemini, Copilot, human alike); unresolved-thread re-check clean.",
   phase_updates: { reviews_addressed: true }
 })
 ```

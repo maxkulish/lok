@@ -179,8 +179,12 @@ interface WorkflowState {
       pr_url?: string;
       pr_number?: number | string;
       ci_passed?: boolean;
+      bot_review_wait_completed?: boolean;
+      bot_review_wait_completed_at?: string;
       reviews_addressed?: boolean;
       reviews_addressed_skip_reason?: string;
+      pre_merge_refetch_passed?: boolean;
+      pre_merge_refetch_at?: string;
       approved?: boolean;
       merged_at?: string | null;
       merge_commit?: string | null;
@@ -265,6 +269,7 @@ const TYPE_ALLOWED_PHASES: Record<string, Set<WorkflowPhase>> = {
 const PHASE_CONFIG: Record<string, {
   requiredFields: string[];
   historyEvents: string[];
+  requiredTrueFields?: string[];
   auto_dispatch_after_transition?: boolean;
 }> = {
   discovery: {
@@ -298,8 +303,26 @@ const PHASE_CONFIG: Record<string, {
     historyEvents: ["implementation_complete", "assumptions_revalidated", "codex_validation_complete"],
   },
   pr: {
-    requiredFields: ["status", "pr_url", "pr_number", "ci_passed", "reviews_addressed"],
-    historyEvents: ["pre_flight_checks_passed", "pr_created", "review_addressed"],
+    requiredFields: [
+      "status",
+      "pr_url",
+      "pr_number",
+      "ci_passed",
+      "bot_review_wait_completed",
+      "bot_review_wait_completed_at",
+      "reviews_addressed",
+      "pre_merge_refetch_passed",
+      "pre_merge_refetch_at",
+    ],
+    historyEvents: [
+      "pre_flight_checks_passed",
+      "pr_created",
+      "ci_passed",
+      "bot_review_wait_completed",
+      "review_addressed",
+      "pre_merge_refetch_passed",
+    ],
+    requiredTrueFields: ["ci_passed", "bot_review_wait_completed", "reviews_addressed", "pre_merge_refetch_passed"],
   },
   operational: {
     requiredFields: ["status"],
@@ -473,9 +496,16 @@ function validatePhase(state: WorkflowState): { valid: boolean; errors: string[]
   }
 
   for (const field of config.requiredFields) {
-    const value = phaseData?.[field as keyof typeof phaseData];
+    const value = (phaseData as Record<string, unknown> | undefined)?.[field];
     if (value === undefined || value === null || value === "") {
       errors.push(`Missing required field: ${currentPhase}.${field}`);
+    }
+  }
+
+  for (const field of config.requiredTrueFields || []) {
+    const value = (phaseData as Record<string, unknown> | undefined)?.[field];
+    if (value !== true) {
+      errors.push(`Required true field is not true: ${currentPhase}.${field}`);
     }
   }
 
@@ -518,9 +548,16 @@ function validatePhaseTransition(state: WorkflowState, from: string, to: string)
 
     if (phaseStatus !== "skipped") {
       for (const field of fromConfig.requiredFields) {
-        const value = phaseData?.[field as keyof typeof phaseData];
+        const value = (phaseData as Record<string, unknown> | undefined)?.[field];
         if (value === undefined || value === null || value === "") {
           errors.push(`Phase "${from}" missing required field: ${field}`);
+        }
+      }
+
+      for (const field of fromConfig.requiredTrueFields || []) {
+        const value = (phaseData as Record<string, unknown> | undefined)?.[field];
+        if (value !== true) {
+          errors.push(`Phase "${from}" required true field is not true: ${field}`);
         }
       }
 
