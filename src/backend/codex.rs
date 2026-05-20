@@ -44,7 +44,7 @@ impl CodexBackend {
         match (apply_edits, sandbox) {
             (true, None) => Some(super::SandboxMode::WorkspaceWrite),
             (true, Some(super::SandboxMode::ReadOnly)) => {
-                eprintln!(
+                println!(
                     "[WARN] apply_edits=true but sandbox is read-only; edits will be parsed but the sandbox prevents writes"
                 );
                 Some(super::SandboxMode::ReadOnly)

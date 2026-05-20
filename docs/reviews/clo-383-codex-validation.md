@@ -5,31 +5,25 @@
 **Pipeline**: lok pre-pr-validation
 ---
 
-## Verdict: FAIL
+## Verdict: PASS_WITH_NOTES
 
 ## Findings
 
-HIGH: Consensus/multi-backend LLM steps drop both `apply_edits` and `sandbox` before querying each backend.
-In [src/workflow.rs](/Users/mk/Code/orchestrator/lok--feat-clo-383-sandbox/src/workflow.rs:1999), the spawned per-backend context is built with `StepContext::from_prompt(...)` plus only `timeout`, so `apply_edits` stays `false` and `sandbox` stays `None`. A step with `backends = [...]`, `apply_edits = true`, and no explicit sandbox will still run Codex as `read-only` and Gemini without `auto_edit`. This directly contradicts the design assumption that consensus fan-out should get the same defaulting rule on every subprocess backend.
+- MEDIUM: Retry/fix LLM calls do not preserve the step's `apply_edits` or `sandbox` intent.
+  [src/workflow.rs](/Users/mk/Code/orchestrator/lok--feat-clo-383-sandbox/src/workflow.rs:1216) builds retry `StepContext` with `from_prompt(...)`, so `apply_edits` defaults back to `false` and `sandbox` to `None`. This requester is created from an `apply_edits` step at [src/workflow.rs](/Users/mk/Code/orchestrator/lok--feat-clo-383-sandbox/src/workflow.rs:2364). If a verified edit step needs a fix retry, Codex will fall back to `-s read-only` and Gemini will omit `--approval-mode`, which is inconsistent with the FR-22 per-step intent.
 
-MEDIUM: The design's required workflow/integration coverage is missing.
-The design calls for `step_context_threads_apply_edits` and an integration-style workflow test for `apply_edits = true` observing `workspace-write` / explicit `read-only`. The branch only adds backend helper tests in [src/backend/codex.rs](/Users/mk/Code/orchestrator/lok--feat-clo-383-sandbox/src/backend/codex.rs:291) and [src/backend/gemini.rs](/Users/mk/Code/orchestrator/lok--feat-clo-383-sandbox/src/backend/gemini.rs:463). This is why the consensus path regression above is not covered.
-
-LOW: `git diff --check main...HEAD` fails on trailing whitespace in docs.
-Failures are in `docs/reviews/clo-383-design-gemini.md` lines 3-4 and `docs/reviews/clo-383-design-synthesis.md` lines 3-4.
-
-LOW: Warning emission does not exactly match the design wording.
-The design says emit the `apply_edits + read-only` warning via `println!`; implementation uses `eprintln!` in [src/backend/codex.rs](/Users/mk/Code/orchestrator/lok--feat-clo-383-sandbox/src/backend/codex.rs:47) and [src/backend/gemini.rs](/Users/mk/Code/orchestrator/lok--feat-clo-383-sandbox/src/backend/gemini.rs:131). This may be acceptable as backend diagnostics, but it is a spec mismatch.
+- LOW: The explicit read-only warning is emitted but not covered by tests, and uses `eprintln!` while the goal says `println!`.
+  Implemented at [src/backend/codex.rs](/Users/mk/Code/orchestrator/lok--feat-clo-383-sandbox/src/backend/codex.rs:47) and [src/backend/gemini.rs](/Users/mk/Code/orchestrator/lok--feat-clo-383-sandbox/src/backend/gemini.rs:131). Existing read-only tests only assert the sandbox/approval flag, not the warning.
 
 ## Missing Items
 
-- Workflow/unit test proving `step_context()` threads `apply_edits`.
-- Integration-style workflow test proving `apply_edits = true` defaults Codex/Gemini sandbox behavior through the actual workflow path.
-- Coverage for multi-backend consensus steps with `apply_edits = true`.
+- The design asks for an integration/workflow-level test that drives `apply_edits = true` and observes the argv/shell command shape. I found only backend unit tests and a `step_context` unit test; no new `tests/apply_edits_sandbox.rs` or equivalent integration coverage.
 
 ## Recommendations
 
-- In the consensus branch, capture `step.apply_edits` and `step.sandbox` before spawning, then include both fields in the per-backend `StepContext`.
-- Add tests for single-backend and multi-backend workflow paths, not only backend argv builders.
-- Fix trailing whitespace and run `git diff --check main...HEAD`.
-- I could not independently run `cargo test` / `clippy` in this read-only environment; the status file claims they passed.
+- Thread `sandbox` and `apply_edits` through `WorkflowEditRequester`, then set them in its retry `StepContext`.
+- Add coverage for verified edit retries so the regression cannot recur.
+- Add warning assertions for `apply_edits=true + read-only`, or refactor the resolver to return a warning/result that is easier to test.
+- Add the design-requested workflow-level coverage, even if it remains a lightweight unit-style test around parsed workflow state and backend command construction.
+
+Verification: `cargo fmt --check` passed. `cargo test` could not run in this environment because Cargo could not open `target/debug/.cargo-lock` under the read-only sandbox.

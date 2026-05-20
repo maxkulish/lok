@@ -6,7 +6,7 @@
 **Pipeline**: lok pre-pr-validation
 ---
 
-REVIEW_FAILED: Input is a REVIEW_FAILED error message indicating empty output from both Gemini models due to untrusted directory restrictions, no structured validation report present.
+REVIEW_FAILED: Output is an error message indicating Gemini CLI failed due to untrusted directory; no verdict or findings present.
 
 
 ## Verdict

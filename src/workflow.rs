@@ -1088,10 +1088,13 @@ struct WorkflowEditRequester {
     model_override: Option<String>,
     cwd: PathBuf,
     fix_retries: u32,
+    sandbox: Option<crate::backend::SandboxMode>,
+    apply_edits: bool,
     captures: std::sync::Mutex<EditRequesterCaptures>,
 }
 
 impl WorkflowEditRequester {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         backend: std::sync::Arc<dyn backend::Backend>,
         original_prompt: String,
@@ -1099,6 +1102,8 @@ impl WorkflowEditRequester {
         model_override: Option<String>,
         cwd: PathBuf,
         fix_retries: u32,
+        sandbox: Option<crate::backend::SandboxMode>,
+        apply_edits: bool,
     ) -> Self {
         Self {
             backend,
@@ -1107,6 +1112,8 @@ impl WorkflowEditRequester {
             model_override,
             cwd,
             fix_retries,
+            sandbox,
+            apply_edits,
             captures: std::sync::Mutex::new(EditRequesterCaptures {
                 last_stderr: None,
                 last_exit_code: None,
@@ -1214,6 +1221,8 @@ impl EditRequester for WorkflowEditRequester {
 
         println!("    {} Re-querying LLM with error...", "↻".dimmed());
         let ctx = backend::StepContext {
+            sandbox: self.sandbox,
+            apply_edits: self.apply_edits,
             timeout: Some(self.timeout_duration),
             ..backend::StepContext::from_prompt(
                 &fix_prompt,
@@ -2368,6 +2377,8 @@ impl WorkflowRunner {
                                             model_override.clone(),
                                             cwd.clone(),
                                             fix_retries,
+                                            step_sandbox,
+                                            step_apply_edits,
                                         );
                                         let outcome = retry_loop
                                             .execute(
