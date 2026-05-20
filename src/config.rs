@@ -312,6 +312,29 @@ mod serde_duration_tests {
             "error should mention 'invalid duration' or 'duration string', got: {err}"
         );
     }
+
+    #[test]
+    fn test_deser_duration_negative_int_rejected() {
+        #[derive(Deserialize, Debug)]
+        #[allow(dead_code)]
+        struct S {
+            #[serde(deserialize_with = "deser_duration_seconds")]
+            timeout: Option<Duration>,
+        }
+        let result = toml::from_str::<S>("timeout = -1");
+        assert!(
+            result.is_err(),
+            "negative integer timeout should be rejected, got: {:?}",
+            result
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("invalid value")
+                || err.contains("non-negative")
+                || err.contains("negative"),
+            "error should mention invalid value or negative, got: {err}"
+        );
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

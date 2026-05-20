@@ -131,9 +131,8 @@ impl Workflow {
                     });
                 }
             }
-            // Validate timeout: 0 means no timeout, but values between 1 and MIN are likely mistakes
-            let effective_timeout = step.timeout.or(self.timeout);
-            if let Some(timeout) = effective_timeout {
+            // Validate step timeout: 0 means no timeout, but values between 1 and MIN are likely mistakes
+            if let Some(timeout) = step.timeout {
                 let timeout_ms = timeout.as_millis() as u64;
                 if timeout_ms > 0 && timeout_ms < MIN_TIMEOUT_MS {
                     return Err(WorkflowError::TimeoutTooSmall {
@@ -1686,20 +1685,18 @@ impl WorkflowRunner {
                     let fix_retries = step.fix_retries;
                     let max_retries = step.retries;
                     let retry_delay = step.retry_delay;
-                    let step_timeout = step.timeout.or(workflow.timeout);
                     let validate_config = step.validate.clone();
 
                     async move {
                         println!("{} {}", "[step]".cyan(), step_name.bold());
                         let start = std::time::Instant::now();
 
-                        // Calculate timeout duration (default 120s, 0 means no timeout)
-                        let timeout_ms = step_timeout.unwrap_or(std::time::Duration::from_secs(120));
-                        let timeout_duration = if timeout_ms.is_zero() {
-                            std::time::Duration::from_secs(365 * 24 * 60 * 60) // 1 year = effectively no timeout
-                        } else {
-                            timeout_ms
-                        };
+                        // Shell/format/verify timeout: step > global > DEFAULT_TIMEOUT (no backend layer)
+                        let timeout_duration = crate::backend::effective_timeout(
+                            step.timeout,
+                            "", // empty backend name → falls through to defaults
+                            &self.config,
+                        );
 
                         // Handle for_each loop steps
                         if let Some(items) = for_each_items {
@@ -6713,14 +6710,37 @@ prompt = "p"
     }
 
     #[test]
-    fn test_step_result_error_has_no_usage() {
-        let err = StepResult::error(
-            "test_step".to_string(),
-            "boom".to_string(),
-            42,
-            Some("claude".to_string()),
-            StepFailureKind::BackendError,
+    fn test_shell_timeout_uses_global_default() {
+        let mut config = Config::default();
+        // defaults.timeout is None in Config::default() → falls through to DEFAULT_TIMEOUT (300s)
+        let shell_timeout = crate::backend::effective_timeout(
+            None, "", // empty backend → falls through to defaults
+            &config,
         );
-        assert!(err.usage.is_none());
+        assert_eq!(shell_timeout, crate::backend::DEFAULT_TIMEOUT);
+
+        // When global default is set, it is used
+        config.defaults.timeout = Some(std::time::Duration::from_secs(45));
+        let shell_timeout = crate::backend::effective_timeout(None, "", &config);
+        assert_eq!(shell_timeout, std::time::Duration::from_secs(45));
+    }
+
+    #[test]
+    fn test_backend_timeout_error_kind_is_timeout() {
+        // Verify StepResult::error carries StepFailureKind::Timeout
+        let err = StepResult::error(
+            "test".to_string(),
+            "timed out".to_string(),
+            1000,
+            Some("ollama".to_string()),
+            StepFailureKind::Timeout,
+        );
+        assert!(matches!(
+            err.failure,
+            Some(StepFailure {
+                kind: StepFailureKind::Timeout,
+                ..
+            })
+        ));
     }
 }

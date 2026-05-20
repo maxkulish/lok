@@ -9,29 +9,27 @@
 
 ## Findings
 
-**HIGH** - Multi-backend workflow timeout resolution still includes `Workflow.timeout`, violating the specified `step > backend > global` chain.  
-At [src/workflow.rs:1689](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:1689), `step_timeout` is computed as `step.timeout.or(workflow.timeout)`, then passed to `effective_timeout()` at [src/workflow.rs:2007](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:2007). That means a workflow-level timeout overrides per-backend timeout in multi-backend runs, while the single-backend path does not. This directly contradicts the design’s decision to remove `Workflow.timeout` from the runtime chain.
+- **HIGH**: Ollama can still time out before the resolved per-step timeout.
+  [src/backend/ollama.rs:53](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/backend/ollama.rs:53) builds the reqwest client with `config.timeout.unwrap_or(300s)`. Because backend construction does not know the step timeout, a workflow step with `timeout = "10m"` against Ollama still has an internal 300s HTTP client timeout when `backends.ollama.timeout` is unset. That violates the required `step > backend > global` override for this backend.
 
-**HIGH** - Edit-fix LLM re-query still uses the old duplicated timeout calculation instead of `effective_timeout()`.  
-`timeout_duration` is derived from `step.timeout.or(workflow.timeout)` with a hardcoded 120s fallback at [src/workflow.rs:1689](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:1689) and [src/workflow.rs:1697](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:1697). That value is passed into `WorkflowEditRequester` at [src/workflow.rs:2369](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:2369), which sets `StepContext.timeout` and wraps `backend.query()` with it at [src/workflow.rs:1222](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:1222) and [src/workflow.rs:1230](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:1230). Backend/global timeouts are ignored on this backend query path.
+- **MEDIUM**: Duplicate workflow timeout resolution remains and still includes `Workflow.timeout`, contrary to the design.
+  [src/workflow.rs:1689](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:1689) computes `step.timeout.or(workflow.timeout)` and [src/workflow.rs:1697](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:1697) falls back to 120s. This path is still used for shell steps, format, and verification. The design explicitly says resolution should move into `effective_timeout()` and `Workflow.timeout` should be removed from the chain.
 
-**MEDIUM** - Negative timeout integers deserialize into huge positive durations.  
-Both duration visitors cast signed integers directly to `u64`: [src/config.rs:165](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/config.rs:165) and [src/config.rs:197](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/config.rs:197). `timeout = -1` becomes `Duration::from_secs(u64::MAX)` or `Duration::from_millis(u64::MAX)` instead of a validation error, effectively bypassing intended timeout validation.
+- **MEDIUM**: `Workflow.timeout` is still validated as an effective step timeout.
+  [src/workflow.rs:135](/Users/mk/Code/orchestrator/lok--feat-clo-384-per-step/src/workflow.rs:135) uses `step.timeout.or(self.timeout)` during validation. A top-level workflow timeout below 100ms can still reject steps even though the design says workflow-level timeout is out of scope for resolution.
 
-**LOW** - Unrelated generated artifact appears committed.  
-`autoresearch.jsonl` contains a discarded “Wrong tool” record and is unrelated to CLO-384 implementation.
+- **LOW**: Generated artifact is committed while also ignored.
+  `autoresearch.jsonl` is added to the branch, and `.gitignore` now ignores it. It appears to be local workflow metadata, not source or task documentation.
 
 ## Missing Items
 
-- `test_step_context_populates_timeout` from ST4 is not implemented.
-- `test_multibackend_timeout_per_backend` from ST4 is not implemented.
-- ST5 integration tests are missing: sleepy backend timeout, `StepResult.failure.kind == Timeout`, workflow TOML string timeout execution, and config-level string timeout execution.
-- Full pre-merge gate was not verified here. I ran `cargo fmt --check` successfully, but did not run `cargo clippy` or `cargo test` in this read-only sandbox.
+- The ST5 integration tests from the implementation plan are not implemented: sleepy backend timeout propagation and end-to-end `StepResult.failure.kind == Timeout`.
+- I did not see evidence the full pre-merge gate was run. I also did not run it because the environment is read-only and Cargo would need to write build artifacts.
 
 ## Recommendations
 
-- In multi-backend execution, pass only `step.timeout` into `effective_timeout()`, or route each backend through the shared `step_context()` helper.
-- For `WorkflowEditRequester`, carry the already resolved effective timeout for the active backend instead of the old `timeout_duration`.
-- Reject negative integers in both duration deserializers with `de::Error::invalid_value`.
-- Add the missing ST4/ST5 tests before merging.
+- Remove Ollama's fixed/request-level timeout or make it no shorter than the resolved `StepContext.timeout`. The outer `tokio::time::timeout` should be the authoritative timeout layer.
+- Replace remaining workflow-runner timeout calculations with `effective_timeout(step.timeout, backend_name, config)` where they are meant to be governed by FR-23.
+- Decide explicitly whether shell/format/verify timeouts are in scope. If yes, use the same effective timeout. If no, document that they intentionally keep legacy workflow timeout behavior.
 - Remove `autoresearch.jsonl` from the branch.
+- Add the planned timeout integration tests before merge.

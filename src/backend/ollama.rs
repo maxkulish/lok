@@ -6,7 +6,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 pub struct OllamaBackend {
     client: Client,
@@ -50,13 +49,7 @@ impl OllamaBackend {
             .clone()
             .unwrap_or_else(|| "llama3.2".to_string());
 
-        let timeout = config.timeout.unwrap_or(Duration::from_secs(300));
-        let timeout = if timeout.is_zero() {
-            Duration::from_secs(365 * 24 * 60 * 60) // 1 year = effectively no timeout
-        } else {
-            timeout
-        };
-        let client = Client::builder().timeout(timeout).build()?;
+        let client = Client::builder().build()?;
 
         Ok(Self {
             client,
