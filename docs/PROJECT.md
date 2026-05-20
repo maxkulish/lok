@@ -19,6 +19,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-380](https://linear.app/cloud-ai/issue/CLO-380/fr-3b-codex-o-output-last-message-authoritative-result-extraction) | FR-3b: Codex `-o`/`--output-last-message` authoritative result extraction | 2026-05-20 | Added authoritative last-message success-path with JSONL fallback and fixture-backed precedence tests |
 | [CLO-381](https://linear.app/cloud-ai/issue/CLO-381/fr-25-codex-backend-extracts-usage-from-turncompleted-events) | FR-25: Codex backend extracts `usage` from `turn.completed` events | 2026-05-20 | Wired cached_input_tokens and reasoning_output_tokens from Codex turn.completed usage |
 | [CLO-378](https://linear.app/cloud-ai/issue/CLO-378/fr-25b-extend-tokenusage-with-cached-tokens-reasoning-tokens) | FR-25b: extend TokenUsage with cached_tokens + reasoning_tokens | 2026-05-20 | Extended TokenUsage with cached_tokens + reasoning_tokens fields |
 | [CLO-373](https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40) | Capture Codex JSONL fixtures for parser test corpus (FR-40) | 2026-05-19 | Added scrubbed Codex JSONL corpus, capture README/version metadata, LF normalization, and fixture validation tests for FR-3a parser work. |
