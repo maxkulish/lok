@@ -333,13 +333,17 @@ pub fn step_context_for_backend<'a>(
     backend_name: &str,
 ) -> StepContext<'a> {
     let backend_config = config.backends.get(backend_name);
-    let timeout_secs = backend_config
+    let timeout = backend_config
         .and_then(|backend| backend.timeout)
-        .unwrap_or(config.defaults.timeout);
+        .or(config.defaults.timeout)
+        .map(|d| {
+            let secs = effective_timeout_secs(d.as_secs());
+            Duration::from_secs(secs)
+        });
     let model = backend_config.and_then(|backend| backend.model.as_deref());
 
     StepContext {
-        timeout: Some(Duration::from_secs(effective_timeout_secs(timeout_secs))),
+        timeout,
         ..StepContext::from_prompt(prompt, cwd, model)
     }
 }
@@ -651,7 +655,7 @@ mod tests {
             .backends
             .get_mut("ollama")
             .expect("default ollama backend exists")
-            .timeout = Some(42);
+            .timeout = Some(Duration::from_secs(42));
 
         let ctx = step_context_for_backend("hello", Path::new("/tmp"), &config, "ollama");
 
@@ -661,7 +665,7 @@ mod tests {
     #[test]
     fn test_step_context_for_backend_falls_back_to_default_timeout() {
         let mut config = Config::default();
-        config.defaults.timeout = 17;
+        config.defaults.timeout = Some(Duration::from_secs(17));
         config
             .backends
             .get_mut("ollama")
@@ -687,7 +691,7 @@ mod tests {
     #[test]
     fn test_step_context_for_backend_preserves_zero_as_no_timeout() {
         let mut config = Config::default();
-        config.defaults.timeout = 0;
+        config.defaults.timeout = Some(Duration::from_secs(0));
         config
             .backends
             .get_mut("ollama")
@@ -751,7 +755,7 @@ mod tests {
             .get_mut("ollama")
             .expect("default ollama backend exists");
         backend_config.model = Some("run-query-model".to_string());
-        backend_config.timeout = Some(13);
+        backend_config.timeout = Some(Duration::from_secs(13));
 
         let results = run_query_with_config(&[backend], "hello", Path::new("."), &config)
             .await

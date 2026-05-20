@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::de::{self, Visitor};
+use serde::ser;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -30,8 +31,8 @@ pub struct Config {
 pub struct Defaults {
     #[serde(default = "default_parallel")]
     pub parallel: bool,
-    #[serde(default = "default_timeout")]
-    pub timeout: u64,
+    #[serde(default, deserialize_with = "deser_duration_seconds", serialize_with = "serialize_duration_seconds")]
+    pub timeout: Option<Duration>,
     #[serde(default = "default_retries")]
     pub max_retries: usize,
     #[serde(default = "default_retry_delay_ms")]
@@ -49,10 +50,6 @@ fn default_parallel() -> bool {
     true
 }
 
-fn default_timeout() -> u64 {
-    300
-}
-
 fn default_retries() -> usize {
     0
 }
@@ -65,7 +62,7 @@ impl Default for Defaults {
     fn default() -> Self {
         Self {
             parallel: default_parallel(),
-            timeout: default_timeout(),
+            timeout: None,
             max_retries: default_retries(),
             retry_delay_ms: default_retry_delay_ms(),
             command_wrapper: None,
@@ -120,6 +117,30 @@ pub fn deser_duration_millis<'de, D: de::Deserializer<'de>>(
     d: D,
 ) -> Result<Option<Duration>, D::Error> {
     d.deserialize_any(DurationMillisVisitor)
+}
+
+/// Serialize an `Option<Duration>` as an integer (seconds).
+/// Used for config-level fields (`Defaults.timeout`, `BackendConfig.timeout`).
+pub fn serialize_duration_seconds<S: ser::Serializer>(
+    val: &Option<Duration>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    match val {
+        Some(d) => s.serialize_u64(d.as_secs()),
+        None => s.serialize_none(),
+    }
+}
+
+/// Serialize an `Option<Duration>` as an integer (milliseconds).
+/// Used for workflow-level fields (`Step.timeout`, `Workflow.timeout`).
+pub fn serialize_duration_millis<S: ser::Serializer>(
+    val: &Option<Duration>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    match val {
+        Some(d) => s.serialize_u64(d.as_millis() as u64),
+        None => s.serialize_none(),
+    }
 }
 
 struct DurationSecondsVisitor;
@@ -287,8 +308,10 @@ pub struct BackendConfig {
     pub skip_lines: usize,
     pub api_key_env: Option<String>,
     pub model: Option<String>,
-    /// Per-backend timeout in seconds (overrides defaults.timeout)
-    pub timeout: Option<u64>,
+    /// Per-backend timeout duration (overrides defaults.timeout). Accepts
+    /// human-readable strings like "30s" or raw integers (seconds).
+    #[serde(default, deserialize_with = "deser_duration_seconds", serialize_with = "serialize_duration_seconds")]
+    pub timeout: Option<Duration>,
     /// Per-backend retry limit (overrides defaults.max_retries)
     pub max_retries: Option<usize>,
     /// Per-backend retry delay in milliseconds (overrides defaults.retry_delay_ms)
@@ -352,7 +375,7 @@ impl Default for Config {
                 skip_lines: 1,
                 api_key_env: None,
                 model: None,
-                timeout: Some(600), // Gemini goes agentic, needs more time
+                timeout: Some(Duration::from_secs(600)), // Gemini goes agentic, needs more time
                 max_retries: None,
                 retry_delay_ms: None,
             },
@@ -547,7 +570,7 @@ mod tests {
 
         // Check defaults
         assert!(config.defaults.parallel);
-        assert_eq!(config.defaults.timeout, 300);
+        assert_eq!(config.defaults.timeout, None);
 
         // Check default backends exist
         assert!(config.backends.contains_key("codex"));
@@ -652,7 +675,7 @@ timeout = 60
         let config: Config = toml::from_str(toml_str).unwrap();
 
         assert!(!config.defaults.parallel);
-        assert_eq!(config.defaults.timeout, 60);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(60)));
         assert!(config.backends.is_empty());
         assert!(config.tasks.is_empty());
     }
@@ -790,7 +813,7 @@ timeout = 60
         .unwrap();
         deep_merge(&mut base, overlay);
         let config: Config = base.try_into().unwrap();
-        assert_eq!(config.defaults.timeout, 60);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(60)));
         assert!(config.defaults.parallel); // not overridden, stays true
     }
 
@@ -814,7 +837,7 @@ parallel = false
         deep_merge(&mut base, overlay);
         let config: Config = base.try_into().unwrap();
         assert!(!config.defaults.parallel); // false overrides true
-        assert_eq!(config.defaults.timeout, 300); // unchanged
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(300))); // unchanged
     }
 
     #[test]
@@ -873,7 +896,7 @@ timeout = 60
         .unwrap();
         deep_merge(&mut base, overlay);
         let config: Config = base.try_into().unwrap();
-        assert_eq!(config.defaults.timeout, 60);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(60)));
         // Everything else from defaults preserved
         assert!(config.defaults.parallel);
         assert!(!config.backends.is_empty());
@@ -905,7 +928,7 @@ args = ["exec", "--json", "-s", "full-auto"]
         let config: Config = base.try_into().unwrap();
         // Nothing changes
         assert!(config.defaults.parallel);
-        assert_eq!(config.defaults.timeout, 300);
+        assert_eq!(config.defaults.timeout, None);
         assert_eq!(config.backends.len(), 4);
     }
 
@@ -915,7 +938,7 @@ args = ["exec", "--json", "-s", "full-auto"]
         let config = load_config_from_paths(tmp.path(), None, None).unwrap();
         // Should return defaults when no config files exist
         assert!(config.defaults.parallel);
-        assert_eq!(config.defaults.timeout, 300);
+        assert_eq!(config.defaults.timeout, None);
         assert_eq!(config.backends.len(), 4);
     }
 
@@ -931,7 +954,7 @@ timeout = 60
         )
         .unwrap();
         let config = load_config_from_paths(tmp.path(), None, None).unwrap();
-        assert_eq!(config.defaults.timeout, 60);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(60)));
         // Defaults for everything else
         assert!(config.defaults.parallel);
         assert_eq!(config.backends.len(), 4);
@@ -972,7 +995,7 @@ parallel = false
         let config = load_config_from_paths(cwd.path(), Some(home.path()), None).unwrap();
 
         // Project wins for timeout
-        assert_eq!(config.defaults.timeout, 30);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(30)));
         // Project wins for parallel
         assert!(!config.defaults.parallel);
         // User's custom backend preserved
@@ -996,7 +1019,7 @@ timeout = 999
 
         let config = load_config_from_paths(tmp.path(), None, Some(&explicit)).unwrap();
 
-        assert_eq!(config.defaults.timeout, 999);
+        assert_eq!(config.defaults.timeout, Some(Duration::from_secs(999)));
         // Explicit path still merges with defaults - not hollow
         assert_eq!(config.backends.len(), 4);
         assert!(config.defaults.parallel);

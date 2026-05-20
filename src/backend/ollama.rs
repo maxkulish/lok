@@ -50,14 +50,14 @@ impl OllamaBackend {
             .clone()
             .unwrap_or_else(|| "llama3.2".to_string());
 
-        let timeout_secs = config.timeout.unwrap_or(300);
-        let timeout_secs = if timeout_secs == 0 {
-            365 * 24 * 60 * 60 // 1 year = effectively no timeout
+        let timeout = config.timeout.unwrap_or(Duration::from_secs(300));
+        let timeout = if timeout.is_zero() {
+            Duration::from_secs(365 * 24 * 60 * 60) // 1 year = effectively no timeout
         } else {
-            timeout_secs
+            timeout
         };
         let client = Client::builder()
-            .timeout(Duration::from_secs(timeout_secs))
+            .timeout(timeout)
             .build()?;
 
         Ok(Self {

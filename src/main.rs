@@ -22,6 +22,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 #[derive(Parser)]
 #[command(name = "lok")]
@@ -656,7 +657,7 @@ async fn main() -> Result<()> {
                 role::RoutingStrategy::Parallel { timeout_secs, .. } => {
                     strategy_config.defaults.parallel = true;
                     if let Some(t) = timeout_secs {
-                        strategy_config.defaults.timeout = *t;
+                        strategy_config.defaults.timeout = Some(Duration::from_secs(*t));
                     }
                 }
                 role::RoutingStrategy::First | role::RoutingStrategy::Fallback { .. } => {
@@ -665,7 +666,7 @@ async fn main() -> Result<()> {
                         timeout_secs: Some(t),
                     } = &resolution.strategy
                     {
-                        strategy_config.defaults.timeout = *t;
+                        strategy_config.defaults.timeout = Some(Duration::from_secs(*t));
                     }
                 }
             }
