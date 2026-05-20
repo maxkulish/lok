@@ -1,0 +1,183 @@
+task_id: CLO-383
+task_type: development
+classification_reason: >-
+  PRD §4 feature request with mechanical ACs (If apply_edits=true + no sandbox → default to workspace-write). Builds on
+  CLO-374 routing. Title prefix FR-22 is implementation, not investigation/document.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  branch_suggested: kmamemo/clo-383-fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace
+  priority: Medium
+  branch_actual: feat/clo-383-sandbox
+workflow:
+  current_phase: implement
+  status: active
+  created_at: '2026-05-20T09:11:59.656Z'
+  updated_at: '2026-05-20T10:08:02.243Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: 'A: add apply_edits to StepContext, resolve in backends'
+    approaches_identified: 3
+    approved: true
+    baseline_score: 9
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-383.md
+    prd_created: false
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-383-apply-edits-sandbox-default.md
+    discovery_context_used: true
+    draft_ready: true
+    draft_source: claude-designer
+    assumptions:
+      - confidence: high
+        text: >-
+          apply_edits is a per-step boolean rather than a per-backend one; consensus steps that fan a single prompt to
+          multiple backends therefore want the same defaulting rule on every subprocess backend.
+        verification: >-
+          Verified by src/workflow.rs:248 (single apply_edits field on Step) and the discovery report's review of
+          step_context().
+      - confidence: high
+        text: >-
+          Only Codex and Gemini consume ctx.sandbox today; Claude / Ollama / Bedrock backends will continue to ignore
+          the new apply_edits field.
+        verification: Verified by greping ctx.sandbox usage during discovery; no other backend touches it.
+      - confidence: high
+        text: >-
+          StepContext is Copy and all its fields are POD, so adding a bool is zero-cost and does not break existing call
+          sites that destructure or spread it.
+        verification: Verified at src/backend/context.rs:11 and the existing test_step_context_is_copy test.
+      - confidence: medium
+        text: >-
+          Emitting a warning log line inside argv-builder functions is acceptable; println! / eprintln! already serves
+          diagnostics in the project (see src/conductor.rs, src/debate.rs).
+        verification: >-
+          grep println! / eprintln! under src/backend/; if absent, surface the warning from query() and pass an
+          effective_sandbox value out of the argv builder.
+      - confidence: medium
+        text: >-
+          The integration test can drive the resolution rule by exercising CodexBackend::build_argv_prefix and
+          GeminiBackend::build_shell_cmd directly, without spawning real Codex / Gemini binaries.
+        verification: >-
+          Existing FR-21 tests already follow this pattern (codex_sandbox_workspace_write,
+          gemini_sandbox_workspace_write_adds_auto_edit).
+      - confidence: low
+        text: >-
+          No external caller constructs StepContext with positional / struct-literal syntax outside the workspace. If a
+          downstream crate ever did, adding a field would be a breaking change; today the struct is crate-internal.
+        verification: cargo check across the workspace plus a grep for StepContext { outside src/.
+    assumptions_surfaced: true
+    applied_suggestions:
+      - 'Add compilation gate: grep for all StepContext { struct literals across src/ and tests/ before committing'
+      - Prefer returning resolved SandboxMode from builder for testability; stderr capture as fallback
+    flagged_suggestions: []
+    review_completed: true
+    review_gemini: docs/reviews/clo-383-design-gemini.md
+    review_synthesis: docs/reviews/clo-383-design-synthesis.md
+    review_verdict: approve_with_changes
+    human_review_completed: true
+    plannotator_annotations: ''
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-383-apply-edits-sandbox-default.md
+    approved: true
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-20T09:11:59.656Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-383 as development
+  - timestamp: '2026-05-20T09:12:27.974Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: Feature implementation PRD §4 FR-22 with mechanical acceptance criteria (Add/Implement
+      pattern, build on CLO-374 routing)
+  - timestamp: '2026-05-20T09:14:31.938Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-383 --start. Cleaned stale CLO-378 from Active
+      Work; added CLO-383 to Active Work. Phase 10 task count updated 7→8.
+  - timestamp: '2026-05-20T09:14:38.519Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-20T09:14:58.002Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-383-sandbox already checked out. Recording as branch_actual.
+  - timestamp: '2026-05-20T09:19:24.592Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: A. Baseline 9/10. 3 approaches considered (add apply_edits to StepContext / resolve in workflow.rs /
+      trait method). Chose: add apply_edits to StepContext, resolve defaulting in Codex+Gemini backends.
+  - timestamp: '2026-05-20T09:19:29.331Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-20T09:45:15.625Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated by claude-designer at docs/designs/clo-383-apply-edits-sandbox-default.md (312 lines, 8 sections).
+      Post-draft corrections: removed tracing references (project has no tracing dep).
+  - timestamp: '2026-05-20T09:45:29.113Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '5 assumptions surfaced (high: 3, medium: 2, low: 1). See design doc § Assumptions.'
+  - timestamp: '2026-05-20T09:48:28.873Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: approve_with_changes. 2 applied (compilation gate, prefer return-value for warnings), 0 flagged.
+      Reviews: gemini=workflow-failed, claude=manual-fallback.
+  - timestamp: '2026-05-20T09:56:25.253Z'
+    action: design_human_review_complete
+    phase: design
+    details: Plannotator annotate session closed with no annotations.
+  - timestamp: '2026-05-20T09:56:50.465Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design ready for plan phase. Doc: docs/designs/clo-383-apply-edits-sandbox-default.md. 8 sections, 6 assumptions,
+      8×2 test matrix, 3 open questions.
+  - timestamp: '2026-05-20T09:57:01.635Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-20T10:07:49.181Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 5 sub-tasks at docs/plans/clo-383-apply-edits-sandbox-default.md
+  - timestamp: '2026-05-20T10:07:59.814Z'
+    action: plan_approved
+    phase: plan
+    details: Plan approved. 5 sub-tasks queued (2×S, 2×M, 1×S).
+  - timestamp: '2026-05-20T10:08:02.243Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+task_title: 'FR-22: `apply_edits=true` defaults Codex sandbox to `workspace-write`'
+task_url: https://linear.app/cloud-ai/issue/CLO-383/fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace-write
