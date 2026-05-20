@@ -171,6 +171,7 @@ fn step_context<'a>(
     ));
     backend::StepContext {
         sandbox: step.sandbox,
+        apply_edits: step.apply_edits,
         timeout,
         ..backend::StepContext::from_prompt(prompt, cwd, step.model.as_deref())
     }
@@ -1093,10 +1094,13 @@ struct WorkflowEditRequester {
     model_override: Option<String>,
     cwd: PathBuf,
     fix_retries: u32,
+    sandbox: Option<crate::backend::SandboxMode>,
+    apply_edits: bool,
     captures: std::sync::Mutex<EditRequesterCaptures>,
 }
 
 impl WorkflowEditRequester {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         backend: std::sync::Arc<dyn backend::Backend>,
         original_prompt: String,
@@ -1104,6 +1108,8 @@ impl WorkflowEditRequester {
         model_override: Option<String>,
         cwd: PathBuf,
         fix_retries: u32,
+        sandbox: Option<crate::backend::SandboxMode>,
+        apply_edits: bool,
     ) -> Self {
         Self {
             backend,
@@ -1112,6 +1118,8 @@ impl WorkflowEditRequester {
             model_override,
             cwd,
             fix_retries,
+            sandbox,
+            apply_edits,
             captures: std::sync::Mutex::new(EditRequesterCaptures {
                 last_stderr: None,
                 last_exit_code: None,
@@ -1219,6 +1227,8 @@ impl EditRequester for WorkflowEditRequester {
 
         println!("    {} Re-querying LLM with error...", "↻".dimmed());
         let ctx = backend::StepContext {
+            sandbox: self.sandbox,
+            apply_edits: self.apply_edits,
             timeout: Some(self.timeout_duration),
             ..backend::StepContext::from_prompt(
                 &fix_prompt,
@@ -1686,6 +1696,8 @@ impl WorkflowRunner {
                     let max_retries = step.retries;
                     let retry_delay = step.retry_delay;
                     let validate_config = step.validate.clone();
+                    let step_sandbox = step.sandbox;
+                    let step_apply_edits = step.apply_edits;
 
                     async move {
                         println!("{} {}", "[step]".cyan(), step_name.bold());
@@ -2004,6 +2016,8 @@ impl WorkflowRunner {
                                     }
                                     let timeout_for_backend = crate::backend::effective_timeout(step_timeout_only, &bn, &cfg);
                                     let ctx = backend::StepContext {
+                                        sandbox: step_sandbox,
+                                        apply_edits: step_apply_edits,
                                         timeout: Some(timeout_for_backend),
                                         ..backend::StepContext::from_prompt(
                                             &prompt,
@@ -2373,6 +2387,8 @@ impl WorkflowRunner {
                                             model_override.clone(),
                                             cwd.clone(),
                                             fix_retries,
+                                            step_sandbox,
+                                            step_apply_edits,
                                         );
                                         let outcome = retry_loop
                                             .execute(
@@ -6687,6 +6703,37 @@ prompt = "p"
             std::path::Path::new("/tmp"),
         );
         assert_eq!(ctx.timeout, Some(std::time::Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn test_step_context_threads_apply_edits() {
+        let step = Step {
+            name: "test".to_string(),
+            backend: String::new(),
+            backends: vec![],
+            model: None,
+            prompt: "hello".to_string(),
+            depends_on: vec![],
+            when: None,
+            shell: None,
+            apply_edits: true,
+            verify: None,
+            fix_retries: 0,
+            retries: 0,
+            retry_delay: 1000,
+            for_each: None,
+            output_format: None,
+            continue_on_error: None,
+            min_deps_success: None,
+            timeout: None,
+            sandbox: None,
+            consensus: None,
+            validate: None,
+        };
+        let config = Config::default();
+        let ctx = step_context(&step, &config, "ollama", "hello", std::path::Path::new("."));
+        assert!(ctx.apply_edits);
+        assert!(ctx.sandbox.is_none());
     }
 
     #[test]
