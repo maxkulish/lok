@@ -25,7 +25,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-20T06:35:41.113Z'
-  updated_at: '2026-05-20T07:02:21.204Z'
+  updated_at: '2026-05-20T07:05:58.921Z'
 phases:
   discovery:
     status: complete
@@ -102,6 +102,7 @@ phases:
     status: pending
     commits:
       - 51ef50e
+      - 7a5648e
   pr:
     status: pending
   complete:
@@ -204,5 +205,9 @@ history:
     action: subtask_complete
     phase: implement
     details: 'ST1+ST2 landed: CodexUsage fields -> Option<u32>, wire with_cached/with_reasoning. Commit 51ef50e.'
+  - timestamp: '2026-05-20T07:05:58.921Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST3+ST4 landed: 4 new unit tests + 2 fixture extensions. All 27 codex_event tests pass. Commit 7a5648e.'
 task_title: 'FR-25: Codex backend extracts `usage` from `turn.completed` events'
 task_url: https://linear.app/cloud-ai/issue/CLO-381/fr-25-codex-backend-extracts-usage-from-turncompleted-events
