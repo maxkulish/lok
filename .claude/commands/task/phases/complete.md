@@ -56,30 +56,14 @@ git pull origin main
 
 ### Step 7: Display Completion Summary
 
-```
-========================================
-TASK COMPLETE: CLO-XX
-========================================
+Render the canonical summary defined in `.claude/templates/completion-summary.md`.
 
-Title: [Task title]
-Branch: feat/clo-XX-short-desc
-PR: [url]
-Merged: [timestamp]
+- Load `docs/status/clo-XX-workflow.yaml`.
+- Resolve every placeholder using the field-mapping table in the template (`Source of Data` section).
+- Apply the phase-skip rules for the current `task_type`.
+- Print the rendered block exactly as specified — preserve box-drawing characters, indentation, emojis, and separator widths. Add no commentary above or below the bottom separator.
 
-Documents:
-- Design: docs/design-docs/clo-XX-[description].md
-- Plan: docs/plans/clo-XX-[description].md
-- Status: docs/status/clo-XX-[description].md
-
-Commits: [count]
-
-Aggregation files updated:
-- docs/PROJECT.md
-- docs/ROADMAP.md
-- docs/DEPENDENCIES.md
-
-Ready to start next task!
-```
+The footer line `Status: ✅ DONE` is the single authoritative completion signal — emit it only when `workflow.current_phase == complete` AND `workflow.status == complete`.
 
 ---
 

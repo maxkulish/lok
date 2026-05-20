@@ -15,7 +15,7 @@
 | Phase 7: MiniJinja Templates | 2 | 2 | Complete |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
-| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 8 | 5 | In Progress |
+| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 7 | 7 | Complete |
 
 ## Phase 2: Validation Pipeline
 
@@ -94,5 +94,5 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 release plan
 | [CLO-371](https://linear.app/cloud-ai/issue/CLO-371) | Migrate `Backend::query` to `StepContext` + add async `health_check` + sweep Step call sites (FR-19a/19b/20a) | Done | CLO-370 |
 | [CLO-372](https://linear.app/cloud-ai/issue/CLO-372) | Thread `StepContext` through non-Step `Backend::query` call sites (FR-20b) | Done | CLO-371 |
 | [CLO-373](https://linear.app/cloud-ai/issue/CLO-373/capture-codex-jsonl-fixtures-for-parser-test-corpus-fr-40) | Capture Codex JSONL fixtures for parser test corpus (FR-40) | Done | CLO-372 |
-| [CLO-381](https://linear.app/cloud-ai/issue/CLO-381/fr-25-codex-backend-extracts-usage-from-turncompleted-events) | FR-25: Codex backend extracts `usage` from `turn.completed` events | In Progress | CLO-379, CLO-378 |
-| [CLO-383](https://linear.app/cloud-ai/issue/CLO-383/fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace-write) | FR-22: `apply_edits=true` defaults Codex sandbox to `workspace-write` | In Progress | CLO-374 |
+| [CLO-380](https://linear.app/cloud-ai/issue/CLO-380/fr-3b-codex-o-output-last-message-authoritative-result-extraction) | FR-3b: Codex `-o`/`--output-last-message` authoritative result extraction | Done | CLO-381 |
+| [CLO-381](https://linear.app/cloud-ai/issue/CLO-381/fr-25-codex-backend-extracts-usage-from-turncompleted-events) | FR-25: Codex backend extracts `usage` from `turn.completed` events | Done | CLO-379, CLO-378 |
