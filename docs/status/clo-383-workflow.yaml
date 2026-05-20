@@ -23,7 +23,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-20T09:11:59.656Z'
-  updated_at: '2026-05-20T10:24:10.128Z'
+  updated_at: '2026-05-20T10:26:04.108Z'
 phases:
   discovery:
     status: complete
@@ -97,12 +97,37 @@ phases:
     plan_file: docs/plans/clo-383-apply-edits-sandbox-default.md
     approved: true
   implement:
-    status: pending
+    status: validating
     commits:
       - 312b6b0
       - e0a9d65
       - 00e9b86
       - 83f344f
+      - 6af0b84
+    assumption_outcomes:
+      - evidence: src/workflow.rs:171 sets apply_edits from step.apply_edits; single field on Step struct
+        outcome: held
+        text: apply_edits is a per-step boolean rather than a per-backend one
+      - evidence: >-
+          Implementation added sandbox resolution only to CodexBackend::build_argv_prefix and
+          GeminiBackend::build_shell_cmd; no changes to other backends
+        outcome: held
+        text: Only Codex and Gemini consume ctx.sandbox today
+      - evidence: test_step_context_is_copy passes at src/backend/context.rs:132
+        outcome: held
+        text: StepContext is Copy and adding a bool is zero-cost
+      - evidence: resolve_effective_sandbox uses eprintln! for warnings in both backends
+        outcome: held
+        text: Emitting a warning log line inside argv-builder functions is acceptable
+      - evidence: >-
+          Unit tests call build_argv_prefix/build_shell_cmd directly without spawning binaries; codex_apply_edits_*,
+          gemini_apply_edits_* pass
+        outcome: held
+        text: Integration test can drive the resolution rule by exercising builders directly
+      - evidence: rg StepContext { across src/ tests/ found only spread-literal usages; cargo check compiles clean
+        outcome: held
+        text: No external caller constructs StepContext outside the workspace
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -202,5 +227,19 @@ history:
     action: subtask_complete
     phase: implement
     details: 'ST4 landed: Gemini backend effective-sandbox resolution + 6 unit tests. Commit 83f344f.'
+  - timestamp: '2026-05-20T10:25:38.497Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST5 landed: pre-merge gate (fmt + clippy + all 555 tests green). Commit 6af0b84. rg StepContext { gate found 0
+      missing struct literals.
+  - timestamp: '2026-05-20T10:25:59.565Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: '6 assumptions reviewed. held: 6. No violations.'
+  - timestamp: '2026-05-20T10:26:04.108Z'
+    action: implementation_complete
+    phase: implement
+    details: 'All sub-tasks landed. fmt+clippy+test green (555 tests). 5 commits. Assumptions: 6 held, 0 violated.'
 task_title: 'FR-22: `apply_edits=true` defaults Codex sandbox to `workspace-write`'
 task_url: https://linear.app/cloud-ai/issue/CLO-383/fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace-write

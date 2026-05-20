@@ -1682,6 +1682,8 @@ impl WorkflowRunner {
                     let retry_delay = step.retry_delay;
                     let step_timeout = workflow.step_timeout(step);
                     let validate_config = step.validate.clone();
+                    let step_sandbox = step.sandbox;
+                    let step_apply_edits = step.apply_edits;
 
                     async move {
                         println!("{} {}", "[step]".cyan(), step_name.bold());
@@ -1997,6 +1999,8 @@ impl WorkflowRunner {
                                         return (bn.clone(), Err(format!("Backend {} not available", bn)));
                                     }
                                     let ctx = backend::StepContext {
+                                        sandbox: step_sandbox,
+                                        apply_edits: step_apply_edits,
                                         timeout: step_timeout
                                             .map(std::time::Duration::from_millis),
                                         ..backend::StepContext::from_prompt(
@@ -6654,5 +6658,43 @@ prompt = "p"
             StepFailureKind::BackendError,
         );
         assert!(err.usage.is_none());
+    }
+
+    #[test]
+    fn test_step_context_threads_apply_edits() {
+        let step = Step {
+            name: "test".to_string(),
+            backend: String::new(),
+            backends: vec![],
+            model: None,
+            prompt: "hello".to_string(),
+            depends_on: vec![],
+            when: None,
+            shell: None,
+            apply_edits: true,
+            verify: None,
+            fix_retries: 0,
+            retries: 0,
+            retry_delay: 1000,
+            for_each: None,
+            output_format: None,
+            continue_on_error: None,
+            min_deps_success: None,
+            timeout: None,
+            sandbox: None,
+            consensus: None,
+            validate: None,
+        };
+        let workflow = Workflow {
+            name: "test".to_string(),
+            description: None,
+            extends: None,
+            steps: vec![],
+            continue_on_error: false,
+            timeout: None,
+        };
+        let ctx = step_context(&step, &workflow, "hello", std::path::Path::new("."));
+        assert!(ctx.apply_edits);
+        assert!(ctx.sandbox.is_none());
     }
 }
