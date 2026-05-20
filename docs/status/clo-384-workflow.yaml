@@ -1,0 +1,154 @@
+task_id: clo-384
+task_type: development
+classification_reason: FR-23 title + mechanical ACs, no spec/ops label or prefix
+task_profile:
+  has_backend: true
+  has_frontend: false
+  has_data_model: true
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  priority: 3
+  branch_suggested: kmamemo/clo-384-fr-23-per-step-timeout-layered-override-step-backend-global
+  url: https://linear.app/cloud-ai/issue/CLO-384/fr-23-per-step-timeout-layered-override-step-backend-global
+related:
+  - clo-371
+  - clo-182
+branch_actual: feat/clo-384-per-step
+workflow:
+  current_phase: implement
+  status: active
+  created_at: '2026-05-20T00:00:00.000Z'
+  updated_at: '2026-05-20T10:11:21.951Z'
+phases:
+  init:
+    status: complete
+  discovery:
+    status: complete
+    approach_chosen: humantime-serde + refactor resolution
+    approaches_identified: 3
+    approved: true
+    baseline_score: 6
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-384.md
+    prd_created: false
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-384-per-step-timeout-layered-override.md
+    discovery_context_used: true
+    draft_ready: true
+    draft_source: manual
+    assumptions:
+      - confidence: high
+        text: >-
+          Config timeout integers are seconds; workflow timeout integers are milliseconds — existing convention
+          preserved.
+        verification: unit test on deserializer round-trip
+      - confidence: high
+        text: No workflow TOML file uses timeout string form today — field is u64 now, strings would already fail to parse.
+        verification: grep for 'timeout = "' in .lok/workflows/ and examples/
+      - confidence: high
+        text: StepContext.timeout is always Some after construction — existing .expect() proves this invariant.
+        verification: 'existing test: test_run_query_with_config_passes_step_context_model_and_timeout'
+      - confidence: high
+        text: The 0 sentinel (effectively no timeout) is preserved via NO_TIMEOUT constant.
+        verification: unit test with timeout = 0
+      - confidence: medium
+        text: >-
+          Workflow.timeout is out of scope for the resolution chain — issue specifies step > backend > global, not step
+          > workflow > backend > global.
+        verification: confirm during implementation that Workflow.timeout is either unused or serves only as TOML convenience
+      - confidence: high
+        text: >-
+          BackendConfig::default() divergence won't happen — timeout change only touches config struct, no backend
+          constructor changes needed.
+        verification: Config::default().backends.get('codex').unwrap().timeout assertion in existing tests
+    assumptions_surfaced: true
+    applied_suggestions:
+      - Added caller update checklist with line numbers to Architecture
+      - Noted synthesis path (line 2111) must use effective_timeout()
+      - Added Gemini Config::default() Duration construction to Migration
+      - Added multi-backend timeout differentiation note
+      - Added NO_TIMEOUT_SECS→NO_TIMEOUT rename to Migration
+    flagged_suggestions: []
+    review_completed: true
+    review_gemini: docs/reviews/clo-384-design-gemini.md
+    review_skip_reason: lok design-review workflow broken — CLO-382 L2 depends_on bug
+    review_synthesis: docs/reviews/clo-384-design-synthesis.md
+    review_verdict: approve_with_changes
+    token_usage:
+      - recorded_at: '2026-05-20T09:51:15.583Z'
+        provider: gemini
+        model: gemini-3.1-pro-preview
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-manual
+    human_review_completed: true
+    plannotator_annotations: ''
+    finalized: true
+  plan:
+    plan_file: docs/plans/clo-384-per-step-timeout-layered-override.md
+    status: complete
+    approved: true
+history:
+  - action: workflow_started
+    details: Task initialized from Linear issue CLO-384
+  - action: classification_complete
+    details: Classified as development. FR-23 title + mechanical ACs, no spec/ops label.
+  - action: linear_status_updated
+    details: Moved from Backlog to Todo
+  - action: init_complete
+    details: Phase init completed successfully. Branch feat/clo-384-per-step checked out.
+  - action: discovery_started
+    details: Exploring codebase for timeout resolution paths, BackendError, StepContext, config types
+  - action: discovery_approved
+    details: 'Approach: humantime-serde + refactor resolution. Baseline 6/10. 3 approaches considered.'
+  - timestamp: '2026-05-20T09:46:12.101Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated manually (lok workflow broken on shell step) at
+      docs/designs/clo-384-per-step-timeout-layered-override.md (277 lines)
+  - timestamp: '2026-05-20T09:46:27.609Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '6 assumptions surfaced (high: 5, medium: 1). See design doc § Assumptions.'
+  - timestamp: '2026-05-20T09:51:15.583Z'
+    action: design_review_complete
+    phase: design
+    details: 'Review verdict: approve_with_changes. 5 applied, 0 flagged, 2 deferred.'
+  - timestamp: '2026-05-20T09:52:07.956Z'
+    action: design_human_review_complete
+    phase: design
+    details: Plannotator annotate session closed with no annotations.
+  - timestamp: '2026-05-20T09:52:18.270Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design ready for plan phase. 315-line doc with 9 sections, 6 assumptions, 14 unit + 4 integration tests + manual
+      gate. Review feedback applied (5 additive, 0 flagged, 2 deferred).
+  - timestamp: '2026-05-20T09:52:21.305Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-20T10:11:16.286Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 5 sub-tasks at docs/plans/clo-384-per-step-timeout-layered-override.md
+  - timestamp: '2026-05-20T10:11:19.978Z'
+    action: plan_approved
+    phase: plan
+    details: >-
+      Plan approved. 5 sub-tasks queued: ST1 (S), ST2 (S), ST3 (M), ST4 (L), ST5 (M). Pre-merge gate: cargo fmt --check
+      && cargo clippy --all-targets -- -D warnings && cargo test
+  - timestamp: '2026-05-20T10:11:21.951Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement

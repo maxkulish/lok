@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
+use serde::de::{self, Visitor};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
@@ -97,6 +99,181 @@ impl Default for ConductorConfig {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Custom serde deserializers for duration fields (FR-23)
+// ---------------------------------------------------------------------------
+
+/// Deserialize an `Option<Duration>` from a human-readable duration string
+/// ("30s", "5m", "1h") or a raw integer (interpreted as **seconds**).
+/// Used for config-level fields (`Defaults.timeout`, `BackendConfig.timeout`).
+pub fn deser_duration_seconds<'de, D: de::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Duration>, D::Error> {
+    d.deserialize_any(DurationSecondsVisitor)
+}
+
+/// Deserialize an `Option<Duration>` from a human-readable duration string
+/// ("30s", "5m", "1h") or a raw integer (interpreted as **milliseconds**).
+/// Used for workflow-level fields (`Step.timeout`, `Workflow.timeout`).
+pub fn deser_duration_millis<'de, D: de::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Duration>, D::Error> {
+    d.deserialize_any(DurationMillisVisitor)
+}
+
+struct DurationSecondsVisitor;
+
+impl<'de> Visitor<'de> for DurationSecondsVisitor {
+    type Value = Option<Duration>;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a duration string like \"30s\" or an integer (seconds)")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        humantime::parse_duration(v)
+            .map(Some)
+            .map_err(|e| de::Error::custom(format!("invalid duration string: {e}")))
+    }
+
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+        Ok(Some(Duration::from_secs(v as u64)))
+    }
+
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+        Ok(Some(Duration::from_secs(v)))
+    }
+
+    fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+}
+
+struct DurationMillisVisitor;
+
+impl<'de> Visitor<'de> for DurationMillisVisitor {
+    type Value = Option<Duration>;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a duration string like \"30s\" or an integer (milliseconds)")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        humantime::parse_duration(v)
+            .map(Some)
+            .map_err(|e| de::Error::custom(format!("invalid duration string: {e}")))
+    }
+
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+        Ok(Some(Duration::from_millis(v as u64)))
+    }
+
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+        Ok(Some(Duration::from_millis(v)))
+    }
+
+    fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+
+    fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+        Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod serde_duration_tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn roundtrip_seconds_toml(input: &str) -> Option<Duration> {
+        #[derive(Deserialize)]
+        struct S {
+            #[serde(deserialize_with = "deser_duration_seconds")]
+            timeout: Option<Duration>,
+        }
+        toml::from_str::<S>(input).unwrap().timeout
+    }
+
+    fn roundtrip_millis_toml(input: &str) -> Option<Duration> {
+        #[derive(Deserialize)]
+        struct S {
+            #[serde(deserialize_with = "deser_duration_millis")]
+            timeout: Option<Duration>,
+        }
+        toml::from_str::<S>(input).unwrap().timeout
+    }
+
+    #[test]
+    fn test_deser_duration_seconds_string() {
+        assert_eq!(
+            roundtrip_seconds_toml("timeout = \"30s\""),
+            Some(Duration::from_secs(30))
+        );
+        assert_eq!(
+            roundtrip_seconds_toml("timeout = \"5m\""),
+            Some(Duration::from_secs(300))
+        );
+        assert_eq!(
+            roundtrip_seconds_toml("timeout = \"1h\""),
+            Some(Duration::from_secs(3600))
+        );
+    }
+
+    #[test]
+    fn test_deser_duration_seconds_int() {
+        assert_eq!(
+            roundtrip_seconds_toml("timeout = 30"),
+            Some(Duration::from_secs(30))
+        );
+    }
+
+    #[test]
+    fn test_deser_duration_seconds_none() {
+        #[derive(Deserialize)]
+        struct S {
+            #[serde(default, deserialize_with = "deser_duration_seconds")]
+            timeout: Option<Duration>,
+        }
+        assert_eq!(toml::from_str::<S>("").unwrap().timeout, None);
+    }
+
+    #[test]
+    fn test_deser_duration_millis_string() {
+        assert_eq!(
+            roundtrip_millis_toml("timeout = \"30s\""),
+            Some(Duration::from_secs(30))
+        );
+    }
+
+    #[test]
+    fn test_deser_duration_millis_int() {
+        assert_eq!(
+            roundtrip_millis_toml("timeout = 30000"),
+            Some(Duration::from_secs(30))
+        );
+    }
+
+    #[test]
+    fn test_deser_duration_invalid_string() {
+        #[derive(Deserialize, Debug)]
+        struct S {
+            #[serde(deserialize_with = "deser_duration_seconds")]
+            timeout: Option<Duration>,
+        }
+        let result = toml::from_str::<S>("timeout = \"not_a_duration\"");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("invalid duration") || err.contains("duration string"),
+            "error should mention 'invalid duration' or 'duration string', got: {err}");
+    }
+}
+
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
