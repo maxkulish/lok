@@ -1,6 +1,6 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-05-20
+**Last Updated**: 2026-05-20 (CLO-383 complete)
 
 ## Active Work (WIP Limit: 3)
 
@@ -19,6 +19,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-383](https://linear.app/cloud-ai/issue/CLO-383/fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace-write) | FR-22: `apply_edits=true` defaults Codex sandbox to `workspace-write` | 2026-05-20 | Resolves effective sandbox: apply_edits=true + no sandbox → workspace-write/auto-edit; explicit sandbox always wins; threads sandbox+apply_edits through all StepContext call sites (single/many/for_each/retry); 15 backend + 1 workflow tests |
 | [CLO-380](https://linear.app/cloud-ai/issue/CLO-380/fr-3b-codex-o-output-last-message-authoritative-result-extraction) | FR-3b: Codex `-o`/`--output-last-message` authoritative result extraction | 2026-05-20 | Added authoritative last-message success-path with JSONL fallback and fixture-backed precedence tests |
 | [CLO-381](https://linear.app/cloud-ai/issue/CLO-381/fr-25-codex-backend-extracts-usage-from-turncompleted-events) | FR-25: Codex backend extracts `usage` from `turn.completed` events | 2026-05-20 | Wired cached_input_tokens and reasoning_output_tokens from Codex turn.completed usage |
 | [CLO-378](https://linear.app/cloud-ai/issue/CLO-378/fr-25b-extend-tokenusage-with-cached-tokens-reasoning-tokens) | FR-25b: extend TokenUsage with cached_tokens + reasoning_tokens | 2026-05-20 | Extended TokenUsage with cached_tokens + reasoning_tokens fields |
