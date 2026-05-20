@@ -163,6 +163,12 @@ impl<'de> Visitor<'de> for DurationSecondsVisitor {
     }
 
     fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+        if v < 0 {
+            return Err(de::Error::invalid_value(
+                de::Unexpected::Signed(v),
+                &"non-negative integer or duration string",
+            ));
+        }
         Ok(Some(Duration::from_secs(v as u64)))
     }
 
@@ -195,6 +201,12 @@ impl<'de> Visitor<'de> for DurationMillisVisitor {
     }
 
     fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+        if v < 0 {
+            return Err(de::Error::invalid_value(
+                de::Unexpected::Signed(v),
+                &"non-negative integer or duration string",
+            ));
+        }
         Ok(Some(Duration::from_millis(v as u64)))
     }
 

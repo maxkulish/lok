@@ -1982,6 +1982,7 @@ impl WorkflowRunner {
 
                             // Query all backends in parallel
                             let mut handles = Vec::new();
+                            let step_timeout_only = step.timeout;
                             for bn in &backends_list {
                                 let bn = bn.clone();
                                 let cfg = config.clone();
@@ -2004,7 +2005,7 @@ impl WorkflowRunner {
                                     if !backend.is_available() {
                                         return (bn.clone(), Err(format!("Backend {} not available", bn)));
                                     }
-                                    let timeout_for_backend = crate::backend::effective_timeout(step_timeout, &bn, &cfg);
+                                    let timeout_for_backend = crate::backend::effective_timeout(step_timeout_only, &bn, &cfg);
                                     let ctx = backend::StepContext {
                                         timeout: Some(timeout_for_backend),
                                         ..backend::StepContext::from_prompt(
@@ -2363,10 +2364,15 @@ impl WorkflowRunner {
                                             verify: verification,
                                             stop_on_parse_error: false,
                                         };
+                                        let fix_timeout = crate::backend::effective_timeout(
+                                            step.timeout,
+                                            &backend_name,
+                                            &self.config,
+                                        );
                                         let requester = WorkflowEditRequester::new(
                                             backend.clone(),
                                             prompt.clone(),
-                                            timeout_duration,
+                                            fix_timeout,
                                             model_override.clone(),
                                             cwd.clone(),
                                             fix_retries,
@@ -6648,6 +6654,62 @@ prompt = "p"
         assert_eq!(preserved.prompt_tokens, 100);
         assert_eq!(preserved.completion_tokens, 50);
         assert_eq!(preserved.total_tokens, 150);
+    }
+
+    #[test]
+    fn test_step_context_populates_timeout() {
+        let step = Step {
+            name: "test".to_string(),
+            backend: "ollama".to_string(),
+            backends: vec![],
+            model: None,
+            prompt: "hello".to_string(),
+            depends_on: vec![],
+            when: None,
+            shell: None,
+            apply_edits: false,
+            verify: None,
+            fix_retries: 0,
+            retries: 0,
+            retry_delay: 1000,
+            for_each: None,
+            output_format: None,
+            continue_on_error: None,
+            min_deps_success: None,
+            timeout: Some(std::time::Duration::from_secs(30)),
+            sandbox: None,
+            consensus: None,
+            validate: None,
+        };
+        let config = Config::default();
+        let ctx = step_context(
+            &step,
+            &config,
+            "ollama",
+            "hello",
+            std::path::Path::new("/tmp"),
+        );
+        assert_eq!(ctx.timeout, Some(std::time::Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn test_multibackend_timeout_per_backend() {
+        let mut config = Config::default();
+        config
+            .backends
+            .get_mut("codex")
+            .expect("default codex backend exists")
+            .timeout = Some(std::time::Duration::from_secs(10));
+        config
+            .backends
+            .get_mut("ollama")
+            .expect("default ollama backend exists")
+            .timeout = Some(std::time::Duration::from_secs(20));
+
+        let t_codex = crate::backend::effective_timeout(None, "codex", &config);
+        let t_ollama = crate::backend::effective_timeout(None, "ollama", &config);
+        assert_eq!(t_codex, std::time::Duration::from_secs(10));
+        assert_eq!(t_ollama, std::time::Duration::from_secs(20));
     }
 
     #[test]
