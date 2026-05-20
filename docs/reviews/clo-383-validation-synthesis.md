@@ -28,3 +28,21 @@ PASS_WITH_NOTES
 
 ## Recommendation
 PROCEED_WITH_FIXES. Two bounded changes before opening the PR: (1) extend `WorkflowEditRequester` to carry the step's `apply_edits` and `sandbox` and apply them in the retry `StepContext` (+ one test that asserts the retry argv/shell-cmd shape for an `apply_edits=true` step); (2) either flip the warning to `println!` to match the design, or update the design to allow `eprintln!` and add a unit test asserting the warn output for the `(true, ReadOnly)` cell. Both fit in one iteration; no scope or design pivot required.
+
+## Re-validation
+
+Applied after fix iteration 1 (commit d32590c).
+
+### Fixes applied
+- **Retry path drops `sandbox` + `apply_edits`** — Fixed by adding `sandbox` and `apply_edits` fields to `WorkflowEditRequester`, threading values from the step through `new()`, and setting them in the retry `StepContext` built by `request_retry`. Added `#[allow(clippy::too_many_arguments)]` on the constructor. Closes the MEDIUM finding.
+- **Warning channel `eprintln!` → `println!`** — Flipped both Codex and Gemini backends to match the design spec. Closes the LOW finding.
+
+### Pre-merge gate (post-fix)
+```
+cargo fmt --check   ✓
+cargo clippy -- -D warnings   ✓
+cargo test   ✓ (555 passed, 0 failed)
+```
+
+### Verdict
+PASS (all Must Fix Before PR items addressed in a single iteration; no remaining blockers).
