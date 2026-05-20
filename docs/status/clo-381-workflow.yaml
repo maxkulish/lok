@@ -25,7 +25,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-20T06:35:41.113Z'
-  updated_at: '2026-05-20T07:05:58.921Z'
+  updated_at: '2026-05-20T07:08:18.714Z'
 phases:
   discovery:
     status: complete
@@ -99,10 +99,30 @@ phases:
     plan_file: docs/plans/clo-381-codex-usage.md
     approved: true
   implement:
-    status: pending
+    status: validating
     commits:
       - 51ef50e
       - 7a5648e
+      - c0ea891
+    assumption_outcomes:
+      - evidence: >-
+          src/backend/codex_event.rs::tests::fixture_turn_completed_returns_happy_path_message and
+          fixture_multi_turn_reasoning_returns_only_final_agent_message
+        outcome: held
+        text: Codex's turn.completed.usage ships cached_input_tokens and reasoning_output_tokens as token counts.
+      - evidence: src/backend/mod.rs::tests::test_token_usage_total_excludes_cached_and_reasoning passes unchanged
+        outcome: held
+        text: cached_tokens and reasoning_tokens are NOT counted into total_tokens.
+      - evidence: No real multi-turn capture available; last-turn-take semantics preserved as designed
+        outcome: untested
+        text: Codex reports cumulative-per-turn usage (multi-turn accumulation semantics).
+      - evidence: src/backend/codex_event.rs::tests::turn_completed_omitting_cached_and_reasoning_yields_none passes
+        outcome: held
+        text: When Codex omits subfields, serde(default) on Option<u32> produces None.
+      - evidence: rg cached_tokens|reasoning_tokens over src/ shows no new None-sensitive callers
+        outcome: held
+        text: No downstream consumer branches on cached_tokens.is_none() vs Some(0).
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -209,5 +229,15 @@ history:
     action: subtask_complete
     phase: implement
     details: 'ST3+ST4 landed: 4 new unit tests + 2 fixture extensions. All 27 codex_event tests pass. Commit 7a5648e.'
+  - timestamp: '2026-05-20T07:06:33.227Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      5 assumptions reviewed. held: 4, violated: 0, untested: 1 (multi-turn cumulative semantics — no real capture
+      available, matches design debt).
+  - timestamp: '2026-05-20T07:08:18.714Z'
+    action: implementation_complete
+    phase: implement
+    details: All sub-tasks landed. fmt+clippy+test green (531 tests). 3 commits.
 task_title: 'FR-25: Codex backend extracts `usage` from `turn.completed` events'
 task_url: https://linear.app/cloud-ai/issue/CLO-381/fr-25-codex-backend-extracts-usage-from-turncompleted-events
