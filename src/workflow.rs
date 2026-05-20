@@ -168,6 +168,7 @@ fn step_context<'a>(
 ) -> backend::StepContext<'a> {
     backend::StepContext {
         sandbox: step.sandbox,
+        apply_edits: step.apply_edits,
         timeout: workflow
             .step_timeout(step)
             .map(std::time::Duration::from_millis),
