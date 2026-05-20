@@ -23,7 +23,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-20T09:10:59.865Z'
-  updated_at: '2026-05-20T10:44:05.543Z'
+  updated_at: '2026-05-20T10:46:10.691Z'
 phases:
   discovery:
     status: complete
@@ -197,12 +197,16 @@ phases:
         completion_tokens: 0
         task_label: pre-pr-validation-synthesis
   pr:
-    status: in_progress
+    status: complete
     pr_url: https://github.com/maxkulish/lok/pull/28
     pr_number: 28
     ci_passed: true
     bot_review_wait_completed: true
     bot_review_wait_completed_at: '2026-05-20T10:36:31Z'
+    reviews_addressed: true
+    review_comment_threads_resolved: 2
+    pre_merge_refetch_passed: true
+    pre_merge_refetch_at: '2026-05-20T10:46:25.123Z'
   complete:
     status: pending
 history:
@@ -341,5 +345,15 @@ history:
     details: >-
       Current-head bot review observed for PR #28 at head 55aff813ce4e6acbf0f46913bdc09ddeab332021; fetching inline
       comments and review threads.
+  - timestamp: '2026-05-20T10:46:01.315Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      Resolved all bot review threads after two inline replies on 4134d78 and validated /gemini review trailers; no
+      remaining actionable feedback.
+  - timestamp: '2026-05-20T10:46:10.691Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments since review_addressed and all review threads are resolved.'
 task_title: 'FR-3b: Codex `-o`/`--output-last-message` authoritative result extraction'
 task_url: https://linear.app/cloud-ai/issue/CLO-380/fr-3b-codex-o-output-last-message-authoritative-result-extraction
