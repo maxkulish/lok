@@ -19,6 +19,10 @@ pub struct StepContext<'a> {
     pub cwd: &'a Path,
     /// Sandbox level (FR-21). None = backend default.
     pub sandbox: Option<SandboxMode>,
+    /// Per-step intent to parse and apply JSON file-edits from the response (FR-22).
+    /// Backends that map to a sandbox flag use this to default to `WorkspaceWrite`
+    /// when `sandbox` is `None`. Backends that ignore `sandbox` ignore this field too.
+    pub apply_edits: bool,
     /// JSON Schema for structured output (FR-22). None = text mode.
     pub schema: Option<&'a Value>,
     /// Per-step options bag (temperature, top_p, etc.) (FR-24).
@@ -41,6 +45,7 @@ impl<'a> StepContext<'a> {
             model,
             cwd,
             sandbox: None,
+            apply_edits: false,
             schema: None,
             options: None,
             timeout: None,
@@ -95,6 +100,7 @@ mod tests {
             model: None,
             cwd,
             sandbox: None,
+            apply_edits: false,
             schema: None,
             options: None,
             timeout: None,
@@ -108,6 +114,7 @@ mod tests {
         // All future fields are None/empty, so Phase-1 behavior is preserved
         assert!(ctx.history.is_empty());
         assert!(ctx.sandbox.is_none());
+        assert!(!ctx.apply_edits);
         assert!(ctx.schema.is_none());
         assert!(ctx.options.is_none());
         assert!(ctx.timeout.is_none());
