@@ -20,10 +20,10 @@ linear:
   priority: Medium
   branch_actual: feat/clo-383-sandbox
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: active
   created_at: '2026-05-20T09:11:59.656Z'
-  updated_at: '2026-05-20T14:59:03.210Z'
+  updated_at: '2026-05-20T15:53:42.999Z'
 phases:
   discovery:
     status: complete
@@ -139,12 +139,17 @@ phases:
     validation_synthesis_report: docs/reviews/clo-383-validation-synthesis.md
     validation_synthesis_verdict: PASS
   pr:
-    status: in_progress
+    status: complete
     pr_number: 31
     pr_url: https://github.com/maxkulish/lok/pull/31
     ci_passed: true
     bot_review_wait_completed: true
     bot_review_wait_completed_at: '2026-05-20T14:58:54Z'
+    merge_commit: 6933c4f
+    merged_at: '2026-05-20T15:52:09Z'
+    pre_merge_refetch_at: '2026-05-20T15:20:00Z'
+    pre_merge_refetch_passed: true
+    reviews_addressed: true
   complete:
     status: pending
 history:
@@ -297,5 +302,27 @@ history:
     details: >-
       Current-head bot review observed for PR #31 at head f6dd7ef1 by gemini-code-assist[bot]; state=COMMENTED;
       submitted_at=2026-05-20T14:58:54Z. Fetching inline comments and review threads.
+  - timestamp: '2026-05-20T15:17:43.685Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      2 review threads addressed; 1 declined with rationale (builder pattern out of scope), 1 fixed (pre-captured
+      step_sandbox/step_apply_edits for all StepContext constructions in async move block). Both replies verified with
+      /gemini review trailer. Bot re-reviews acknowledged rationale and fix. Threads manually resolved.
+      Unresolved-thread re-check clean.
+  - timestamp: '2026-05-20T15:20:00.000Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads.'
+  - timestamp: '2026-05-20T15:52:42.462Z'
+    action: pr_merged
+    phase: pr
+    details: >-
+      PR #31 merged to main (commit 6933c4f). Pre-merge gate green (cargo fmt + cargo clippy + cargo test, 577 tests
+      pass). All review threads resolved. Linear CLO-383 moved to Done.
+  - timestamp: '2026-05-20T15:53:42.999Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
 task_title: 'FR-22: `apply_edits=true` defaults Codex sandbox to `workspace-write`'
 task_url: https://linear.app/cloud-ai/issue/CLO-383/fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace-write
