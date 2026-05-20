@@ -339,73 +339,27 @@ git push origin main
 
 ### Step 10: Display Completion Summary
 
-#### If Worktree Mode:
+Render the canonical summary defined in `.claude/templates/completion-summary.md`.
+
+- Load `docs/status/clo-XX-workflow.yaml`.
+- Resolve every placeholder using the field-mapping table in the template (`Source of Data` section).
+- Apply the phase-skip rules for the current `task_type`.
+- Print the rendered block exactly as specified — preserve box-drawing characters, indentation, emojis, and separator widths.
+
+The footer line `Status: ✅ DONE` is the single authoritative completion signal — emit it only when `workflow.current_phase == complete` AND `workflow.status == complete`.
+
+#### Worktree Mode addendum
+
+After the canonical summary, append exactly this block on a new line (only in worktree mode):
 
 ```
-========================================
-TASK FINALIZED: CLO-XX
-========================================
-
-Title: [Task title]
-Status: Complete
-PR: #[number] (merged)
-
-Documents:
-  - Design: docs/design-docs/clo-XX-[description].md
-  - Plan: docs/plans/clo-XX-[description].md
-  - Status: docs/status/clo-XX-[description].md
-
-Aggregation Files Updated (in main repo):
-  - docs/PROJECT.md (task moved to Recently Completed)
-  - docs/ROADMAP.md (status changed to Done)
-  - docs/DEPENDENCIES.md (blockers updated)
-
-Linear:
-  - Status: Done
-  - Final comment posted
-
-========================================
-
 NEXT STEPS:
-
 1. Exit Claude Code
 2. Run `gd` to delete this worktree and branch
 3. You'll be returned to the main repo folder
-
-Check docs/DEPENDENCIES.md for unblocked tasks.
 ```
 
-#### If Regular Branch Mode:
-
-```
-========================================
-TASK FINALIZED: CLO-XX
-========================================
-
-Title: [Task title]
-Status: Complete
-PR: #[number] (merged)
-
-Documents:
-  - Design: docs/design-docs/clo-XX-[description].md
-  - Plan: docs/plans/clo-XX-[description].md
-  - Status: docs/status/clo-XX-[description].md
-
-Aggregation Files Updated:
-  - docs/PROJECT.md (task moved to Recently Completed)
-  - docs/ROADMAP.md (status changed to Done)
-  - docs/DEPENDENCIES.md (blockers updated)
-
-Linear:
-  - Status: Done
-  - Final comment posted
-
-========================================
-
-Ready to start next task!
-
-Check docs/DEPENDENCIES.md for unblocked tasks.
-```
+In regular branch mode, do not append anything after the canonical summary.
 
 ---
 
