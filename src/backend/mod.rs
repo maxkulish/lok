@@ -143,7 +143,6 @@ impl TokenUsage {
 
     /// Set `cached_tokens`. Consumes `self` for use in method-chaining
     /// construction patterns (e.g. `TokenUsage::new(p, c).with_cached(Some(40))`).
-    #[allow(dead_code)]
     pub fn with_cached(mut self, cached: Option<u32>) -> Self {
         self.cached_tokens = cached;
         self
@@ -151,7 +150,6 @@ impl TokenUsage {
 
     /// Set `reasoning_tokens`. Consumes `self` for use in method-chaining
     /// construction patterns.
-    #[allow(dead_code)]
     pub fn with_reasoning(mut self, reasoning: Option<u32>) -> Self {
         self.reasoning_tokens = reasoning;
         self
