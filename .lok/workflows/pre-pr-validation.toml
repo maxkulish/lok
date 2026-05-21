@@ -14,7 +14,7 @@ description = "Multi-model pre-PR validation: health-check + Codex + Gemini + Cl
 # Step 1: Pre-flight health check - probe reviewer binaries
 [[steps]]
 name = "health_check"
-timeout = 30000
+timeout = "30s"
 continue_on_error = true
 shell = '''
 CODEX_OK=false
@@ -36,7 +36,7 @@ echo "codex=$CODEX_OK gemini=$GEMINI_OK"
 # Step 2: Codex pre-PR review
 [[steps]]
 name = "codex_review"
-timeout = 1200000
+timeout = "20m"
 retries = 2
 continue_on_error = true
 depends_on = ["health_check"]
@@ -64,9 +64,13 @@ echo "$OUTPUT"
 '''
 
 [steps.validate]
+check = "min_length(200)"
 backend = "claude"
-mode = "lenient"
+model = "haiku"
 replace_output = true
+max_input_length = 100000
+timeout_ms = 60000
+on_error = "pass"
 prompt = """
 {{ output }}
 
@@ -74,18 +78,19 @@ prompt = """
 
 You are a validation output validator. Determine whether the text ABOVE contains an actual structured code validation report.
 
-VALID report: contains a Verdict line (PASS/PASS_WITH_NOTES/FAIL or approve/approve_with_changes/rework), findings with severity levels, and actionable content.
+VALID report: contains a Verdict line (PASS / PASS_WITH_NOTES / FAIL or approve / approve_with_changes / rework), findings with severity levels, and actionable content.
 
 NOISE: empty content, error messages, timestamps only, partial output without verdict, lines starting with REVIEW_FAILED.
 
-If valid: remove any noise lines from beginning/end, return ONLY the clean report content.
-If not valid: return exactly: REVIEW_FAILED: <one-line reason>
+Respond with a JSON object on a single line:
+- If valid: {"status": "pass", "output": "<the cleaned report, with leading/trailing noise stripped>"}
+- If not valid: {"status": "fail", "reason": "<one-line reason>"}
 """
 
 # Step 3: Gemini pre-PR review with primary + fallback model
 [[steps]]
 name = "gemini_review"
-timeout = 600000
+timeout = "10m"
 retries = 3
 continue_on_error = true
 depends_on = ["health_check"]
@@ -119,9 +124,13 @@ echo "$OUTPUT"
 '''
 
 [steps.validate]
+check = "min_length(200)"
 backend = "claude"
-mode = "lenient"
+model = "haiku"
 replace_output = true
+max_input_length = 100000
+timeout_ms = 60000
+on_error = "pass"
 prompt = """
 {{ output }}
 
@@ -129,24 +138,25 @@ prompt = """
 
 You are a validation output validator. Determine whether the text ABOVE contains an actual structured code validation report.
 
-VALID report: contains a Verdict line (PASS/PASS_WITH_NOTES/FAIL or approve/approve_with_changes/rework), findings with severity levels, and actionable content.
+VALID report: contains a Verdict line (PASS / PASS_WITH_NOTES / FAIL or approve / approve_with_changes / rework), findings with severity levels, and actionable content.
 
 NOISE: empty content, error messages, timestamps only, MCP noise, partial output without verdict, lines starting with REVIEW_FAILED.
 
-If valid: remove any noise lines from beginning/end, return ONLY the clean report content.
-If not valid: return exactly: REVIEW_FAILED: <one-line reason>
+Respond with a JSON object on a single line:
+- If valid: {"status": "pass", "output": "<the cleaned report, with leading/trailing noise stripped>"}
+- If not valid: {"status": "fail", "reason": "<one-line reason>"}
 """
 
 # Step 4: Claude fallback - runs only when both external reviewers failed
 [[steps]]
 name = "claude_fallback"
 backend = "claude"
-timeout = 600000
+timeout = "10m"
 retries = 2
 continue_on_error = true
 depends_on = ["codex_review", "gemini_review"]
 min_deps_success = 0
-when = "not steps.codex_review.success and not steps.gemini_review.success"
+when = "(not steps.codex_review.success or 'REVIEW_FAILED' in steps.codex_review.output) and (not steps.gemini_review.success or 'REVIEW_FAILED' in steps.gemini_review.output)"
 prompt = """
 Both external reviewers (Codex and Gemini) failed. You are the fallback pre-PR validator for **lok** - a Rust CLI workflow orchestrator (single crate `lokomotiv`, edition 2024, binaries `lok` + `lokomotiv`).
 

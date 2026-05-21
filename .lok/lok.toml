@@ -1,9 +1,26 @@
 [defaults]
 parallel = true
 timeout = 300
+max_retries = 2
+retry_delay_ms = 2000
 
 [cache]
 enabled = false
+
+[conductor]
+max_rounds = 5
+max_tokens = 4096
+
+[backends.claude]
+enabled = true
+command = "claude"
+args = []
+
+[backends.codex]
+enabled = true
+command = "codex"
+args = ["exec"]
+timeout = 900
 
 [backends.gemini]
 enabled = true
@@ -17,12 +34,10 @@ command = "http://localhost:11434"
 model = "glm-5:cloud"
 timeout = 300
 
-[backends.claude]
-enabled = true
-command = "claude"
-args = []
+[roles.code_review]
+backends = ["claude", "codex", "gemini"]
+strategy = { Fallback = {} }
 
-[backends.haiku]
-enabled = true
-command = "claude"
-args = ["--model", "haiku"]
+[roles.design_review]
+backends = ["gemini", "codex", "claude"]
+strategy = { Parallel = { min_success = 1, timeout_secs = 300 } }

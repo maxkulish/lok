@@ -4,7 +4,7 @@ description = "Multi-model design document review with output validation and fal
 # Step 1: Pre-flight health check - fast-fail if models are unreachable
 [[steps]]
 name = "health_check"
-timeout = 30000
+timeout = "30s"
 continue_on_error = true
 shell = """
 GEMINI_OK=false
@@ -24,12 +24,11 @@ echo "gemini=$GEMINI_OK ollama=$OLLAMA_OK"
 # Step 2: Gemini review with fallback model support
 [[steps]]
 name = "gemini_review"
-timeout = 300000
+timeout = "5m"
 retries = 3
 continue_on_error = true
 depends_on = ["health_check"]
 shell = """
-# Skip if health check showed Gemini unreachable
 if echo '{{ steps.health_check.output }}' | grep -q 'gemini=false'; then
   echo "REVIEW_FAILED: Gemini CLI unreachable (pre-flight check failed)"
   exit 0
@@ -39,14 +38,11 @@ PROMPT=$(sed 's|__DOC_PATH__|{{ arg.1 }}|g' .lok/prompts/design-review-prompt.md
 PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.1-pro-preview}"
 FALLBACK_MODEL="${GEMINI_FALLBACK_MODEL:-gemini-2.5-pro}"
 
-# Try primary model first
 OUTPUT=$(timeout 300 gemini --model "$PRIMARY_MODEL" -y --sandbox \
   --include-directories docs,src \
   -p "$PROMPT" -o text 2>/tmp/lok-gemini-stderr.log)
 
-# Empty output short-circuit: skip validator API call for trivially detectable failures
 if [ -z "$OUTPUT" ] || [ ${#OUTPUT} -lt 100 ]; then
-  # Retry once with fallback model before giving up
   OUTPUT=$(timeout 300 gemini --model "$FALLBACK_MODEL" -y --sandbox \
     --include-directories docs,src \
     -p "$PROMPT" -o text 2>/tmp/lok-gemini-stderr.log)
@@ -62,9 +58,13 @@ echo "$OUTPUT"
 """
 
 [steps.validate]
+check = "min_length(200)"
 backend = "claude"
-mode = "lenient"
+model = "haiku"
 replace_output = true
+max_input_length = 100000
+timeout_ms = 60000
+on_error = "pass"
 prompt = """
 {{ output }}
 
@@ -76,19 +76,19 @@ VALID review: has numbered sections (## 1., ## 2.), assessment language, a verdi
 
 NOISE (not a review): MCP initialization messages ("Registering notification handlers", "YOLO mode"), timestamps only, stack traces, empty content, greetings without analysis.
 
-If valid: remove any noise lines from beginning/end, return ONLY the clean review content.
-If not valid: return exactly: REVIEW_FAILED: <one-line reason>
+Return ONE JSON object as your entire response. No prose. No markdown code fences.
+If valid: {"status": "pass", "output": "<cleaned review without leading/trailing noise>"}
+If noise/garbage: {"status": "fail", "reason": "<one-line reason>"}
 """
 
 # Step 3: Ollama/Codex review with empty output short-circuit
 [[steps]]
 name = "ollama_review"
-timeout = 300000
+timeout = "5m"
 retries = 3
 continue_on_error = true
 depends_on = ["health_check"]
 shell = """
-# Skip if health check showed Ollama unreachable
 if echo '{{ steps.health_check.output }}' | grep -q 'ollama=false'; then
   echo "REVIEW_FAILED: Ollama CLI unreachable (pre-flight check failed)"
   exit 0
@@ -102,7 +102,6 @@ OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MOD
   --oss --local-provider ollama \
   --ephemeral 2>/tmp/lok-ollama-stderr.log)
 
-# Empty output short-circuit
 if [ -z "$OUTPUT" ] || [ ${#OUTPUT} -lt 100 ]; then
   STDERR=$(head -5 /tmp/lok-ollama-stderr.log 2>/dev/null || echo "no stderr")
   echo "REVIEW_FAILED: Empty or trivially short output from Ollama (stderr: $STDERR)"
@@ -113,9 +112,13 @@ echo "$OUTPUT"
 """
 
 [steps.validate]
+check = "min_length(200)"
 backend = "claude"
-mode = "lenient"
+model = "haiku"
 replace_output = true
+max_input_length = 100000
+timeout_ms = 60000
+on_error = "pass"
 prompt = """
 {{ output }}
 
@@ -127,19 +130,21 @@ VALID review: has numbered sections (## 1., ## 2.), assessment language, a verdi
 
 NOISE: empty content, timestamps only, error messages, partial output with missing sections.
 
-If valid: return ONLY the clean review content.
-If not valid: return exactly: REVIEW_FAILED: <one-line reason>
+Return ONE JSON object as your entire response. No prose. No markdown code fences.
+If valid: {"status": "pass", "output": "<cleaned review>"}
+If noise/garbage: {"status": "fail", "reason": "<one-line reason>"}
 """
 
-# Step 4: Claude fallback review - runs only when both external models failed
+# Step 4: Claude fallback review - runs only when both external reviewers failed
 [[steps]]
 name = "claude_fallback"
 backend = "claude"
-timeout = 120000
+timeout = "2m"
 retries = 2
 continue_on_error = true
 depends_on = ["gemini_review", "ollama_review"]
-condition = "not steps.gemini_review.success or (steps.gemini_review.output starts_with 'REVIEW_FAILED') and (not steps.ollama_review.success or (steps.ollama_review.output starts_with 'REVIEW_FAILED'))"
+min_deps_success = 0
+when = "(not steps.gemini_review.success or 'REVIEW_FAILED' in steps.gemini_review.output) and (not steps.ollama_review.success or 'REVIEW_FAILED' in steps.ollama_review.output)"
 prompt = """
 Both external reviewers (Gemini and Ollama) failed to produce a review. You are the fallback reviewer.
 
@@ -295,7 +300,6 @@ cat >> docs/reviews/{{ arg.2 }}-review-ollama.md << 'ENDOLLAMA'
 {{ steps.ollama_review.output }}
 ENDOLLAMA
 
-# Write Claude fallback review only if it ran
 FALLBACK_OUTPUT='{{ steps.claude_fallback.output }}'
 if [ -n "$FALLBACK_OUTPUT" ] && ! echo "$FALLBACK_OUTPUT" | grep -q 'REVIEW_FAILED'; then
   printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Claude (fallback)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Note**: External reviewers failed; this is the fallback review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-claude-fallback.md
