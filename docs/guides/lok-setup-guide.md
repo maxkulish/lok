@@ -180,7 +180,12 @@ when = "steps.plan.success"        # Conditional execution (MiniJinja expression
 continue_on_error = true           # Don't fail the workflow if this step fails
 retries = 3                        # Retry on failure
 retry_delay = 1000                 # Base delay (ms), doubles each retry
-timeout = 300000                   # Step timeout (milliseconds)
+timeout = 300000                   # Step timeout: integer (ms) OR humantime string ("30s", "5m", "1h")
+
+# --- Sandbox (CLI backends only: Codex, Gemini) ---
+sandbox = "read-only"              # "read-only" | "workspace-write" | "danger-full-access"
+                                   # Maps to Codex `-s` / Gemini `--approval-mode`
+                                   # If omitted with apply_edits=true, defaults to "workspace-write"
 
 # --- Edit workflow ---
 apply_edits = true                 # Parse JSON edits from LLM output and apply to files
@@ -446,7 +451,7 @@ name = "implement-fix"
 
 [[steps]]
 name = "generate_fix"
-backend = "claude"
+backend = "codex"
 prompt = """
 Fix this issue: {{ arg.1 }}
 Return JSON edits in this format:
@@ -464,6 +469,8 @@ How this works:
 3. `verify` runs a shell command - if it exits non-zero, edits are reverted
 4. `fix_retries` re-queries the LLM with the error output, up to N times
 5. On final failure, the step gets `StepFailureKind::VerifyFailed`
+
+When the backend is Codex or Gemini and `apply_edits = true`, lok auto-defaults the sandbox to `workspace-write` so the subprocess can actually write to the workspace. To opt out, set `sandbox = "read-only"` explicitly - lok emits a warning but honors the choice.
 
 ### Pattern 4: Iterating over dynamic lists
 
@@ -492,6 +499,79 @@ The `for_each` field accepts:
 - A step reference: `"steps.step_name.output"` (expects JSON array)
 - A step field: `"steps.step_name.field_name"` (parsed JSON field)
 - An inline array: `'["item1", "item2"]'`
+
+---
+
+## Per-Step Sandbox
+
+CLI backends that wrap a coding agent (Codex, Gemini) accept a sandbox mode that bounds what the subprocess is allowed to touch. lok routes a per-step `sandbox` field to the right CLI flag - `-s` for Codex, `--approval-mode` for Gemini.
+
+```toml
+[[steps]]
+name = "explore"
+backend = "codex"
+prompt = "Find the request-handling code in this repo"
+sandbox = "read-only"              # Default for analysis steps
+
+[[steps]]
+name = "apply_patch"
+backend = "codex"
+prompt = "Apply the fix from {{ steps.explore.output }}"
+apply_edits = true                 # Implies workspace-write
+verify = "cargo test --quiet"
+```
+
+| Mode | Codex (`-s`) | Gemini (`--approval-mode`) | When to use |
+|------|--------------|----------------------------|-------------|
+| `read-only` | `read-only` | `default` | Discovery, analysis, review (default) |
+| `workspace-write` | `workspace-write` | `auto_edit` | Edit-and-verify steps |
+| `danger-full-access` | `danger-full-access` | `yolo` | Sandboxed CI only; avoid on dev machines |
+
+### Sandbox defaulting rules
+
+1. Explicit `sandbox = "..."` on the step always wins.
+2. If `sandbox` is omitted and `apply_edits = true`, lok defaults to `workspace-write` (the subprocess needs to write).
+3. If `sandbox` is omitted and `apply_edits = false`/unset, lok defaults to `read-only`.
+4. If you set `sandbox = "read-only"` AND `apply_edits = true`, lok emits a warning - the subprocess will fail to write edits.
+
+For backends that do not understand a sandbox flag (Claude API, Bedrock, Ollama, plain shell steps), the `sandbox` field is ignored without error.
+
+---
+
+## Token Usage Observability
+
+Every successful step's `StepResult` now carries a `usage` field populated by the backend. This makes cost tracking and prompt-tuning measurable instead of guessed.
+
+```rust
+pub struct TokenUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+    pub cached_tokens: Option<u32>,     // Prompt-cache hits where the model reports them
+    pub reasoning_tokens: Option<u32>,  // Hidden reasoning tokens (o-series, Codex)
+}
+```
+
+### Coverage matrix
+
+| Backend | Source | Notes |
+|---------|--------|-------|
+| Claude API | response `usage` object | Full coverage including `cached_tokens` |
+| Bedrock | InvokeModel response metadata | Provider-dependent |
+| Ollama | `prompt_eval_count` / `eval_count` | No cached/reasoning fields |
+| Codex | JSONL `turn.completed.usage` | `input_tokens` / `cached_input_tokens` / `output_tokens` / `reasoning_output_tokens` |
+| Gemini | `stats.promptTokenCount` / `candidatesTokenCount` | Surfaces when `--output-format json` is used |
+| Shell | n/a | Always `None` |
+
+### Reading usage from a workflow
+
+`StepResult.usage` is exposed as JSON when you run with `--output json`:
+
+```bash
+lok run my-workflow --output json | jq '.steps[] | {step: .name, total: .usage.total_tokens, cached: .usage.cached_tokens}'
+```
+
+For multi-backend steps, lok sums per-backend usage using saturating arithmetic. If any backend lacks a field (e.g. Ollama has no `cached_tokens`), the aggregated value is `None`.
 
 ---
 
@@ -682,11 +762,13 @@ Validation failures are separate from execution failures:
 
 These two are mutually exclusive on a given step.
 
+Successful steps additionally carry `usage` (see [Token Usage Observability](#token-usage-observability)) so cost and prompt size are visible in the same `StepResult` envelope as the output.
+
 ---
 
 ## Tips and Gotchas
 
-**Timeouts are in different units.** Workflow-level and step-level `timeout` is in milliseconds. Config-level `[defaults].timeout` and backend-level `timeout` are in seconds. This is a common source of confusion.
+**Timeouts: prefer humantime strings.** Every `timeout` field now accepts a string like `"30s"`, `"5m"`, or `"1h"` and parses uniformly. Raw integers still work for backward compatibility, but the units differ by level - workflow/step integers are milliseconds, config/backend integers are seconds. Use strings to avoid the trap. Resolution is layered step > backend > global, so a step-level `timeout = "30s"` overrides a 5-minute backend default.
 
 **Shell steps give you more control than backend steps.** When you need specific CLI flags, environment variable manipulation, or piping, use a shell step. Reserve backend steps for straightforward prompt-response where lok manages the invocation.
 
@@ -707,5 +789,9 @@ These two are mutually exclusive on a given step.
 **Backend steps support model overrides.** Use `model = "haiku"` for cheap validation or synthesis. Use expensive models only for the core analysis steps.
 
 **The `for_each` loop collects results as JSON.** Each iteration produces `{ index, item, output, success }`. The aggregate step output is the JSON array of all iterations.
+
+**Codex output is now event-driven.** The Codex backend consumes the JSONL stream (`turn.completed`, `item.completed`, `turn.failed`) and uses `--output-last-message` for the authoritative final result. If a model occasionally emits ANSI escapes or mid-turn chatter, lok still ends up with the clean final message and the token counts from `turn.completed.usage`. No workflow changes needed - just keep `backend = "codex"`.
+
+**Gemini token counts require JSON output.** Gemini only surfaces `stats.promptTokenCount` / `stats.candidatesTokenCount` when invoked with `--output-format json`. lok handles that internally for `backend = "gemini"` steps; for shell steps wrapping Gemini directly, add `--output-format json` if you want usage data.
 
 **`health_check = true` in workflows.** This field appears in workflow TOML but is handled at the workflow execution layer - it checks backend availability before attempting the step.
