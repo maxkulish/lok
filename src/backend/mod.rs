@@ -13,7 +13,7 @@ mod retry;
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
 #[allow(unused_imports)]
-pub use context::{HealthStatus, Message, Role, SandboxMode, StepContext, StepOptions};
+pub use context::{HealthStatus, Message, Role, SandboxMode, StepContext, StepOptions, ModelInfo};
 pub use retry::{RetryExecutor, RetryPolicy};
 
 use crate::config::{BackendConfig, Config};
@@ -289,7 +289,7 @@ pub trait Backend: Send + Sync {
     #[allow(dead_code)]
     async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
         if self.is_available() {
-            Ok(HealthStatus)
+            Ok(HealthStatus::new_available())
         } else {
             Err(BackendError::Unavailable {
                 message: format!("Backend {} is not available", self.name()),
@@ -398,6 +398,98 @@ pub fn create_claude_backend(config: &Config) -> Result<ClaudeBackend> {
         .get("claude")
         .ok_or_else(|| anyhow::anyhow!("Claude backend not configured"))?;
     ClaudeBackend::new(backend_config)
+}
+
+use std::sync::{OnceLock, RwLock};
+use std::collections::HashMap;
+
+pub static HEALTH_CACHE: OnceLock<RwLock<HashMap<String, HealthStatus>>> = OnceLock::new();
+
+pub fn get_health_cache() -> &'static RwLock<HashMap<String, HealthStatus>> {
+    HEALTH_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+/// Helper to reset/clear health cache in tests
+#[cfg(test)]
+pub fn clear_health_cache() {
+    if let Some(cache) = HEALTH_CACHE.get() {
+        if let Ok(mut lock) = cache.write() {
+            lock.clear();
+        }
+    }
+}
+
+/// Helper to insert a mock entry into the health cache during tests
+#[cfg(test)]
+pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
+    let cache = get_health_cache();
+    if let Ok(mut lock) = cache.write() {
+        lock.insert(backend_name.to_string(), status);
+    }
+}
+
+/// Construct all enabled backends from config without calling `is_available()`.
+pub fn get_all_enabled_backends(config: &Config) -> Result<Vec<Arc<dyn Backend>>> {
+    let mut backends = Vec::new();
+    for (name, backend_config) in &config.backends {
+        if !backend_config.enabled {
+            continue;
+        }
+        let retry_policy = get_retry_policy(backend_config, &config.defaults);
+        let backend = create_backend(name, backend_config, retry_policy)?;
+        backends.push(backend);
+    }
+    Ok(backends)
+}
+
+pub struct Engine;
+
+impl Engine {
+    /// Warm up all enabled backends in parallel, populating the health cache.
+    pub async fn warmup_backends(config: &Config) -> Result<()> {
+        let backends = get_all_enabled_backends(config)?;
+        if backends.is_empty() {
+            return Ok(());
+        }
+
+        let mut futures = Vec::new();
+        for backend in backends {
+            futures.push(async move {
+                let name = backend.name().to_string();
+                let res = backend.health_check().await;
+                (name, res)
+            });
+        }
+
+        let results = futures::future::join_all(futures).await;
+
+        let cache = get_health_cache();
+        if let Ok(mut lock) = cache.write() {
+            for (name, res) in results {
+                match res {
+                    Ok(status) => {
+                        lock.insert(name, status);
+                    }
+                    Err(e) => {
+                        eprintln!("{} Health check failed for backend {}: {}", "warning:".yellow(), name, e);
+                        lock.insert(name, HealthStatus::new_unavailable());
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if a backend is available in the cache.
+    pub fn is_backend_available(name: &str) -> bool {
+        let cache = get_health_cache();
+        if let Ok(lock) = cache.read() {
+            lock.get(name).map(|s| s.available).unwrap_or(false)
+        } else {
+            false
+        }
+    }
 }
 
 pub fn get_backends(config: &Config, filter: Option<&str>) -> Result<Vec<Arc<dyn Backend>>> {
@@ -1234,5 +1326,74 @@ mod tests {
             result.unwrap_err(),
             BackendError::Unavailable { .. }
         ));
+    }
+
+    #[test]
+    fn test_health_cache_basic_read_write() {
+        clear_health_cache();
+        assert!(!super::Engine::is_backend_available("test-backend"));
+
+        set_mock_health("test-backend", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test-backend"));
+
+        clear_health_cache();
+        assert!(!super::Engine::is_backend_available("test-backend"));
+    }
+
+    #[test]
+    fn test_is_available_cache_only_no_syscalls() {
+        clear_health_cache();
+        
+        struct MockSyscallBackend {
+            probe_counter: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        }
+        
+        #[async_trait]
+        impl Backend for MockSyscallBackend {
+            fn name(&self) -> &str {
+                "mock-syscall"
+            }
+            async fn query(&self, _ctx: StepContext<'_>) -> std::result::Result<QueryOutput, BackendError> {
+                unimplemented!()
+            }
+            fn is_available(&self) -> bool {
+                super::Engine::is_backend_available(self.name())
+            }
+            async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
+                self.probe_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(HealthStatus::new_available())
+            }
+        }
+
+        let probe_counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let backend = MockSyscallBackend {
+            probe_counter: probe_counter.clone(),
+        };
+
+        // Before warmup, it must return false, and NO probe should have been executed.
+        assert!(!backend.is_available());
+        assert_eq!(probe_counter.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        // Set mock health directly. is_available should now be true, and still NO probe executed (no syscalls).
+        set_mock_health("mock-syscall", HealthStatus::new_available());
+        assert!(backend.is_available());
+        assert_eq!(probe_counter.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn test_warmup_backends_parallel() {
+        clear_health_cache();
+        
+        let mut config = Config::default();
+        // Enable ollama
+        config.backends.insert("ollama".to_string(), crate::config::BackendConfig {
+            enabled: true,
+            ..Default::default()
+        });
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // Assert that ollama is now available in cache
+        assert!(super::Engine::is_backend_available("ollama"));
     }
 }

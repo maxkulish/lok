@@ -201,14 +201,24 @@ impl super::Backend for BedrockBackend {
     }
 
     fn is_available(&self) -> bool {
-        // Check if AWS credentials are available
-        std::env::var("AWS_ACCESS_KEY_ID").is_ok()
+        super::Engine::is_backend_available(self.name())
+    }
+
+    async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
+        let available = std::env::var("AWS_ACCESS_KEY_ID").is_ok()
             || std::env::var("AWS_PROFILE").is_ok()
             || std::path::Path::new(&format!(
                 "{}/.aws/credentials",
                 std::env::var("HOME").unwrap_or_default()
             ))
-            .exists()
+            .exists();
+        if available {
+            Ok(super::HealthStatus::new_available())
+        } else {
+            Err(super::BackendError::Unavailable {
+                message: format!("Bedrock backend '{}' is not available", self.name()),
+            })
+        }
     }
 }
 

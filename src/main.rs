@@ -425,6 +425,7 @@ async fn main() -> Result<()> {
             dir,
             no_cache,
         } => {
+            backend::Engine::warmup_backends(&config).await?;
             let backends = backend::get_backends(&config, backend.as_deref())?;
             if cli.verbose {
                 backend::print_verbose_header(&prompt, &backends, &dir);
@@ -700,6 +701,7 @@ async fn main() -> Result<()> {
             println!("{}", result);
         }
         Commands::Doctor => {
+            let _ = backend::Engine::warmup_backends(&config).await;
             println!("{}", "Lok Doctor".cyan().bold());
             println!("{}", "=".repeat(50).dimmed());
             println!();
@@ -1167,6 +1169,7 @@ async fn run_workflow(
     args: Vec<String>,
     config: &config::Config,
 ) -> Result<()> {
+    backend::Engine::warmup_backends(config).await?;
     let source = workflow::find_workflow(name).await?;
     let wf = workflow::load_workflow_from_source(source).await?;
 
