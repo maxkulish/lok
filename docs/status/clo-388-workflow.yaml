@@ -14,14 +14,25 @@ linear:
   status_at_start: Backlog
   blocks: []
   blocked_by: []
+  branch_actual: feat/clo-388-warmup
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: active
   created_at: '2026-05-21T15:33:34.887Z'
-  updated_at: '2026-05-21T15:43:31.078Z'
+  updated_at: '2026-05-21T18:19:06.894Z'
 phases:
   discovery:
     status: complete
+    approved: true
+    problem_framed: true
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    prd_created: false
+    discovery_report: docs/discovery/clo-388.md
+    discovery_debt: []
+    baseline_score: 9
+    approaches_identified: 2
+    approach_chosen: Global static OnceLock-based HealthCache
   design:
     status: complete
     design_doc: docs/designs/clo-388-warmup-backends.md
@@ -36,24 +47,40 @@ phases:
     approved: true
   implement:
     status: complete
-    current_step: 6
-    total_steps: 6
     commits:
       - 62cbf60
       - b1be54b
       - 55457fe
-    last_phase_completed: verification
+    assumptions_revalidated: true
+    assumption_outcomes: []
     codex_validated: true
     codex_verdict: PASS
     codex_report: docs/reviews/clo-388-codex-validation.md
     gemini_validation_report: docs/reviews/clo-388-gemini-validation.md
     validation_synthesis_report: docs/reviews/clo-388-validation-synthesis.md
     validation_synthesis_verdict: PASS
-    assumptions_revalidated: true
+    validation_fix_iteration_count: 0
   pr:
-    status: pending
+    status: complete
+    pr_url: https://github.com/maxkulish/lok/pull/35
+    pr_number: 35
+    ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-21T15:52:05Z'
+    reviews_addressed: true
+    pre_merge_refetch_passed: true
+    pre_merge_refetch_at: '2026-05-21T16:26:38Z'
+    merge_commit: 3fe2408a1437c3cc3631eb062093af239e9b62f8
+    merged_at: '2026-05-21T18:10:00Z'
   complete:
     status: pending
+    merged_at: '2026-05-21T18:10:00Z'
+    merge_commit: 3fe2408a1437c3cc3631eb062093af239e9b62f8
+    aggregation_files_updated: true
+    lessons_learned:
+      - L1 - Inlined backend creation prevents cascading warmup failures across healthy backends
+      - L2 - Always handle RwLock write-lock poisoning explicitly instead of silently ignoring failures
+    lessons_file: .pi/lessons/clo-388-warmup-lessons.md
 history:
   - timestamp: '2026-05-21T15:33:34.887Z'
     action: workflow_started
@@ -137,3 +164,49 @@ history:
     action: phase_transition
     phase: implement
     details: Transitioned from implement to pr
+  - timestamp: '2026-05-21T15:45:10Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + test all pass.'
+  - timestamp: '2026-05-21T15:45:30Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #35 opened: https://github.com/maxkulish/lok/pull/35'
+  - timestamp: '2026-05-21T15:45:40Z'
+    action: ci_passed
+    phase: pr
+    details: All required checks passing (none configured / green).
+  - timestamp: '2026-05-21T15:52:05Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: Current-head bot review observed for PR
+  - timestamp: '2026-05-21T16:26:38Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      2 threads resolved; replies posted 2/2; /gemini review trailer verified on every reply (Gemini, Copilot, human
+      alike); unresolved-thread re-check clean.
+  - timestamp: '2026-05-21T16:26:55.224Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads.'
+  - timestamp: '2026-05-21T18:02:32.737Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-05-21T18:18:25.884Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #35 merged. Merge commit 3fe2408a1437c3cc3631eb062093af239e9b62f8.'
+  - timestamp: '2026-05-21T18:18:28.219Z'
+    action: pr_merged
+    phase: pr
+    details: Merge commit 3fe2408a1437c3cc3631eb062093af239e9b62f8
+  - timestamp: '2026-05-21T18:18:53.284Z'
+    action: project_sync_complete
+    phase: complete
+    details: PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-388 --complete
+  - timestamp: '2026-05-21T18:19:06.894Z'
+    action: lessons_extracted
+    phase: complete
+    details: '2 lessons recorded. File: .pi/lessons/clo-388-warmup-lessons.md'

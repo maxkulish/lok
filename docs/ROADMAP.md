@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-05-20
+**Last Updated**: 2026-05-21
 
 ## Summary
 
@@ -15,7 +15,7 @@
 | Phase 7: MiniJinja Templates | 2 | 2 | Complete |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
-| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 9 | 8 | In Progress |
+| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 12 | 11 | In Progress |
 
 ## Phase 2: Validation Pipeline
 
@@ -99,3 +99,4 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 release plan
 | [CLO-383](https://linear.app/cloud-ai/issue/CLO-383/fr-22-apply_editstrue-defaults-codex-sandbox-to-workspace-write) | FR-22: `apply_edits=true` defaults Codex sandbox to `workspace-write` | Done | CLO-374 |
 | [CLO-381](https://linear.app/cloud-ai/issue/CLO-381/fr-25-codex-backend-extracts-usage-from-turncompleted-events) | FR-25: Codex backend extracts `usage` from `turn.completed` events | Done | CLO-379, CLO-378 |
 | [CLO-384](https://linear.app/cloud-ai/issue/CLO-384/fr-23-per-step-timeout-layered-override-step-backend-global) | FR-23: per-step `timeout` layered override (step > backend > global) | Done | CLO-371 |
+| [CLO-388](https://linear.app/cloud-ai/issue/CLO-388) | FR-9a + FR-10 + FR-15: Engine warmup + HealthCache + sync is_available cache-only | Done | CLO-371 |
