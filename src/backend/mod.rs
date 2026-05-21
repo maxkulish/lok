@@ -377,8 +377,10 @@ pub fn create_backend(
             // BedrockBackend::new is async, need runtime
             let rt = tokio::runtime::Handle::current();
             let config = config.clone();
-            rt.block_on(async {
-                anyhow::Ok(Arc::new(bedrock::BedrockBackend::new(&config).await?) as Arc<dyn Backend>)
+            tokio::task::block_in_place(|| {
+                rt.block_on(async {
+                    anyhow::Ok(Arc::new(bedrock::BedrockBackend::new(&config).await?) as Arc<dyn Backend>)
+                })
             })?
         }
         #[cfg(not(feature = "bedrock"))]
