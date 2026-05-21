@@ -140,7 +140,7 @@ mod tests {
             true
         }
         async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
-            Ok(HealthStatus)
+            Ok(HealthStatus::new_available())
         }
         async fn query(
             &self,
@@ -186,7 +186,7 @@ mod tests {
             true
         }
         async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
-            Ok(HealthStatus)
+            Ok(HealthStatus::new_available())
         }
         async fn query(
             &self,

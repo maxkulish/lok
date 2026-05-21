@@ -337,7 +337,7 @@ mod serde_duration_tests {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(deny_unknown_fields)]
 pub struct BackendConfig {
     #[serde(default = "default_enabled")]

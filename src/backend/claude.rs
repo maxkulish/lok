@@ -299,9 +299,20 @@ impl super::Backend for ClaudeBackend {
     }
 
     fn is_available(&self) -> bool {
-        match &self.mode {
+        super::Engine::is_backend_available(self.name())
+    }
+
+    async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
+        let available = match &self.mode {
             ClaudeMode::Api { api_key, .. } => !api_key.expose_secret().is_empty(),
             ClaudeMode::Cli { command, .. } => which::which(command).is_ok(),
+        };
+        if available {
+            Ok(super::HealthStatus::new_available())
+        } else {
+            Err(super::BackendError::Unavailable {
+                message: format!("Claude backend '{}' is not available", self.name()),
+            })
         }
     }
 }

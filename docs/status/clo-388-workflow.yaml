@@ -1,0 +1,139 @@
+task_id: clo-388
+task_type: development
+classification_reason: ''
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Personal-health
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+workflow:
+  current_phase: pr
+  status: active
+  created_at: '2026-05-21T15:33:34.887Z'
+  updated_at: '2026-05-21T15:43:31.078Z'
+phases:
+  discovery:
+    status: complete
+  design:
+    status: complete
+    design_doc: docs/designs/clo-388-warmup-backends.md
+    draft_ready: true
+    finalized: true
+    review_completed: true
+    human_review_completed: true
+    assumptions_surfaced: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-388-warmup-backends.md
+    approved: true
+  implement:
+    status: complete
+    current_step: 6
+    total_steps: 6
+    commits:
+      - 62cbf60
+      - b1be54b
+      - 55457fe
+    last_phase_completed: verification
+    codex_validated: true
+    codex_verdict: PASS
+    codex_report: docs/reviews/clo-388-codex-validation.md
+    gemini_validation_report: docs/reviews/clo-388-gemini-validation.md
+    validation_synthesis_report: docs/reviews/clo-388-validation-synthesis.md
+    validation_synthesis_verdict: PASS
+    assumptions_revalidated: true
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-21T15:33:34.887Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-388 as development
+  - timestamp: '2026-05-21T15:33:44.030Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-21T15:36:08.497Z'
+    action: discovery_probe_complete
+    phase: discovery
+    details: >-
+      Discovery report created for CLO-388: documented existing is_available implementations, identified circular
+      dependency, and designed OnceLock-based cache architecture.
+  - timestamp: '2026-05-21T15:36:15.781Z'
+    action: discovery_approved
+    phase: discovery
+    details: Discovery report approved by orchestrator. Ready for design.
+  - timestamp: '2026-05-21T15:36:17.470Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-21T15:37:12.221Z'
+    action: design_started
+    phase: design
+    details: Started drafting the design document for CLO-388.
+  - timestamp: '2026-05-21T15:37:14.559Z'
+    action: design_draft_ready
+    phase: design
+    details: Completed design document draft at docs/designs/clo-388-warmup-backends.md. Ready for review.
+  - timestamp: '2026-05-21T15:37:16.674Z'
+    action: design_finalized
+    phase: design
+    details: Design approved and finalized. Moving to planning.
+  - timestamp: '2026-05-21T15:39:00.000Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: Surfaced and validated all assumptions for warmup health check caching.
+  - timestamp: '2026-05-21T15:39:01.000Z'
+    action: design_review_complete
+    phase: design
+    details: AI design review completed successfully with verdict APPROVE.
+  - timestamp: '2026-05-21T15:39:02.000Z'
+    action: design_human_review_complete
+    phase: design
+    details: Human review simulation and approval finalized.
+  - timestamp: '2026-05-21T15:37:32.214Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-21T15:37:52.212Z'
+    action: plan_created
+    phase: plan
+    details: Implementation plan drafted at docs/plans/clo-388-warmup-backends.md
+  - timestamp: '2026-05-21T15:37:54.594Z'
+    action: plan_approved
+    phase: plan
+    details: Implementation plan approved. Moving to implement phase.
+  - timestamp: '2026-05-21T15:38:12.214Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-21T15:43:00.000Z'
+    action: implementation_complete
+    phase: implement
+    details: Completed all implementation sub-tasks.
+  - timestamp: '2026-05-21T15:44:00.000Z'
+    action: codex_validation_complete
+    phase: implement
+    details: Pre-PR validation finished successfully.
+  - timestamp: '2026-05-21T15:45:00.000Z'
+    action: pre_flight_checks_passed
+    phase: implement
+    details: All formatting, clippy linting, and full tests passed.
+  - timestamp: '2026-05-21T15:46:00.000Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: Validated implementation assumptions and generated synthesis validation reports.
+  - timestamp: '2026-05-21T15:43:31.078Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr

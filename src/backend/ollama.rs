@@ -161,9 +161,11 @@ impl Backend for OllamaBackend {
     }
 
     fn is_available(&self) -> bool {
-        // Ollama is a server, not a CLI. Can't easily check synchronously.
-        // Return true and let runtime connection fail if not running.
-        true
+        super::Engine::is_backend_available(self.name())
+    }
+
+    async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
+        Ok(super::HealthStatus::new_available())
     }
 }
 

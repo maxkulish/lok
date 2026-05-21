@@ -53,11 +53,48 @@ impl<'a> StepContext<'a> {
     }
 }
 
-/// Placeholder for the full health status struct introduced in FR-9/9a.
-/// Empty today so `Backend::health_check` return type is stable.
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct HealthStatus;
+/// Carrying struct for all health checks, version details, and capabilities.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HealthStatus {
+    pub available: bool,
+    pub version: Option<String>,
+    pub auth_method: Option<String>,
+    pub capabilities: Option<serde_json::Value>,
+    pub unusable_flags: Vec<String>,
+    pub models: Vec<ModelInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModelInfo {
+    pub name: String,
+    pub modified_at: Option<String>,
+    pub size: Option<u64>,
+    pub digest: Option<String>,
+}
+
+impl HealthStatus {
+    pub fn new_available() -> Self {
+        Self {
+            available: true,
+            version: None,
+            auth_method: None,
+            capabilities: None,
+            unusable_flags: Vec::new(),
+            models: Vec::new(),
+        }
+    }
+
+    pub fn new_unavailable() -> Self {
+        Self {
+            available: false,
+            version: None,
+            auth_method: None,
+            capabilities: None,
+            unusable_flags: Vec::new(),
+            models: Vec::new(),
+        }
+    }
+}
 
 /// Sandbox permission levels for subprocess backends.
 /// Maps to Codex `-s` and Gemini `--approval-mode`.

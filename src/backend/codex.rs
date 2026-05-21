@@ -230,7 +230,17 @@ impl super::Backend for CodexBackend {
     }
 
     fn is_available(&self) -> bool {
-        which::which(&self.command).is_ok()
+        super::Engine::is_backend_available(self.name())
+    }
+
+    async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
+        if which::which(&self.command).is_ok() {
+            Ok(super::HealthStatus::new_available())
+        } else {
+            Err(super::BackendError::Unavailable {
+                message: format!("Codex CLI command '{}' not found on PATH", self.command),
+            })
+        }
     }
 }
 
