@@ -17,9 +17,9 @@ linear:
   branch_actual: feat/clo-388-warmup
 workflow:
   current_phase: complete
-  status: active
+  status: complete
   created_at: '2026-05-21T15:33:34.887Z'
-  updated_at: '2026-05-21T18:19:06.894Z'
+  updated_at: '2026-05-21T18:46:14.216Z'
 phases:
   discovery:
     status: complete
@@ -73,7 +73,7 @@ phases:
     merge_commit: 3fe2408a1437c3cc3631eb062093af239e9b62f8
     merged_at: '2026-05-21T18:10:00Z'
   complete:
-    status: pending
+    status: complete
     merged_at: '2026-05-21T18:10:00Z'
     merge_commit: 3fe2408a1437c3cc3631eb062093af239e9b62f8
     aggregation_files_updated: true
@@ -81,6 +81,9 @@ phases:
       - L1 - Inlined backend creation prevents cascading warmup failures across healthy backends
       - L2 - Always handle RwLock write-lock poisoning explicitly instead of silently ignoring failures
     lessons_file: .pi/lessons/clo-388-warmup-lessons.md
+    docs_pr_number: 36
+    docs_pr_merge_commit: 304d868b98fb39807fbbeec2a55486a04c9d4f06
+    docs_pr_url: https://github.com/maxkulish/lok/pull/36
 history:
   - timestamp: '2026-05-21T15:33:34.887Z'
     action: workflow_started
@@ -210,3 +213,11 @@ history:
     action: lessons_extracted
     phase: complete
     details: '2 lessons recorded. File: .pi/lessons/clo-388-warmup-lessons.md'
+  - timestamp: '2026-05-21T18:46:12.303Z'
+    action: docs_pr_merged
+    phase: complete
+    details: 'Docs PR #36 merged. Files: docs/status/clo-388-workflow.yaml, .pi/lessons/clo-388-warmup-lessons.md'
+  - timestamp: '2026-05-21T18:46:14.216Z'
+    action: workflow_complete
+    phase: complete
+    details: 'Task CLO-388 fully completed. PR #35 merged. Unblocks subsequent per-backend probe tickets.'

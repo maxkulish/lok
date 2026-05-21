@@ -433,8 +433,20 @@ impl Engine {
     pub async fn warmup_backends(config: &Config) -> Result<()> {
         let mut futures = Vec::new();
 
+        let cache = get_health_cache();
+        let already_cached = {
+            let lock = cache.read().expect("health cache lock poisoned");
+            lock.keys()
+                .cloned()
+                .collect::<std::collections::HashSet<String>>()
+        };
+
         for (name, backend_config) in &config.backends {
             if !backend_config.enabled {
+                continue;
+            }
+
+            if already_cached.contains(name) {
                 continue;
             }
 
@@ -1407,5 +1419,32 @@ mod tests {
 
         // Assert that ollama is now available in cache
         assert!(super::Engine::is_backend_available("ollama"));
+    }
+
+    #[tokio::test]
+    async fn test_warmup_backends_idempotence() {
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+
+        // Run warmup first time
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // Now modify the cache to make ollama unavailable
+        set_mock_health("ollama", HealthStatus::new_unavailable());
+        assert!(!super::Engine::is_backend_available("ollama"));
+
+        // Run warmup second time. Since "ollama" is already in cache, warmup should skip it,
+        // so its status stays "unavailable" (and is NOT reset back to available).
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(!super::Engine::is_backend_available("ollama"));
     }
 }
