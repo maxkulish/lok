@@ -501,11 +501,8 @@ impl Engine {
     /// Check if a backend is available in the cache.
     pub fn is_backend_available(name: &str) -> bool {
         let cache = get_health_cache();
-        if let Ok(lock) = cache.read() {
-            lock.get(name).map(|s| s.available).unwrap_or(false)
-        } else {
-            false
-        }
+        let lock = cache.read().expect("health cache lock poisoned");
+        lock.get(name).map(|s| s.available).unwrap_or(false)
     }
 }
 
