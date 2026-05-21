@@ -22,8 +22,9 @@ use async_trait::async_trait;
 use colored::Colorize;
 use futures::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 /// Typed backend errors replacing opaque `anyhow::Error` from `Backend::query()`.
@@ -400,9 +401,6 @@ pub fn create_claude_backend(config: &Config) -> Result<ClaudeBackend> {
     ClaudeBackend::new(backend_config)
 }
 
-use std::collections::HashMap;
-use std::sync::{OnceLock, RwLock};
-
 pub static HEALTH_CACHE: OnceLock<RwLock<HashMap<String, HealthStatus>>> = OnceLock::new();
 
 pub fn get_health_cache() -> &'static RwLock<HashMap<String, HealthStatus>> {
@@ -428,57 +426,59 @@ pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
     }
 }
 
-/// Construct all enabled backends from config without calling `is_available()`.
-pub fn get_all_enabled_backends(config: &Config) -> Result<Vec<Arc<dyn Backend>>> {
-    let mut backends = Vec::new();
-    for (name, backend_config) in &config.backends {
-        if !backend_config.enabled {
-            continue;
-        }
-        let retry_policy = get_retry_policy(backend_config, &config.defaults);
-        let backend = create_backend(name, backend_config, retry_policy)?;
-        backends.push(backend);
-    }
-    Ok(backends)
-}
-
 pub struct Engine;
 
 impl Engine {
     /// Warm up all enabled backends in parallel, populating the health cache.
     pub async fn warmup_backends(config: &Config) -> Result<()> {
-        let backends = get_all_enabled_backends(config)?;
-        if backends.is_empty() {
-            return Ok(());
+        let mut futures = Vec::new();
+
+        for (name, backend_config) in &config.backends {
+            if !backend_config.enabled {
+                continue;
+            }
+
+            let retry_policy = get_retry_policy(backend_config, &config.defaults);
+            match create_backend(name, backend_config, retry_policy) {
+                Ok(backend) => {
+                    futures.push(async move {
+                        let name = backend.name().to_string();
+                        let res = backend.health_check().await;
+                        (name, res)
+                    });
+                }
+                Err(e) => {
+                    eprintln!(
+                        "{} Failed to construct backend {}: {}",
+                        "warning:".yellow(),
+                        name,
+                        e
+                    );
+                }
+            }
         }
 
-        let mut futures = Vec::new();
-        for backend in backends {
-            futures.push(async move {
-                let name = backend.name().to_string();
-                let res = backend.health_check().await;
-                (name, res)
-            });
+        if futures.is_empty() {
+            return Ok(());
         }
 
         let results = futures::future::join_all(futures).await;
 
         let cache = get_health_cache();
-        if let Ok(mut lock) = cache.write() {
-            for (name, res) in results {
-                match res {
-                    Ok(status) => {
-                        lock.insert(name, status);
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "{} Health check failed for backend {}: {}",
-                            "warning:".yellow(),
-                            name,
-                            e
-                        );
-                        lock.insert(name, HealthStatus::new_unavailable());
-                    }
+        let mut lock = cache.write().expect("health cache lock poisoned");
+        for (name, res) in results {
+            match res {
+                Ok(status) => {
+                    lock.insert(name, status);
+                }
+                Err(e) => {
+                    eprintln!(
+                        "{} Health check failed for backend {}: {}",
+                        "warning:".yellow(),
+                        name,
+                        e
+                    );
+                    lock.insert(name, HealthStatus::new_unavailable());
                 }
             }
         }
