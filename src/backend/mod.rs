@@ -13,7 +13,7 @@ mod retry;
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
 #[allow(unused_imports)]
-pub use context::{HealthStatus, Message, Role, SandboxMode, StepContext, StepOptions, ModelInfo};
+pub use context::{HealthStatus, Message, ModelInfo, Role, SandboxMode, StepContext, StepOptions};
 pub use retry::{RetryExecutor, RetryPolicy};
 
 use crate::config::{BackendConfig, Config};
@@ -400,8 +400,8 @@ pub fn create_claude_backend(config: &Config) -> Result<ClaudeBackend> {
     ClaudeBackend::new(backend_config)
 }
 
-use std::sync::{OnceLock, RwLock};
 use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
 
 pub static HEALTH_CACHE: OnceLock<RwLock<HashMap<String, HealthStatus>>> = OnceLock::new();
 
@@ -471,7 +471,12 @@ impl Engine {
                         lock.insert(name, status);
                     }
                     Err(e) => {
-                        eprintln!("{} Health check failed for backend {}: {}", "warning:".yellow(), name, e);
+                        eprintln!(
+                            "{} Health check failed for backend {}: {}",
+                            "warning:".yellow(),
+                            name,
+                            e
+                        );
                         lock.insert(name, HealthStatus::new_unavailable());
                     }
                 }
@@ -1343,24 +1348,28 @@ mod tests {
     #[test]
     fn test_is_available_cache_only_no_syscalls() {
         clear_health_cache();
-        
+
         struct MockSyscallBackend {
             probe_counter: std::sync::Arc<std::sync::atomic::AtomicUsize>,
         }
-        
+
         #[async_trait]
         impl Backend for MockSyscallBackend {
             fn name(&self) -> &str {
                 "mock-syscall"
             }
-            async fn query(&self, _ctx: StepContext<'_>) -> std::result::Result<QueryOutput, BackendError> {
+            async fn query(
+                &self,
+                _ctx: StepContext<'_>,
+            ) -> std::result::Result<QueryOutput, BackendError> {
                 unimplemented!()
             }
             fn is_available(&self) -> bool {
                 super::Engine::is_backend_available(self.name())
             }
             async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
-                self.probe_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                self.probe_counter
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 Ok(HealthStatus::new_available())
             }
         }
@@ -1383,13 +1392,16 @@ mod tests {
     #[tokio::test]
     async fn test_warmup_backends_parallel() {
         clear_health_cache();
-        
+
         let mut config = Config::default();
         // Enable ollama
-        config.backends.insert("ollama".to_string(), crate::config::BackendConfig {
-            enabled: true,
-            ..Default::default()
-        });
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
 
         super::Engine::warmup_backends(&config).await.unwrap();
 
