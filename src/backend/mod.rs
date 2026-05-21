@@ -367,6 +367,14 @@ pub fn create_backend(
     config: &BackendConfig,
     retry_policy: RetryPolicy,
 ) -> Result<Arc<dyn Backend>> {
+    let cache = get_constructed_backends();
+    {
+        let lock = cache.read().expect("constructed backends lock poisoned");
+        if let Some(backend) = lock.get(name) {
+            return Ok(Arc::clone(backend));
+        }
+    }
+
     let inner: Arc<dyn Backend> = match name {
         "codex" => Arc::new(codex::CodexBackend::new(config)?),
         "gemini" => Arc::new(gemini::GeminiBackend::new(config)?),
@@ -388,11 +396,15 @@ pub fn create_backend(
         _ => anyhow::bail!("Unknown backend: {}", name),
     };
 
-    if retry_policy.max_retries > 0 {
-        Ok(Arc::new(RetryExecutor::new(inner, retry_policy)))
+    let backend = if retry_policy.max_retries > 0 {
+        Arc::new(RetryExecutor::new(inner, retry_policy)) as Arc<dyn Backend>
     } else {
-        Ok(inner)
-    }
+        inner
+    };
+
+    let mut lock = cache.write().expect("constructed backends lock poisoned");
+    lock.insert(name.to_string(), Arc::clone(&backend));
+    Ok(backend)
 }
 
 pub fn create_claude_backend(config: &Config) -> Result<ClaudeBackend> {
@@ -401,6 +413,22 @@ pub fn create_claude_backend(config: &Config) -> Result<ClaudeBackend> {
         .get("claude")
         .ok_or_else(|| anyhow::anyhow!("Claude backend not configured"))?;
     ClaudeBackend::new(backend_config)
+}
+
+pub static CONSTRUCTED_BACKENDS: OnceLock<RwLock<HashMap<String, Arc<dyn Backend>>>> =
+    OnceLock::new();
+
+pub fn get_constructed_backends() -> &'static RwLock<HashMap<String, Arc<dyn Backend>>> {
+    CONSTRUCTED_BACKENDS.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+/// Helper to reset/clear constructed backends cache in tests
+#[cfg(test)]
+pub fn clear_constructed_backends() {
+    if let Some(cache) = CONSTRUCTED_BACKENDS.get() {
+        let mut lock = cache.write().expect("constructed backends lock poisoned");
+        lock.clear();
+    }
 }
 
 pub static HEALTH_CACHE: OnceLock<RwLock<HashMap<String, HealthStatus>>> = OnceLock::new();
@@ -416,6 +444,7 @@ pub fn clear_health_cache() {
         let mut lock = cache.write().expect("health cache lock poisoned");
         lock.clear();
     }
+    clear_constructed_backends();
 }
 
 /// Helper to insert a mock entry into the health cache during tests
@@ -1342,8 +1371,15 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_health_cache_basic_read_write() {
+    static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    async fn acquire_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
+        TEST_MUTEX.lock().await
+    }
+
+    #[tokio::test]
+    async fn test_health_cache_basic_read_write() {
+        let _guard = acquire_test_lock().await;
         clear_health_cache();
         assert!(!super::Engine::is_backend_available("test-backend"));
 
@@ -1354,8 +1390,9 @@ mod tests {
         assert!(!super::Engine::is_backend_available("test-backend"));
     }
 
-    #[test]
-    fn test_is_available_cache_only_no_syscalls() {
+    #[tokio::test]
+    async fn test_is_available_cache_only_no_syscalls() {
+        let _guard = acquire_test_lock().await;
         clear_health_cache();
 
         struct MockSyscallBackend {
@@ -1400,6 +1437,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_warmup_backends_parallel() {
+        let _guard = acquire_test_lock().await;
         clear_health_cache();
 
         let mut config = Config::default();
@@ -1420,6 +1458,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_warmup_backends_idempotence() {
+        let _guard = acquire_test_lock().await;
         clear_health_cache();
 
         let mut config = Config::default();
