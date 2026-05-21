@@ -411,9 +411,8 @@ pub fn get_health_cache() -> &'static RwLock<HashMap<String, HealthStatus>> {
 #[cfg(test)]
 pub fn clear_health_cache() {
     if let Some(cache) = HEALTH_CACHE.get() {
-        if let Ok(mut lock) = cache.write() {
-            lock.clear();
-        }
+        let mut lock = cache.write().expect("health cache lock poisoned");
+        lock.clear();
     }
 }
 
@@ -421,9 +420,8 @@ pub fn clear_health_cache() {
 #[cfg(test)]
 pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
     let cache = get_health_cache();
-    if let Ok(mut lock) = cache.write() {
-        lock.insert(backend_name.to_string(), status);
-    }
+    let mut lock = cache.write().expect("health cache lock poisoned");
+    lock.insert(backend_name.to_string(), status);
 }
 
 pub struct Engine;
