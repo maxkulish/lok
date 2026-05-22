@@ -1588,4 +1588,55 @@ mod tests {
             assert_eq!(backend.name(), "ollama");
         }
     }
+
+    #[tokio::test]
+    async fn test_warmup_backends_mixed_enabled_disabled() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        // Start with empty backends to control what gets warmed up
+        config.backends.clear();
+
+        // Add ollama as enabled
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        // Add claude as disabled
+        config.backends.insert(
+            "claude".to_string(),
+            crate::config::BackendConfig {
+                enabled: false,
+                command: Some("echo".to_string()),
+                args: vec!["hello".to_string()],
+                ..Default::default()
+            },
+        );
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // ollama should be available (it was enabled and health-checked)
+        assert!(
+            super::Engine::is_backend_available("ollama"),
+            "ollama should be available after warmup"
+        );
+
+        // claude should NOT be in the health cache (it was disabled)
+        // Note: is_backend_available returns false for any backend not in the cache
+        assert!(
+            !super::Engine::is_backend_available("claude"),
+            "claude (disabled) should not be available after warmup"
+        );
+
+        // Also verify cache only has exactly one entry (for ollama)
+        let cache = get_health_cache();
+        let lock = cache.read().expect("health cache lock poisoned");
+        assert_eq!(lock.len(), 1, "Expected exactly 1 cached health status");
+        assert!(lock.contains_key("ollama"), "Cache should contain ollama");
+        assert!(!lock.contains_key("claude"), "Cache should NOT contain claude");
+    }
 }
