@@ -502,12 +502,13 @@ impl Engine {
 
         let results = futures::future::join_all(futures).await;
 
-        let cache = get_health_cache();
-        let mut lock = cache.write().expect("health cache lock poisoned");
+        // Process results outside the write lock to minimize lock hold time
+        // (eprintln! can block on I/O, so it runs before the lock)
+        let mut updates: Vec<(String, HealthStatus)> = Vec::with_capacity(results.len());
         for (name, res) in results {
             match res {
                 Ok(status) => {
-                    lock.insert(name, status);
+                    updates.push((name, status));
                 }
                 Err(e) => {
                     eprintln!(
@@ -516,9 +517,15 @@ impl Engine {
                         name,
                         e
                     );
-                    lock.insert(name, HealthStatus::new_unavailable());
+                    updates.push((name, HealthStatus::new_unavailable()));
                 }
             }
+        }
+
+        let cache = get_health_cache();
+        let mut lock = cache.write().expect("health cache lock poisoned");
+        for (name, status) in updates {
+            lock.insert(name, status);
         }
 
         Ok(())
@@ -1966,6 +1973,52 @@ mod tests {
         let cache = get_health_cache();
         let lock = cache.read().expect("locked");
         assert_eq!(lock.len(), 1, "Expected exactly 1 entry after overwrites");
+    }
+
+    #[tokio::test]
+    async fn test_warmup_batch_writes_all_results() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // Add a backend that will succeed health check (ollama)
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        // Add a backend that will fail health check (nonexistent command)
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("nonexistent-health-binary".to_string()),
+                args: vec!["check".to_string()],
+                ..Default::default()
+            },
+        );
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // Both should be in the cache
+        let cache = get_health_cache();
+        let lock = cache.read().expect("locked");
+        assert_eq!(lock.len(), 2, "Both backends should be cached after warmup");
+
+        // ollama should be available
+        assert!(
+            lock.get("ollama").map(|s| s.available).unwrap_or(false),
+            "ollama should be available"
+        );
+
+        // gemini should be unavailable (health check failed)
+        assert!(
+            !lock.get("gemini").map(|s| s.available).unwrap_or(true),
+            "gemini should be unavailable"
+        );
     }
 
     #[tokio::test]
