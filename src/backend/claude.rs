@@ -200,12 +200,16 @@ impl ClaudeBackend {
         prompt: &str,
         cwd: &Path,
         model_override: Option<&str>,
-    ) -> Result<super::QueryOutput> {
+    ) -> std::result::Result<super::QueryOutput, BackendError> {
         let start = Instant::now();
 
         let (command, default_model) = match &self.mode {
             ClaudeMode::Cli { command, model } => (command, model),
-            ClaudeMode::Api { .. } => anyhow::bail!("CLI mode required for this operation"),
+            ClaudeMode::Api { .. } => {
+                return Err(BackendError::Config {
+                    message: "CLI mode required for this operation".to_string(),
+                });
+            }
         };
 
         let effective_model = model_override
@@ -232,13 +236,18 @@ impl ClaudeBackend {
         let output = cmd
             .output()
             .await
-            .context("Failed to execute claude command")?;
+            .map_err(|e| BackendError::Unavailable {
+                message: format!("Failed to execute claude command: {}", e),
+            })?;
 
         let exit_code = output.status.code().unwrap_or(-1);
         let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
 
         if !output.status.success() {
-            anyhow::bail!("Claude CLI failed: {}", stderr_str);
+            return Err(BackendError::ExecutionFailed {
+                message: format!("Claude CLI failed: {}", stderr_str),
+                exit_code: Some(exit_code),
+            });
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -293,8 +302,7 @@ impl super::Backend for ClaudeBackend {
             }
             ClaudeMode::Cli { .. } => self
                 .query_cli(ctx.prompt, ctx.cwd, ctx.model)
-                .await
-                .map_err(BackendError::from),
+                .await,
         }
     }
 

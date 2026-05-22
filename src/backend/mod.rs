@@ -76,29 +76,6 @@ impl BackendError {
     }
 }
 
-// TODO: remove once all backends return typed errors directly
-impl From<anyhow::Error> for BackendError {
-    fn from(err: anyhow::Error) -> Self {
-        use crate::utils::classify_backend_error;
-        use crate::utils::BackendErrorKind;
-
-        let msg = err.to_string();
-        match classify_backend_error(&msg) {
-            BackendErrorKind::RateLimited => BackendError::RateLimit {
-                message: msg,
-                retry_after_ms: None,
-            },
-            BackendErrorKind::CapacityExhausted => BackendError::Unavailable { message: msg },
-            BackendErrorKind::AuthError => BackendError::Auth { message: msg },
-            BackendErrorKind::NetworkError => BackendError::Network { message: msg },
-            BackendErrorKind::NotInstalled => BackendError::Unavailable { message: msg },
-            BackendErrorKind::Unknown => BackendError::ExecutionFailed {
-                message: msg,
-                exit_code: None,
-            },
-        }
-    }
-}
 
 /// Token usage metadata reported by LLM backends, used for cost tracking and observability.
 ///
@@ -1361,20 +1338,6 @@ mod tests {
         assert_eq!(err.to_string(), "execution failed: process exited");
     }
 
-    #[test]
-    fn test_backend_error_from_anyhow() {
-        let anyhow_err = anyhow::anyhow!("Error 429: Too Many Requests");
-        let backend_err = BackendError::from(anyhow_err);
-        assert!(matches!(backend_err, BackendError::RateLimit { .. }));
-
-        let anyhow_err = anyhow::anyhow!("ECONNREFUSED: Connection refused");
-        let backend_err = BackendError::from(anyhow_err);
-        assert!(matches!(backend_err, BackendError::Network { .. }));
-
-        let anyhow_err = anyhow::anyhow!("Something unknown happened");
-        let backend_err = BackendError::from(anyhow_err);
-        assert!(matches!(backend_err, BackendError::ExecutionFailed { .. }));
-    }
 
     struct HealthCheckBackend {
         available: bool,

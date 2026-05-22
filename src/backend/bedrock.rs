@@ -170,7 +170,26 @@ impl super::Backend for BedrockBackend {
         let response = self
             .invoke_with_messages_model(effective_model_id, None, messages, None)
             .await
-            .map_err(super::BackendError::from)?;
+            .map_err(|err| {
+                let msg = err.to_string();
+                if msg.contains("RateExceeded") || msg.contains("ThrottlingException") {
+                    super::BackendError::RateLimit {
+                        message: msg,
+                        retry_after_ms: None,
+                    }
+                } else if msg.contains("ValidationException") {
+                    super::BackendError::Config { message: msg }
+                } else if msg.contains("AccessDeniedException") {
+                    super::BackendError::Auth { message: msg }
+                } else if msg.contains("ModelNotReadyException") || msg.contains("ServiceUnavailableException") {
+                    super::BackendError::Unavailable { message: msg }
+                } else {
+                    super::BackendError::ExecutionFailed {
+                        message: msg,
+                        exit_code: None,
+                    }
+                }
+            })?;
 
         let text = response
             .content

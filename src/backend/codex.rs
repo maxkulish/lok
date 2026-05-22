@@ -194,9 +194,10 @@ impl super::Backend for CodexBackend {
             if diagnostics.parse_error.is_some() && !stderr_str.trim().is_empty() {
                 // Non-zero exit with readable stderr should surface CLI/system failure even when
                 // JSONL parsing fails (for example, older codex versions rejecting -o).
-                let msg = format!("Codex failed: {}", stderr_str);
-                let err = super::BackendError::from(anyhow::anyhow!("{}", msg));
-                return Err(Self::with_exit_code(err, exit_code));
+                return Err(super::BackendError::ExecutionFailed {
+                    message: format!("Codex failed: {}", stderr_str),
+                    exit_code: Some(exit_code),
+                });
             }
 
             if let Some(parse_err) = diagnostics.parse_error {
@@ -204,9 +205,10 @@ impl super::Backend for CodexBackend {
             }
 
             // JSONL parsed successfully but process still exited non-zero — fall back to stderr
-            let msg = format!("Codex failed: {}", stderr_str);
-            let err = super::BackendError::from(anyhow::anyhow!("{}", msg));
-            return Err(Self::with_exit_code(err, exit_code));
+            return Err(super::BackendError::ExecutionFailed {
+                message: format!("Codex failed: {}", stderr_str),
+                exit_code: Some(exit_code),
+            });
         }
 
         let text = Self::read_last_message(last_message_file.path())
