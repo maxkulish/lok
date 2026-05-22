@@ -1820,4 +1820,28 @@ mod tests {
             Ok(_) => unreachable!(),
         }
     }
+
+    #[tokio::test]
+    async fn test_retry_wrapper_delegates_health_check() {
+        // Create a backend with retry and verify health_check still works
+        let inner = crate::backend::ollama::OllamaBackend::new(&BackendConfig {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let retry_policy = crate::backend::retry::RetryPolicy {
+            max_retries: 3,
+            base_delay: std::time::Duration::from_millis(10),
+            max_delay: std::time::Duration::from_millis(100),
+        };
+        let wrapped =
+            crate::backend::retry::RetryExecutor::new(Arc::new(inner), retry_policy);
+
+        // RetryWrapper's health_check should delegate to inner (ollama always succeeds)
+        let status = wrapped.health_check().await.unwrap();
+        assert!(status.available, "ollama health should succeed through retry wrapper");
+
+        // Verify is_available() also delegates (cache-only at this point)
+        assert!(!wrapped.is_available(), "no health cache entry yet");
+    }
 }
