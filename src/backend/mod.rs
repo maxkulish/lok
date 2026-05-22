@@ -1735,4 +1735,89 @@ mod tests {
         clear_health_cache();
         assert!(!super::Engine::is_backend_available("test"));
     }
+
+    #[tokio::test]
+    async fn test_get_backends_with_filter() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Setup: warmup multiple backends
+        let mut config = Config::default();
+        config.backends.clear();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("echo".to_string()),
+                args: vec!["hello".to_string()],
+                ..Default::default()
+            },
+        );
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // Filter for ollama only
+        let backends = super::get_backends(&config, Some("ollama")).unwrap();
+        assert_eq!(backends.len(), 1, "Expected 1 backend with ollama filter");
+        assert_eq!(backends[0].name(), "ollama");
+
+        // Filter for both backends
+        let backends = super::get_backends(&config, Some("ollama,gemini")).unwrap();
+        assert_eq!(backends.len(), 2, "Expected 2 backends with ollama,gemini filter");
+        let names: Vec<&str> = backends.iter().map(|b| b.name()).collect();
+        assert!(names.contains(&"ollama"));
+        assert!(names.contains(&"gemini"));
+
+        // No filter returns all available backends
+        let backends = super::get_backends(&config, None).unwrap();
+        assert!(!backends.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_backends_no_available_bails() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // Add a backend that will fail health check
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("nonexistent-binary-that-NOT-exists".to_string()),
+                ..Default::default()
+            },
+        );
+
+        // Warmup marks it unavailable
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(!super::Engine::is_backend_available("gemini"));
+
+        // get_backends should bail since no backends are available
+        let result = super::get_backends(&config, None);
+        assert!(
+            result.is_err(),
+            "Expected get_backends to return error when no backends available"
+        );
+        // Verify the error message mentions "No backends available"
+        match result {
+            Err(e) => {
+                let msg = format!("{}", e);
+                assert!(
+                    msg.contains("No backends available"),
+                    "Expected 'No backends available' error, got: {}",
+                    msg
+                );
+            }
+            Ok(_) => unreachable!(),
+        }
+    }
 }
