@@ -1946,6 +1946,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_set_mock_health_overwrites_existing() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Set initial health and verify
+        set_mock_health("test", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test"));
+
+        // Overwrite with unavailable and verify
+        set_mock_health("test", HealthStatus::new_unavailable());
+        assert!(!super::Engine::is_backend_available("test"));
+
+        // Overwrite back to available and verify
+        set_mock_health("test", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test"));
+
+        // Verify only one entry exists (overwrite, not duplicate)
+        let cache = get_health_cache();
+        let lock = cache.read().expect("locked");
+        assert_eq!(lock.len(), 1, "Expected exactly 1 entry after overwrites");
+    }
+
+    #[tokio::test]
     async fn test_retry_wrapper_delegates_health_check() {
         // Create a backend with retry and verify health_check still works
         let inner = crate::backend::ollama::OllamaBackend::new(&BackendConfig {
