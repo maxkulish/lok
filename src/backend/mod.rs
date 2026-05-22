@@ -364,23 +364,12 @@ pub fn create_backend(
     config: &BackendConfig,
     retry_policy: RetryPolicy,
 ) -> Result<Arc<dyn Backend>> {
-    let cache = get_constructed_backends();
+    // Check unified cache first
     {
-        let lock = cache.read().expect("constructed backends lock poisoned");
-        if let Some(backend) = lock.get(name) {
-            // Ensure unified cache is populated too (legacy cache hit)
-            let unified = get_backend_cache();
-            let mut ulock = unified.write().expect("backend cache lock poisoned");
-            if !ulock.contains_key(name) {
-                ulock.insert(
-                    name.to_string(),
-                    CachedBackend {
-                        backend: Arc::clone(backend),
-                        health: HealthStatus::new_unavailable(),
-                    },
-                );
-            }
-            return Ok(Arc::clone(backend));
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        if let Some(entry) = lock.get(name) {
+            return Ok(Arc::clone(&entry.backend));
         }
     }
 
@@ -411,12 +400,6 @@ pub fn create_backend(
         inner
     };
 
-    // Write to legacy cache
-    {
-        let mut lock = cache.write().expect("constructed backends lock poisoned");
-        lock.insert(name.to_string(), Arc::clone(&backend));
-    }
-
     // Write to unified cache with default health (actual health filled by warmup)
     {
         let cache = get_backend_cache();
@@ -441,25 +424,17 @@ pub fn create_claude_backend(config: &Config) -> Result<ClaudeBackend> {
     ClaudeBackend::new(backend_config)
 }
 
-pub static CONSTRUCTED_BACKENDS: OnceLock<RwLock<HashMap<String, Arc<dyn Backend>>>> =
-    OnceLock::new();
-
-pub fn get_constructed_backends() -> &'static RwLock<HashMap<String, Arc<dyn Backend>>> {
-    CONSTRUCTED_BACKENDS.get_or_init(|| RwLock::new(HashMap::with_capacity(16)))
-}
-
-/// Combined cache entry linking a constructed backend instance with its health status.
-/// Eliminates the need for separate CONSTRUCTED_BACKENDS and HEALTH_CACHE maps,
-/// ensuring the two are always consistent.
-pub struct CachedBackend {
-    pub backend: Arc<dyn Backend>,
-    pub health: HealthStatus,
-}
-
 pub static BACKEND_CACHE: OnceLock<RwLock<HashMap<String, CachedBackend>>> = OnceLock::new();
 
 pub fn get_backend_cache() -> &'static RwLock<HashMap<String, CachedBackend>> {
     BACKEND_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(16)))
+}
+
+/// Combined cache entry linking a constructed backend instance with its health status.
+/// Replaces separate CONSTRUCTED_BACKENDS and HEALTH_CACHE maps, ensuring consistency.
+pub struct CachedBackend {
+    pub backend: Arc<dyn Backend>,
+    pub health: HealthStatus,
 }
 
 /// Minimal stub backend used by test helpers when the unified cache needs
@@ -476,10 +451,7 @@ impl Backend for StubBackend {
     fn name(&self) -> &str {
         &self.name
     }
-    async fn query(
-        &self,
-        _ctx: StepContext<'_>,
-    ) -> std::result::Result<QueryOutput, BackendError> {
+    async fn query(&self, _ctx: StepContext<'_>) -> std::result::Result<QueryOutput, BackendError> {
         unimplemented!("StubBackend does not support query")
     }
     fn is_available(&self) -> bool {
@@ -487,57 +459,28 @@ impl Backend for StubBackend {
     }
 }
 
-/// Helper to reset/clear constructed backends cache in tests
-#[cfg(test)]
-pub fn clear_constructed_backends() {
-    if let Some(cache) = CONSTRUCTED_BACKENDS.get() {
-        let mut lock = cache.write().expect("constructed backends lock poisoned");
-        lock.clear();
-    }
-}
-
-pub static HEALTH_CACHE: OnceLock<RwLock<HashMap<String, HealthStatus>>> = OnceLock::new();
-
-pub fn get_health_cache() -> &'static RwLock<HashMap<String, HealthStatus>> {
-    HEALTH_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(16)))
-}
-
-/// Helper to reset/clear health cache in tests
+/// Helper to reset/clear all caches in tests
 #[cfg(test)]
 pub fn clear_health_cache() {
-    // Clear unified cache
     if let Some(cache) = BACKEND_CACHE.get() {
         let mut lock = cache.write().expect("backend cache lock poisoned");
         lock.clear();
     }
-    // Clear legacy caches
-    if let Some(cache) = HEALTH_CACHE.get() {
-        let mut lock = cache.write().expect("health cache lock poisoned");
-        lock.clear();
-    }
-    clear_constructed_backends();
 }
 
-/// Helper to insert a mock entry into the health cache during tests
+/// Helper to insert a mock entry into the cache during tests
 #[cfg(test)]
 pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
-    // Write to unified cache (primary)
-    {
-        let cache = get_backend_cache();
-        let mut lock = cache.write().expect("backend cache lock poisoned");
-        lock.entry(backend_name.to_string())
-            .and_modify(|entry| entry.health = status.clone())
-            .or_insert(CachedBackend {
-                backend: Arc::new(StubBackend {
-                    name: backend_name.to_string(),
-                }) as Arc<dyn Backend>,
-                health: status.clone(),
-            });
-    }
-    // Write to legacy health cache (backward compat)
-    let cache = get_health_cache();
-    let mut lock = cache.write().expect("health cache lock poisoned");
-    lock.insert(backend_name.to_string(), status);
+    let cache = get_backend_cache();
+    let mut lock = cache.write().expect("backend cache lock poisoned");
+    lock.entry(backend_name.to_string())
+        .and_modify(|entry| entry.health = status.clone())
+        .or_insert(CachedBackend {
+            backend: Arc::new(StubBackend {
+                name: backend_name.to_string(),
+            }) as Arc<dyn Backend>,
+            health: status,
+        });
 }
 
 pub struct Engine;
@@ -557,14 +500,6 @@ impl Engine {
             {
                 let cache = get_backend_cache();
                 let lock = cache.read().expect("backend cache lock poisoned");
-                if lock.contains_key(name.as_str()) {
-                    continue;
-                }
-            }
-            // Legacy fallback: check HEALTH_CACHE in case it was populated without BACKEND_CACHE
-            {
-                let cache = get_health_cache();
-                let lock = cache.read().expect("health cache lock poisoned");
                 if lock.contains_key(name.as_str()) {
                     continue;
                 }
@@ -616,14 +551,7 @@ impl Engine {
             }
         }
 
-        let cache = get_health_cache();
-        let mut lock = cache.write().expect("health cache lock poisoned");
-        for (name, status) in &updates {
-            lock.insert(name.clone(), status.clone());
-        }
-        drop(lock);
-
-        // Also update unified cache (backend was already inserted by create_backend)
+        // Update unified cache (backend was already inserted by create_backend)
         let cache = get_backend_cache();
         let mut lock = cache.write().expect("backend cache lock poisoned");
         for (name, status) in updates {
@@ -1513,12 +1441,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_is_available_before_cache_init_returns_false() {
+    async fn test_is_available_returns_false_for_empty_cache() {
         let _guard = acquire_test_lock().await;
-        // Test that is_backend_available gracefully returns false
-        // even when the cache has not been populated via warmup.
-        // This also validates the fast-path optimization that avoids
-        // initializing the OnceLock when the cache is not needed.
+        clear_health_cache();
         assert!(!super::Engine::is_backend_available("nonexistent"));
         assert!(!super::Engine::is_backend_available("ollama"));
         assert!(!super::Engine::is_backend_available(""));
@@ -1641,8 +1566,8 @@ mod tests {
         super::Engine::warmup_backends(&config).await.unwrap();
 
         // Assert that nothing was populated in the cache
-        let cache = get_health_cache();
-        let lock = cache.read().expect("health cache lock poisoned");
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
         assert!(lock.is_empty());
     }
 
@@ -1666,10 +1591,6 @@ mod tests {
 
         // Step 2: clear health cache only → ollama should NOT be available
         // (constructed backends remain intact, but health status is gone)
-        if let Some(cache) = HEALTH_CACHE.get() {
-            let mut lock = cache.write().expect("health cache lock poisoned");
-            lock.clear();
-        }
         if let Some(cache) = BACKEND_CACHE.get() {
             let mut lock = cache.write().expect("backend cache lock poisoned");
             lock.clear();
@@ -1691,7 +1612,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_warmup_populates_constructed_backends() {
+    async fn test_warmup_populates_unified_cache() {
         let _guard = acquire_test_lock().await;
         clear_health_cache();
 
@@ -1704,23 +1625,26 @@ mod tests {
             },
         );
 
-        // Before warmup, constructed backends should not have ollama yet
-        let pre_cache = get_constructed_backends();
-        assert!(!pre_cache.read().expect("lock poisoned").contains_key("ollama"));
+        // Before warmup, unified cache should not have ollama yet
+        let pre_cache = get_backend_cache();
+        assert!(!pre_cache
+            .read()
+            .expect("lock poisoned")
+            .contains_key("ollama"));
 
         super::Engine::warmup_backends(&config).await.unwrap();
 
-        // After warmup, ollama should be in CONSTRUCTED_BACKENDS (connection pool)
-        let cache = get_constructed_backends();
+        // After warmup, ollama should be in BACKEND_CACHE
+        let cache = get_backend_cache();
         let lock = cache.read().expect("lock poisoned");
         assert!(
             lock.contains_key("ollama"),
-            "Expected ollama in CONSTRUCTED_BACKENDS after warmup"
+            "Expected ollama in BACKEND_CACHE after warmup"
         );
 
         // Verify the cached backend reports the same name
-        if let Some(backend) = lock.get("ollama") {
-            assert_eq!(backend.name(), "ollama");
+        if let Some(entry) = lock.get("ollama") {
+            assert_eq!(entry.backend.name(), "ollama");
         }
     }
 
@@ -1768,11 +1692,14 @@ mod tests {
         );
 
         // Also verify cache only has exactly one entry (for ollama)
-        let cache = get_health_cache();
-        let lock = cache.read().expect("health cache lock poisoned");
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
         assert_eq!(lock.len(), 1, "Expected exactly 1 cached health status");
         assert!(lock.contains_key("ollama"), "Cache should contain ollama");
-        assert!(!lock.contains_key("claude"), "Cache should NOT contain claude");
+        assert!(
+            !lock.contains_key("claude"),
+            "Cache should NOT contain claude"
+        );
     }
 
     #[tokio::test]
@@ -1803,10 +1730,13 @@ mod tests {
         );
 
         // Verify the cache has the entry with available = false
-        let cache = get_health_cache();
-        let lock = cache.read().expect("health cache lock poisoned");
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
         let status = lock.get("gemini").expect("gemini should be in cache");
-        assert!(!status.available, "gemini health status should be unavailable");
+        assert!(
+            !status.health.available,
+            "gemini health status should be unavailable"
+        );
     }
 
     #[tokio::test]
@@ -1842,11 +1772,13 @@ mod tests {
         assert!(super::Engine::is_backend_available("ollama"));
 
         // Unknown backend should not be in the cache
-        assert!(!super::Engine::is_backend_available("nonexistent-backend-name"));
+        assert!(!super::Engine::is_backend_available(
+            "nonexistent-backend-name"
+        ));
 
         // Verify the cache only has ollama
-        let cache = get_health_cache();
-        let lock = cache.read().expect("health cache lock poisoned");
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
         assert_eq!(lock.len(), 1, "Only ollama should be cached");
         assert!(lock.contains_key("ollama"));
     }
@@ -1908,7 +1840,11 @@ mod tests {
 
         // Filter for both backends
         let backends = super::get_backends(&config, Some("ollama,gemini")).unwrap();
-        assert_eq!(backends.len(), 2, "Expected 2 backends with ollama,gemini filter");
+        assert_eq!(
+            backends.len(),
+            2,
+            "Expected 2 backends with ollama,gemini filter"
+        );
         let names: Vec<&str> = backends.iter().map(|b| b.name()).collect();
         assert!(names.contains(&"ollama"));
         assert!(names.contains(&"gemini"));
@@ -1974,16 +1910,27 @@ mod tests {
                 ..Default::default()
             },
         );
-        let retry_policy =
-            crate::backend::get_retry_policy(config.backends.get("ollama").unwrap(), &config.defaults);
-        let _backend = super::create_backend("ollama", config.backends.get("ollama").unwrap(), retry_policy)
-            .unwrap();
+        let retry_policy = crate::backend::get_retry_policy(
+            config.backends.get("ollama").unwrap(),
+            &config.defaults,
+        );
+        let _backend = super::create_backend(
+            "ollama",
+            config.backends.get("ollama").unwrap(),
+            retry_policy,
+        )
+        .unwrap();
 
         // BACKEND_CACHE should have the backend with default (unavailable) health
         let cache = get_backend_cache();
         let lock = cache.read().expect("lock poisoned");
-        let entry = lock.get("ollama").expect("ollama should be in BACKEND_CACHE");
-        assert!(!entry.health.available, "Default health should be unavailable");
+        let entry = lock
+            .get("ollama")
+            .expect("ollama should be in BACKEND_CACHE");
+        assert!(
+            !entry.health.available,
+            "Default health should be unavailable"
+        );
         assert_eq!(entry.backend.name(), "ollama");
 
         // Verify health status round-trips through the unified cache via set_mock_health
@@ -2016,11 +1963,14 @@ mod tests {
 
         // get_backends should return at least 1 backend
         let backends = super::get_backends(&config, None).unwrap();
-        assert!(!backends.is_empty(), "Expected at least one available backend");
+        assert!(
+            !backends.is_empty(),
+            "Expected at least one available backend"
+        );
 
         // Verify the health cache contains entries for all enabled backends
-        let cache = get_health_cache();
-        let lock = cache.read().expect("health cache lock poisoned");
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
         for (name, cfg) in &config.backends {
             if cfg.enabled {
                 assert!(
@@ -2037,29 +1987,13 @@ mod tests {
         let _guard = acquire_test_lock().await;
         clear_health_cache();
 
-        // Pre-populate CONSTRUCTED_BACKENDS with ollama directly
-        // (simulates a backend that was created but never health-checked)
-        {
-            let cache = get_constructed_backends();
-            let mut lock = cache.write().expect("lock poisoned");
-            lock.insert(
-                "ollama".to_string(),
-                Arc::new(
-                    crate::backend::ollama::OllamaBackend::new(&BackendConfig {
-                        enabled: true,
-                        ..Default::default()
-                    })
-                    .unwrap(),
-                ) as Arc<dyn Backend>,
-            );
-        }
-
-        // Pre-populate HEALTH_CACHE with gemini (already available)
+        // Pre-populate unified cache with gemini (already available)
+        // so warmup skips re-checking it
         set_mock_health("gemini", HealthStatus::new_available());
 
         let mut config = Config::default();
         config.backends.clear();
-        // ollama is in CONSTRUCTED_BACKENDS but NOT HEALTH_CACHE → needs check
+        // ollama is NOT in unified cache → needs health check
         config.backends.insert(
             "ollama".to_string(),
             crate::config::BackendConfig {
@@ -2067,7 +2001,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        // gemini is in HEALTH_CACHE already → skip by warmup
+        // gemini is in unified cache already → skip by warmup
         config.backends.insert(
             "gemini".to_string(),
             crate::config::BackendConfig {
@@ -2096,7 +2030,7 @@ mod tests {
         );
 
         // Verify warmup didn't re-check gemini
-        let cache = get_health_cache();
+        let cache = get_backend_cache();
         let lock = cache.read().expect("locked");
         assert_eq!(lock.len(), 2, "Both backends should be in health cache");
     }
@@ -2119,7 +2053,7 @@ mod tests {
         assert!(super::Engine::is_backend_available("test"));
 
         // Verify only one entry exists (overwrite, not duplicate)
-        let cache = get_health_cache();
+        let cache = get_backend_cache();
         let lock = cache.read().expect("locked");
         assert_eq!(lock.len(), 1, "Expected exactly 1 entry after overwrites");
     }
@@ -2153,19 +2087,24 @@ mod tests {
         super::Engine::warmup_backends(&config).await.unwrap();
 
         // Both should be in the cache
-        let cache = get_health_cache();
+        let cache = get_backend_cache();
         let lock = cache.read().expect("locked");
         assert_eq!(lock.len(), 2, "Both backends should be cached after warmup");
 
         // ollama should be available
         assert!(
-            lock.get("ollama").map(|s| s.available).unwrap_or(false),
+            lock.get("ollama")
+                .map(|s| s.health.available)
+                .unwrap_or(false),
             "ollama should be available"
         );
 
         // gemini should be unavailable (health check failed)
         assert!(
-            !lock.get("gemini").map(|s| s.available).unwrap_or(true),
+            !lock
+                .get("gemini")
+                .map(|s| s.health.available)
+                .unwrap_or(true),
             "gemini should be unavailable"
         );
     }
@@ -2216,12 +2155,14 @@ mod tests {
             base_delay: std::time::Duration::from_millis(10),
             max_delay: std::time::Duration::from_millis(100),
         };
-        let wrapped =
-            crate::backend::retry::RetryExecutor::new(Arc::new(inner), retry_policy);
+        let wrapped = crate::backend::retry::RetryExecutor::new(Arc::new(inner), retry_policy);
 
         // RetryWrapper's health_check should delegate to inner (ollama always succeeds)
         let status = wrapped.health_check().await.unwrap();
-        assert!(status.available, "ollama health should succeed through retry wrapper");
+        assert!(
+            status.available,
+            "ollama health should succeed through retry wrapper"
+        );
 
         // Verify is_available() also delegates (cache-only at this point)
         assert!(!wrapped.is_available(), "no health cache entry yet");

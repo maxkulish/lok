@@ -19,7 +19,7 @@ workflow:
   current_phase: complete
   status: complete
   created_at: '2026-05-21T15:33:34.887Z'
-  updated_at: '2026-05-21T18:46:14.216Z'
+  updated_at: '2026-05-22T08:17:35.236Z'
 phases:
   discovery:
     status: complete
@@ -221,3 +221,9 @@ history:
     action: workflow_complete
     phase: complete
     details: 'Task CLO-388 fully completed. PR #35 merged. Unblocks subsequent per-backend probe tickets.'
+  - timestamp: '2026-05-22T08:17:35.236Z'
+    action: local_cleanup_complete
+    phase: complete
+    details: >-
+      Deleted local feature branch feat/clo-388-warmup. feat/clo-388-warmup-workflow-docs preserved as worktree branch
+      (active worktree). Both PR #35 and PR #36 merged.
