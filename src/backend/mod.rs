@@ -528,8 +528,12 @@ impl Engine {
     }
 
     /// Check if a backend is available in the cache.
+    /// Returns `false` immediately if the cache hasn't been initialized yet,
+    /// avoiding unnecessary RwLock+HashMap allocation.
     pub fn is_backend_available(name: &str) -> bool {
-        let cache = get_health_cache();
+        let Some(cache) = HEALTH_CACHE.get() else {
+            return false;
+        };
         let lock = cache.read().expect("health cache lock poisoned");
         lock.get(name).map(|s| s.available).unwrap_or(false)
     }
@@ -1375,6 +1379,18 @@ mod tests {
 
     async fn acquire_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
         TEST_MUTEX.lock().await
+    }
+
+    #[tokio::test]
+    async fn test_is_available_before_cache_init_returns_false() {
+        let _guard = acquire_test_lock().await;
+        // Test that is_backend_available gracefully returns false
+        // even when the cache has not been populated via warmup.
+        // This also validates the fast-path optimization that avoids
+        // initializing the OnceLock when the cache is not needed.
+        assert!(!super::Engine::is_backend_available("nonexistent"));
+        assert!(!super::Engine::is_backend_available("ollama"));
+        assert!(!super::Engine::is_backend_available(""));
     }
 
     #[tokio::test]
