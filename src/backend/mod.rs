@@ -1483,4 +1483,19 @@ mod tests {
         super::Engine::warmup_backends(&config).await.unwrap();
         assert!(!super::Engine::is_backend_available("ollama"));
     }
+
+    #[tokio::test]
+    async fn test_warmup_backends_empty() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // Assert that nothing was populated in the cache
+        let cache = get_health_cache();
+        let lock = cache.read().expect("health cache lock poisoned");
+        assert!(lock.is_empty());
+    }
 }
