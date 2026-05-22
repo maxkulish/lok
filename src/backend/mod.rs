@@ -1514,4 +1514,44 @@ mod tests {
         let lock = cache.read().expect("health cache lock poisoned");
         assert!(lock.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_warmup_lifecycle_roundtrip() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+
+        // Step 1: warmup → ollama should be available
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // Step 2: clear health cache only → ollama should NOT be available
+        // (constructed backends remain intact, but health status is gone)
+        if let Some(cache) = HEALTH_CACHE.get() {
+            let mut lock = cache.write().expect("health cache lock poisoned");
+            lock.clear();
+        }
+        assert!(!super::Engine::is_backend_available("ollama"));
+
+        // Step 3: warmup again → ollama should become available again
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // Step 4: get_backends should include ollama
+        let backends = super::get_backends(&config, None).unwrap();
+        let names: Vec<&str> = backends.iter().map(|b| b.name()).collect();
+        assert!(
+            names.contains(&"ollama"),
+            "Expected ollama in get_backends result, got: {:?}",
+            names
+        );
+    }
 }
