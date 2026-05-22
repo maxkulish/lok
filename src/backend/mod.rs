@@ -460,24 +460,21 @@ pub struct Engine;
 impl Engine {
     /// Warm up all enabled backends in parallel, populating the health cache.
     pub async fn warmup_backends(config: &Config) -> Result<()> {
-        let mut futures = Vec::new();
-
-        let cache = get_health_cache();
-        let already_cached = {
-            let lock = cache.read().expect("health cache lock poisoned");
-            lock.keys()
-                .cloned()
-                .collect::<std::collections::HashSet<String>>()
-        };
+        let mut futures = Vec::with_capacity(config.backends.len());
 
         for (name, backend_config) in &config.backends {
             if !backend_config.enabled {
                 continue;
             }
 
-            if already_cached.contains(name) {
-                continue;
-            }
+            // Check cache directly without intermediate HashSet allocation
+            {
+                let cache = get_health_cache();
+                let lock = cache.read().expect("health cache lock poisoned");
+                if lock.contains_key(name.as_str()) {
+                    continue;
+                }
+            } // lock dropped before cross-backend work
 
             let retry_policy = get_retry_policy(backend_config, &config.defaults);
             match create_backend(name, backend_config, retry_policy) {
@@ -1672,5 +1669,47 @@ mod tests {
         let lock = cache.read().expect("health cache lock poisoned");
         let status = lock.get("gemini").expect("gemini should be in cache");
         assert!(!status.available, "gemini health status should be unavailable");
+    }
+
+    #[tokio::test]
+    async fn test_warmup_unknown_backend_skipped() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // Add a real backend that will succeed
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        // Add an unknown backend that create_backend will reject
+        config.backends.insert(
+            "nonexistent-backend-name".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("echo".to_string()),
+                ..Default::default()
+            },
+        );
+
+        // Warmup should handle the unknown backend gracefully
+        // (print warning, skip it) and still warm up ollama
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // ollama should be available
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // Unknown backend should not be in the cache
+        assert!(!super::Engine::is_backend_available("nonexistent-backend-name"));
+
+        // Verify the cache only has ollama
+        let cache = get_health_cache();
+        let lock = cache.read().expect("health cache lock poisoned");
+        assert_eq!(lock.len(), 1, "Only ollama should be cached");
+        assert!(lock.contains_key("ollama"));
     }
 }
