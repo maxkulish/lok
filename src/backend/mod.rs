@@ -31,7 +31,6 @@ use std::time::{Duration, Instant};
 /// Each variant represents a distinct failure mode that callers can match on
 /// for retry decisions, user-facing messages, and error classification.
 #[derive(Debug, Clone, thiserror::Error)]
-#[allow(dead_code)]
 pub enum BackendError {
     #[error("timeout: {message}")]
     Timeout { message: String, elapsed_ms: u64 },
@@ -67,7 +66,6 @@ pub enum BackendError {
 impl BackendError {
     /// Returns true if this error is transient and the operation should be retried.
     /// Only `Timeout`, `RateLimit`, and `Network` are retryable.
-    #[allow(dead_code)]
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
@@ -287,7 +285,6 @@ pub trait Backend: Send + Sync {
     /// Live async health probe. Default delegates to `is_available()`.
     /// Returns a placeholder `HealthStatus` so the trait signature is stable
     /// when FR-9/9a adds real fields.
-    #[allow(dead_code)]
     async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
         if self.is_available() {
             Ok(HealthStatus::new_available())
@@ -2019,6 +2016,39 @@ mod tests {
             !lock.get("gemini").map(|s| s.available).unwrap_or(true),
             "gemini should be unavailable"
         );
+    }
+
+    #[test]
+    fn test_backend_error_unavailable_format() {
+        let err = BackendError::Unavailable {
+            message: "test backend not found".to_string(),
+        };
+        let display = format!("{}", err);
+        assert_eq!(display, "unavailable: test backend not found");
+
+        // Verify it's NOT retryable
+        assert!(!err.is_retryable());
+
+        // Verify Timeout IS retryable
+        let timeout = BackendError::Timeout {
+            message: "timeout".to_string(),
+            elapsed_ms: 5000,
+        };
+        assert!(timeout.is_retryable());
+        let display = format!("{}", timeout);
+        assert_eq!(display, "timeout: timeout");
+
+        // Verify Network IS retryable
+        let network = BackendError::Network {
+            message: "connection refused".to_string(),
+        };
+        assert!(network.is_retryable());
+
+        // Verify Config is NOT retryable
+        let config_err = BackendError::Config {
+            message: "bad config".to_string(),
+        };
+        assert!(!config_err.is_retryable());
     }
 
     #[tokio::test]
