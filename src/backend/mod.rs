@@ -419,7 +419,7 @@ pub static CONSTRUCTED_BACKENDS: OnceLock<RwLock<HashMap<String, Arc<dyn Backend
     OnceLock::new();
 
 pub fn get_constructed_backends() -> &'static RwLock<HashMap<String, Arc<dyn Backend>>> {
-    CONSTRUCTED_BACKENDS.get_or_init(|| RwLock::new(HashMap::new()))
+    CONSTRUCTED_BACKENDS.get_or_init(|| RwLock::new(HashMap::with_capacity(16)))
 }
 
 /// Helper to reset/clear constructed backends cache in tests
@@ -434,7 +434,7 @@ pub fn clear_constructed_backends() {
 pub static HEALTH_CACHE: OnceLock<RwLock<HashMap<String, HealthStatus>>> = OnceLock::new();
 
 pub fn get_health_cache() -> &'static RwLock<HashMap<String, HealthStatus>> {
-    HEALTH_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+    HEALTH_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(16)))
 }
 
 /// Helper to reset/clear health cache in tests
@@ -1841,6 +1841,38 @@ mod tests {
                 );
             }
             Ok(_) => unreachable!(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_warmup_default_config() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Use the full default config which has codex, gemini, claude, ollama
+        let config = Config::default();
+
+        // Warmup with the full default config
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // At minimum, ollama should be available (it's always enabled and present)
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // get_backends should return at least 1 backend
+        let backends = super::get_backends(&config, None).unwrap();
+        assert!(!backends.is_empty(), "Expected at least one available backend");
+
+        // Verify the health cache contains entries for all enabled backends
+        let cache = get_health_cache();
+        let lock = cache.read().expect("health cache lock poisoned");
+        for (name, cfg) in &config.backends {
+            if cfg.enabled {
+                assert!(
+                    lock.contains_key(name),
+                    "Enabled backend '{}' should be in health cache after warmup",
+                    name
+                );
+            }
         }
     }
 
