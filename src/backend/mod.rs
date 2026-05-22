@@ -1639,4 +1639,38 @@ mod tests {
         assert!(lock.contains_key("ollama"), "Cache should contain ollama");
         assert!(!lock.contains_key("claude"), "Cache should NOT contain claude");
     }
+
+    #[tokio::test]
+    async fn test_warmup_backends_health_check_failure() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // Add a backend configured with a non-existent command so health_check fails
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("nonexistent-health-check-binary".to_string()),
+                args: vec!["--version".to_string()],
+                ..Default::default()
+            },
+        );
+
+        // Warmup should handle the health check failure gracefully
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // Backend should be marked as unavailable in the cache
+        assert!(
+            !super::Engine::is_backend_available("gemini"),
+            "gemini should be unavailable after failed health check"
+        );
+
+        // Verify the cache has the entry with available = false
+        let cache = get_health_cache();
+        let lock = cache.read().expect("health cache lock poisoned");
+        let status = lock.get("gemini").expect("gemini should be in cache");
+        assert!(!status.available, "gemini health status should be unavailable");
+    }
 }
