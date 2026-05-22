@@ -1379,6 +1379,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_health_status_constructors() {
+        let _guard = acquire_test_lock().await;
+        let available = HealthStatus::new_available();
+        assert!(available.available);
+        assert!(available.version.is_none());
+        assert!(available.unusable_flags.is_empty());
+        assert!(available.models.is_empty());
+
+        let unavailable = HealthStatus::new_unavailable();
+        assert!(!unavailable.available);
+        assert!(unavailable.version.is_none());
+        assert!(unavailable.unusable_flags.is_empty());
+        assert!(unavailable.models.is_empty());
+
+        // Verify they round-trip through cache correctly
+        set_mock_health("test-avail", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test-avail"));
+
+        set_mock_health("test-unavail", HealthStatus::new_unavailable());
+        assert!(!super::Engine::is_backend_available("test-unavail"));
+    }
+
+    #[tokio::test]
     async fn test_is_available_before_cache_init_returns_false() {
         let _guard = acquire_test_lock().await;
         // Test that is_backend_available gracefully returns false
