@@ -400,7 +400,9 @@ pub fn create_backend(
         inner
     };
 
-    // Write to unified cache with default health (actual health filled by warmup)
+    // Write to unified cache; health stays None until warmup actually probes.
+    // Distinguishing "not probed" (None) from "probed and unavailable" (Some(unavailable))
+    // is what lets warmup_backends know to skip only entries that have already been probed.
     {
         let cache = get_backend_cache();
         let mut lock = cache.write().expect("backend cache lock poisoned");
@@ -408,7 +410,7 @@ pub fn create_backend(
             name.to_string(),
             CachedBackend {
                 backend: Arc::clone(&backend),
-                health: HealthStatus::new_unavailable(),
+                health: None,
             },
         );
     }
@@ -434,7 +436,7 @@ pub fn get_backend_cache() -> &'static RwLock<HashMap<String, CachedBackend>> {
 /// Replaces separate CONSTRUCTED_BACKENDS and HEALTH_CACHE maps, ensuring consistency.
 pub struct CachedBackend {
     pub backend: Arc<dyn Backend>,
-    pub health: HealthStatus,
+    pub health: Option<HealthStatus>,
 }
 
 /// Minimal stub backend used by test helpers when the unified cache needs
@@ -474,12 +476,12 @@ pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
     let cache = get_backend_cache();
     let mut lock = cache.write().expect("backend cache lock poisoned");
     lock.entry(backend_name.to_string())
-        .and_modify(|entry| entry.health = status.clone())
+        .and_modify(|entry| entry.health = Some(status.clone()))
         .or_insert(CachedBackend {
             backend: Arc::new(StubBackend {
                 name: backend_name.to_string(),
             }) as Arc<dyn Backend>,
-            health: status,
+            health: Some(status),
         });
 }
 
@@ -495,13 +497,16 @@ impl Engine {
                 continue;
             }
 
-            // Check cache directly without intermediate HashSet allocation
-            // Check unified cache first, then legacy cache
+            // Skip only if this backend has already been probed (health is Some).
+            // Entries inserted by create_backend (e.g. via display_backends_status or
+            // get_backends) have health = None and still need a real probe here.
             {
                 let cache = get_backend_cache();
                 let lock = cache.read().expect("backend cache lock poisoned");
-                if lock.contains_key(name.as_str()) {
-                    continue;
+                if let Some(entry) = lock.get(name.as_str()) {
+                    if entry.health.is_some() {
+                        continue;
+                    }
                 }
             } // lock dropped before cross-backend work
 
@@ -556,7 +561,7 @@ impl Engine {
         let mut lock = cache.write().expect("backend cache lock poisoned");
         for (name, status) in updates {
             if let Some(entry) = lock.get_mut(&name) {
-                entry.health = status;
+                entry.health = Some(status);
             }
         }
 
@@ -571,7 +576,10 @@ impl Engine {
             return false;
         };
         let lock = cache.read().expect("backend cache lock poisoned");
-        lock.get(name).map(|c| c.health.available).unwrap_or(false)
+        lock.get(name)
+            .and_then(|c| c.health.as_ref())
+            .map(|h| h.available)
+            .unwrap_or(false)
     }
 }
 
@@ -1542,18 +1550,36 @@ mod tests {
             },
         );
 
-        // Run warmup first time
+        // Run warmup first time — ollama is probed and recorded as available.
         super::Engine::warmup_backends(&config).await.unwrap();
         assert!(super::Engine::is_backend_available("ollama"));
 
-        // Now modify the cache to make ollama unavailable
+        // Overwrite with Some(unavailable) — simulating a probed-but-unhealthy entry.
         set_mock_health("ollama", HealthStatus::new_unavailable());
         assert!(!super::Engine::is_backend_available("ollama"));
 
-        // Run warmup second time. Since "ollama" is already in cache, warmup should skip it,
-        // so its status stays "unavailable" (and is NOT reset back to available).
+        // Run warmup second time. Since ollama's health is Some(_) (already probed),
+        // warmup skips it — status stays unavailable and is NOT re-probed.
         super::Engine::warmup_backends(&config).await.unwrap();
         assert!(!super::Engine::is_backend_available("ollama"));
+
+        // Conversely, if we reset health back to None (unprobed), warmup MUST re-probe.
+        // This guards against the CONSTRUCTED_BACKENDS-era bug where a pre-populated
+        // entry from create_backend would cause warmup to skip and leave the backend
+        // marked unavailable forever.
+        {
+            let cache = get_backend_cache();
+            let mut lock = cache.write().expect("backend cache lock poisoned");
+            lock.get_mut("ollama")
+                .expect("ollama should be cached")
+                .health = None;
+        }
+        assert!(!super::Engine::is_backend_available("ollama"));
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(
+            super::Engine::is_backend_available("ollama"),
+            "warmup must re-probe entries whose health is None"
+        );
     }
 
     #[tokio::test]
@@ -1733,8 +1759,12 @@ mod tests {
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
         let status = lock.get("gemini").expect("gemini should be in cache");
+        let health = status
+            .health
+            .as_ref()
+            .expect("gemini should have been probed by warmup");
         assert!(
-            !status.health.available,
+            !health.available,
             "gemini health status should be unavailable"
         );
     }
@@ -1921,15 +1951,17 @@ mod tests {
         )
         .unwrap();
 
-        // BACKEND_CACHE should have the backend with default (unavailable) health
+        // BACKEND_CACHE should have the backend with no health probed yet (None);
+        // create_backend deliberately leaves health unset so warmup can detect entries
+        // that still need to be probed.
         let cache = get_backend_cache();
         let lock = cache.read().expect("lock poisoned");
         let entry = lock
             .get("ollama")
             .expect("ollama should be in BACKEND_CACHE");
         assert!(
-            !entry.health.available,
-            "Default health should be unavailable"
+            entry.health.is_none(),
+            "create_backend should leave health unprobed (None) so warmup will probe it"
         );
         assert_eq!(entry.backend.name(), "ollama");
 
@@ -2094,19 +2126,20 @@ mod tests {
         // ollama should be available
         assert!(
             lock.get("ollama")
-                .map(|s| s.health.available)
+                .and_then(|s| s.health.as_ref())
+                .map(|h| h.available)
                 .unwrap_or(false),
             "ollama should be available"
         );
 
-        // gemini should be unavailable (health check failed)
-        assert!(
-            !lock
-                .get("gemini")
-                .map(|s| s.health.available)
-                .unwrap_or(true),
-            "gemini should be unavailable"
-        );
+        // gemini should be probed and unavailable (health check failed).
+        // Some(unavailable) and None must be distinguished here — None would mean warmup
+        // never wrote a result, which is the bug Option<HealthStatus> exists to prevent.
+        let gemini_health = lock
+            .get("gemini")
+            .and_then(|s| s.health.as_ref())
+            .expect("gemini should have been probed and recorded as unavailable");
+        assert!(!gemini_health.available, "gemini should be unavailable");
     }
 
     #[test]
