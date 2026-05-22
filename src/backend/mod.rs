@@ -76,7 +76,6 @@ impl BackendError {
     }
 }
 
-
 /// Token usage metadata reported by LLM backends, used for cost tracking and observability.
 ///
 /// Counts are `u32` (max ~4 billion), which is sufficient for any realistic LLM context.
@@ -1337,7 +1336,6 @@ mod tests {
         };
         assert_eq!(err.to_string(), "execution failed: process exited");
     }
-
 
     struct HealthCheckBackend {
         available: bool,

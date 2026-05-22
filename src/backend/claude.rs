@@ -233,12 +233,9 @@ impl ClaudeBackend {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| BackendError::Unavailable {
-                message: format!("Failed to execute claude command: {}", e),
-            })?;
+        let output = cmd.output().await.map_err(|e| BackendError::Unavailable {
+            message: format!("Failed to execute claude command: {}", e),
+        })?;
 
         let exit_code = output.status.code().unwrap_or(-1);
         let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
@@ -300,9 +297,7 @@ impl super::Backend for ClaudeBackend {
                 self.query_api("You are a helpful assistant.", ctx.prompt, ctx.model)
                     .await
             }
-            ClaudeMode::Cli { .. } => self
-                .query_cli(ctx.prompt, ctx.cwd, ctx.model)
-                .await,
+            ClaudeMode::Cli { .. } => self.query_cli(ctx.prompt, ctx.cwd, ctx.model).await,
         }
     }
 

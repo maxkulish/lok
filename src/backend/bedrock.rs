@@ -181,7 +181,9 @@ impl super::Backend for BedrockBackend {
                     super::BackendError::Config { message: msg }
                 } else if msg.contains("AccessDeniedException") {
                     super::BackendError::Auth { message: msg }
-                } else if msg.contains("ModelNotReadyException") || msg.contains("ServiceUnavailableException") {
+                } else if msg.contains("ModelNotReadyException")
+                    || msg.contains("ServiceUnavailableException")
+                {
                     super::BackendError::Unavailable { message: msg }
                 } else {
                     super::BackendError::ExecutionFailed {
