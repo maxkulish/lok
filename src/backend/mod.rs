@@ -1554,4 +1554,38 @@ mod tests {
             names
         );
     }
+
+    #[tokio::test]
+    async fn test_warmup_populates_constructed_backends() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+
+        // Before warmup, constructed backends should not have ollama yet
+        let pre_cache = get_constructed_backends();
+        assert!(!pre_cache.read().expect("lock poisoned").contains_key("ollama"));
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // After warmup, ollama should be in CONSTRUCTED_BACKENDS (connection pool)
+        let cache = get_constructed_backends();
+        let lock = cache.read().expect("lock poisoned");
+        assert!(
+            lock.contains_key("ollama"),
+            "Expected ollama in CONSTRUCTED_BACKENDS after warmup"
+        );
+
+        // Verify the cached backend reports the same name
+        if let Some(backend) = lock.get("ollama") {
+            assert_eq!(backend.name(), "ollama");
+        }
+    }
 }
