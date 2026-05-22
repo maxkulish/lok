@@ -1877,6 +1877,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_warmup_mixed_precached_and_new_backends() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Pre-populate CONSTRUCTED_BACKENDS with ollama directly
+        // (simulates a backend that was created but never health-checked)
+        {
+            let cache = get_constructed_backends();
+            let mut lock = cache.write().expect("lock poisoned");
+            lock.insert(
+                "ollama".to_string(),
+                Arc::new(
+                    crate::backend::ollama::OllamaBackend::new(&BackendConfig {
+                        enabled: true,
+                        ..Default::default()
+                    })
+                    .unwrap(),
+                ) as Arc<dyn Backend>,
+            );
+        }
+
+        // Pre-populate HEALTH_CACHE with gemini (already available)
+        set_mock_health("gemini", HealthStatus::new_available());
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // ollama is in CONSTRUCTED_BACKENDS but NOT HEALTH_CACHE → needs check
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        // gemini is in HEALTH_CACHE already → skip by warmup
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("echo".to_string()),
+                args: vec!["hello".to_string()],
+                ..Default::default()
+            },
+        );
+
+        // Before warmup: gemini is available (mock), ollama is not
+        assert!(super::Engine::is_backend_available("gemini"));
+        assert!(!super::Engine::is_backend_available("ollama"));
+
+        // Warmup should skip gemini (already cached) and health-check ollama
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // After warmup: both should be available
+        assert!(
+            super::Engine::is_backend_available("ollama"),
+            "ollama should be available after warmup health check"
+        );
+        assert!(
+            super::Engine::is_backend_available("gemini"),
+            "gemini should still be available (was pre-cached)"
+        );
+
+        // Verify warmup didn't re-check gemini
+        let cache = get_health_cache();
+        let lock = cache.read().expect("locked");
+        assert_eq!(lock.len(), 2, "Both backends should be in health cache");
+    }
+
+    #[tokio::test]
     async fn test_retry_wrapper_delegates_health_check() {
         // Create a backend with retry and verify health_check still works
         let inner = crate::backend::ollama::OllamaBackend::new(&BackendConfig {
