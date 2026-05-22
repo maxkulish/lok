@@ -1712,4 +1712,27 @@ mod tests {
         assert_eq!(lock.len(), 1, "Only ollama should be cached");
         assert!(lock.contains_key("ollama"));
     }
+
+    #[tokio::test]
+    async fn test_clear_health_cache_idempotent() {
+        let _guard = acquire_test_lock().await;
+        // Clear when both caches are not yet initialized
+        clear_health_cache();
+        clear_health_cache();
+        clear_health_cache();
+
+        // After triple-clear, cache should be empty, is_backend_available returns false
+        assert!(!super::Engine::is_backend_available("anything"));
+
+        // Now populate and clear again
+        set_mock_health("test", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test"));
+
+        clear_health_cache();
+        assert!(!super::Engine::is_backend_available("test"));
+
+        // Double-clear after population
+        clear_health_cache();
+        assert!(!super::Engine::is_backend_available("test"));
+    }
 }
