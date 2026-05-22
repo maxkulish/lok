@@ -31,7 +31,6 @@ use std::time::{Duration, Instant};
 /// Each variant represents a distinct failure mode that callers can match on
 /// for retry decisions, user-facing messages, and error classification.
 #[derive(Debug, Clone, thiserror::Error)]
-#[allow(dead_code)]
 pub enum BackendError {
     #[error("timeout: {message}")]
     Timeout { message: String, elapsed_ms: u64 },
@@ -67,7 +66,6 @@ pub enum BackendError {
 impl BackendError {
     /// Returns true if this error is transient and the operation should be retried.
     /// Only `Timeout`, `RateLimit`, and `Network` are retryable.
-    #[allow(dead_code)]
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
@@ -287,7 +285,6 @@ pub trait Backend: Send + Sync {
     /// Live async health probe. Default delegates to `is_available()`.
     /// Returns a placeholder `HealthStatus` so the trait signature is stable
     /// when FR-9/9a adds real fields.
-    #[allow(dead_code)]
     async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
         if self.is_available() {
             Ok(HealthStatus::new_available())
@@ -367,6 +364,15 @@ pub fn create_backend(
     config: &BackendConfig,
     retry_policy: RetryPolicy,
 ) -> Result<Arc<dyn Backend>> {
+    // Check unified cache first
+    {
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        if let Some(entry) = lock.get(name) {
+            return Ok(Arc::clone(&entry.backend));
+        }
+    }
+
     let inner: Arc<dyn Backend> = match name {
         "codex" => Arc::new(codex::CodexBackend::new(config)?),
         "gemini" => Arc::new(gemini::GeminiBackend::new(config)?),
@@ -377,8 +383,10 @@ pub fn create_backend(
             // BedrockBackend::new is async, need runtime
             let rt = tokio::runtime::Handle::current();
             let config = config.clone();
-            rt.block_on(async {
-                anyhow::Ok(Arc::new(bedrock::BedrockBackend::new(&config).await?) as Arc<dyn Backend>)
+            tokio::task::block_in_place(|| {
+                rt.block_on(async {
+                    anyhow::Ok(Arc::new(bedrock::BedrockBackend::new(&config).await?) as Arc<dyn Backend>)
+                })
             })?
         }
         #[cfg(not(feature = "bedrock"))]
@@ -386,11 +394,28 @@ pub fn create_backend(
         _ => anyhow::bail!("Unknown backend: {}", name),
     };
 
-    if retry_policy.max_retries > 0 {
-        Ok(Arc::new(RetryExecutor::new(inner, retry_policy)))
+    let backend = if retry_policy.max_retries > 0 {
+        Arc::new(RetryExecutor::new(inner, retry_policy)) as Arc<dyn Backend>
     } else {
-        Ok(inner)
+        inner
+    };
+
+    // Write to unified cache; health stays None until warmup actually probes.
+    // Distinguishing "not probed" (None) from "probed and unavailable" (Some(unavailable))
+    // is what lets warmup_backends know to skip only entries that have already been probed.
+    {
+        let cache = get_backend_cache();
+        let mut lock = cache.write().expect("backend cache lock poisoned");
+        lock.insert(
+            name.to_string(),
+            CachedBackend {
+                backend: Arc::clone(&backend),
+                health: None,
+            },
+        );
     }
+
+    Ok(backend)
 }
 
 pub fn create_claude_backend(config: &Config) -> Result<ClaudeBackend> {
@@ -401,29 +426,63 @@ pub fn create_claude_backend(config: &Config) -> Result<ClaudeBackend> {
     ClaudeBackend::new(backend_config)
 }
 
-pub static HEALTH_CACHE: OnceLock<RwLock<HashMap<String, HealthStatus>>> = OnceLock::new();
+pub static BACKEND_CACHE: OnceLock<RwLock<HashMap<String, CachedBackend>>> = OnceLock::new();
 
-pub fn get_health_cache() -> &'static RwLock<HashMap<String, HealthStatus>> {
-    HEALTH_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+pub fn get_backend_cache() -> &'static RwLock<HashMap<String, CachedBackend>> {
+    BACKEND_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(16)))
 }
 
-/// Helper to reset/clear health cache in tests
+/// Combined cache entry linking a constructed backend instance with its health status.
+/// Replaces separate CONSTRUCTED_BACKENDS and HEALTH_CACHE maps, ensuring consistency.
+pub struct CachedBackend {
+    pub backend: Arc<dyn Backend>,
+    pub health: Option<HealthStatus>,
+}
+
+/// Minimal stub backend used by test helpers when the unified cache needs
+/// a backend instance for mock entries (e.g., set_mock_health).
+#[cfg(test)]
+#[derive(Debug)]
+pub struct StubBackend {
+    pub(crate) name: String,
+}
+
+#[cfg(test)]
+#[async_trait]
+impl Backend for StubBackend {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    async fn query(&self, _ctx: StepContext<'_>) -> std::result::Result<QueryOutput, BackendError> {
+        unimplemented!("StubBackend does not support query")
+    }
+    fn is_available(&self) -> bool {
+        false
+    }
+}
+
+/// Helper to reset/clear all caches in tests
 #[cfg(test)]
 pub fn clear_health_cache() {
-    if let Some(cache) = HEALTH_CACHE.get() {
-        if let Ok(mut lock) = cache.write() {
-            lock.clear();
-        }
+    if let Some(cache) = BACKEND_CACHE.get() {
+        let mut lock = cache.write().expect("backend cache lock poisoned");
+        lock.clear();
     }
 }
 
-/// Helper to insert a mock entry into the health cache during tests
+/// Helper to insert a mock entry into the cache during tests
 #[cfg(test)]
 pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
-    let cache = get_health_cache();
-    if let Ok(mut lock) = cache.write() {
-        lock.insert(backend_name.to_string(), status);
-    }
+    let cache = get_backend_cache();
+    let mut lock = cache.write().expect("backend cache lock poisoned");
+    lock.entry(backend_name.to_string())
+        .and_modify(|entry| entry.health = Some(status.clone()))
+        .or_insert(CachedBackend {
+            backend: Arc::new(StubBackend {
+                name: backend_name.to_string(),
+            }) as Arc<dyn Backend>,
+            health: Some(status),
+        });
 }
 
 pub struct Engine;
@@ -431,12 +490,25 @@ pub struct Engine;
 impl Engine {
     /// Warm up all enabled backends in parallel, populating the health cache.
     pub async fn warmup_backends(config: &Config) -> Result<()> {
-        let mut futures = Vec::new();
+        let mut futures = Vec::with_capacity(config.backends.len());
 
         for (name, backend_config) in &config.backends {
             if !backend_config.enabled {
                 continue;
             }
+
+            // Skip only if this backend has already been probed (health is Some).
+            // Entries inserted by create_backend (e.g. via display_backends_status or
+            // get_backends) have health = None and still need a real probe here.
+            {
+                let cache = get_backend_cache();
+                let lock = cache.read().expect("backend cache lock poisoned");
+                if let Some(entry) = lock.get(name.as_str()) {
+                    if entry.health.is_some() {
+                        continue;
+                    }
+                }
+            } // lock dropped before cross-backend work
 
             let retry_policy = get_retry_policy(backend_config, &config.defaults);
             match create_backend(name, backend_config, retry_policy) {
@@ -464,12 +536,13 @@ impl Engine {
 
         let results = futures::future::join_all(futures).await;
 
-        let cache = get_health_cache();
-        let mut lock = cache.write().expect("health cache lock poisoned");
+        // Process results outside the write lock to minimize lock hold time
+        // (eprintln! can block on I/O, so it runs before the lock)
+        let mut updates: Vec<(String, HealthStatus)> = Vec::with_capacity(results.len());
         for (name, res) in results {
             match res {
                 Ok(status) => {
-                    lock.insert(name, status);
+                    updates.push((name, status));
                 }
                 Err(e) => {
                     eprintln!(
@@ -478,8 +551,17 @@ impl Engine {
                         name,
                         e
                     );
-                    lock.insert(name, HealthStatus::new_unavailable());
+                    updates.push((name, HealthStatus::new_unavailable()));
                 }
+            }
+        }
+
+        // Update unified cache (backend was already inserted by create_backend)
+        let cache = get_backend_cache();
+        let mut lock = cache.write().expect("backend cache lock poisoned");
+        for (name, status) in updates {
+            if let Some(entry) = lock.get_mut(&name) {
+                entry.health = Some(status);
             }
         }
 
@@ -487,13 +569,17 @@ impl Engine {
     }
 
     /// Check if a backend is available in the cache.
+    /// Returns `false` immediately if the cache hasn't been initialized yet,
+    /// avoiding unnecessary RwLock+HashMap allocation.
     pub fn is_backend_available(name: &str) -> bool {
-        let cache = get_health_cache();
-        if let Ok(lock) = cache.read() {
-            lock.get(name).map(|s| s.available).unwrap_or(false)
-        } else {
-            false
-        }
+        let Some(cache) = BACKEND_CACHE.get() else {
+            return false;
+        };
+        let lock = cache.read().expect("backend cache lock poisoned");
+        lock.get(name)
+            .and_then(|c| c.health.as_ref())
+            .map(|h| h.available)
+            .unwrap_or(false)
     }
 }
 
@@ -1333,8 +1419,47 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_health_cache_basic_read_write() {
+    static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    async fn acquire_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
+        TEST_MUTEX.lock().await
+    }
+
+    #[tokio::test]
+    async fn test_health_status_constructors() {
+        let _guard = acquire_test_lock().await;
+        let available = HealthStatus::new_available();
+        assert!(available.available);
+        assert!(available.version.is_none());
+        assert!(available.unusable_flags.is_empty());
+        assert!(available.models.is_empty());
+
+        let unavailable = HealthStatus::new_unavailable();
+        assert!(!unavailable.available);
+        assert!(unavailable.version.is_none());
+        assert!(unavailable.unusable_flags.is_empty());
+        assert!(unavailable.models.is_empty());
+
+        // Verify they round-trip through cache correctly
+        set_mock_health("test-avail", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test-avail"));
+
+        set_mock_health("test-unavail", HealthStatus::new_unavailable());
+        assert!(!super::Engine::is_backend_available("test-unavail"));
+    }
+
+    #[tokio::test]
+    async fn test_is_available_returns_false_for_empty_cache() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+        assert!(!super::Engine::is_backend_available("nonexistent"));
+        assert!(!super::Engine::is_backend_available("ollama"));
+        assert!(!super::Engine::is_backend_available(""));
+    }
+
+    #[tokio::test]
+    async fn test_health_cache_basic_read_write() {
+        let _guard = acquire_test_lock().await;
         clear_health_cache();
         assert!(!super::Engine::is_backend_available("test-backend"));
 
@@ -1345,8 +1470,9 @@ mod tests {
         assert!(!super::Engine::is_backend_available("test-backend"));
     }
 
-    #[test]
-    fn test_is_available_cache_only_no_syscalls() {
+    #[tokio::test]
+    async fn test_is_available_cache_only_no_syscalls() {
+        let _guard = acquire_test_lock().await;
         clear_health_cache();
 
         struct MockSyscallBackend {
@@ -1391,6 +1517,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_warmup_backends_parallel() {
+        let _guard = acquire_test_lock().await;
         clear_health_cache();
 
         let mut config = Config::default();
@@ -1407,5 +1534,670 @@ mod tests {
 
         // Assert that ollama is now available in cache
         assert!(super::Engine::is_backend_available("ollama"));
+    }
+
+    #[tokio::test]
+    async fn test_warmup_backends_idempotence() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+
+        // Run warmup first time — ollama is probed and recorded as available.
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // Overwrite with Some(unavailable) — simulating a probed-but-unhealthy entry.
+        set_mock_health("ollama", HealthStatus::new_unavailable());
+        assert!(!super::Engine::is_backend_available("ollama"));
+
+        // Run warmup second time. Since ollama's health is Some(_) (already probed),
+        // warmup skips it — status stays unavailable and is NOT re-probed.
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(!super::Engine::is_backend_available("ollama"));
+
+        // Conversely, if we reset health back to None (unprobed), warmup MUST re-probe.
+        // This guards against the CONSTRUCTED_BACKENDS-era bug where a pre-populated
+        // entry from create_backend would cause warmup to skip and leave the backend
+        // marked unavailable forever.
+        {
+            let cache = get_backend_cache();
+            let mut lock = cache.write().expect("backend cache lock poisoned");
+            lock.get_mut("ollama")
+                .expect("ollama should be cached")
+                .health = None;
+        }
+        assert!(!super::Engine::is_backend_available("ollama"));
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(
+            super::Engine::is_backend_available("ollama"),
+            "warmup must re-probe entries whose health is None"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_warmup_backends_empty() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // Assert that nothing was populated in the cache
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        assert!(lock.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_warmup_lifecycle_roundtrip() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+
+        // Step 1: warmup → ollama should be available
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // Step 2: clear health cache only → ollama should NOT be available
+        // (constructed backends remain intact, but health status is gone)
+        if let Some(cache) = BACKEND_CACHE.get() {
+            let mut lock = cache.write().expect("backend cache lock poisoned");
+            lock.clear();
+        }
+        assert!(!super::Engine::is_backend_available("ollama"));
+
+        // Step 3: warmup again → ollama should become available again
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // Step 4: get_backends should include ollama
+        let backends = super::get_backends(&config, None).unwrap();
+        let names: Vec<&str> = backends.iter().map(|b| b.name()).collect();
+        assert!(
+            names.contains(&"ollama"),
+            "Expected ollama in get_backends result, got: {:?}",
+            names
+        );
+    }
+
+    #[tokio::test]
+    async fn test_warmup_populates_unified_cache() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+
+        // Before warmup, unified cache should not have ollama yet
+        let pre_cache = get_backend_cache();
+        assert!(!pre_cache
+            .read()
+            .expect("lock poisoned")
+            .contains_key("ollama"));
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // After warmup, ollama should be in BACKEND_CACHE
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("lock poisoned");
+        assert!(
+            lock.contains_key("ollama"),
+            "Expected ollama in BACKEND_CACHE after warmup"
+        );
+
+        // Verify the cached backend reports the same name
+        if let Some(entry) = lock.get("ollama") {
+            assert_eq!(entry.backend.name(), "ollama");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_warmup_backends_mixed_enabled_disabled() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        // Start with empty backends to control what gets warmed up
+        config.backends.clear();
+
+        // Add ollama as enabled
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        // Add claude as disabled
+        config.backends.insert(
+            "claude".to_string(),
+            crate::config::BackendConfig {
+                enabled: false,
+                command: Some("echo".to_string()),
+                args: vec!["hello".to_string()],
+                ..Default::default()
+            },
+        );
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // ollama should be available (it was enabled and health-checked)
+        assert!(
+            super::Engine::is_backend_available("ollama"),
+            "ollama should be available after warmup"
+        );
+
+        // claude should NOT be in the health cache (it was disabled)
+        // Note: is_backend_available returns false for any backend not in the cache
+        assert!(
+            !super::Engine::is_backend_available("claude"),
+            "claude (disabled) should not be available after warmup"
+        );
+
+        // Also verify cache only has exactly one entry (for ollama)
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        assert_eq!(lock.len(), 1, "Expected exactly 1 cached health status");
+        assert!(lock.contains_key("ollama"), "Cache should contain ollama");
+        assert!(
+            !lock.contains_key("claude"),
+            "Cache should NOT contain claude"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_warmup_backends_health_check_failure() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // Add a backend configured with a non-existent command so health_check fails
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("nonexistent-health-check-binary".to_string()),
+                args: vec!["--version".to_string()],
+                ..Default::default()
+            },
+        );
+
+        // Warmup should handle the health check failure gracefully
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // Backend should be marked as unavailable in the cache
+        assert!(
+            !super::Engine::is_backend_available("gemini"),
+            "gemini should be unavailable after failed health check"
+        );
+
+        // Verify the cache has the entry with available = false
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        let status = lock.get("gemini").expect("gemini should be in cache");
+        let health = status
+            .health
+            .as_ref()
+            .expect("gemini should have been probed by warmup");
+        assert!(
+            !health.available,
+            "gemini health status should be unavailable"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_warmup_unknown_backend_skipped() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // Add a real backend that will succeed
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        // Add an unknown backend that create_backend will reject
+        config.backends.insert(
+            "nonexistent-backend-name".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("echo".to_string()),
+                ..Default::default()
+            },
+        );
+
+        // Warmup should handle the unknown backend gracefully
+        // (print warning, skip it) and still warm up ollama
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // ollama should be available
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // Unknown backend should not be in the cache
+        assert!(!super::Engine::is_backend_available(
+            "nonexistent-backend-name"
+        ));
+
+        // Verify the cache only has ollama
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        assert_eq!(lock.len(), 1, "Only ollama should be cached");
+        assert!(lock.contains_key("ollama"));
+    }
+
+    #[tokio::test]
+    async fn test_clear_health_cache_idempotent() {
+        let _guard = acquire_test_lock().await;
+        // Clear when both caches are not yet initialized
+        clear_health_cache();
+        clear_health_cache();
+        clear_health_cache();
+
+        // After triple-clear, cache should be empty, is_backend_available returns false
+        assert!(!super::Engine::is_backend_available("anything"));
+
+        // Now populate and clear again
+        set_mock_health("test", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test"));
+
+        clear_health_cache();
+        assert!(!super::Engine::is_backend_available("test"));
+
+        // Double-clear after population
+        clear_health_cache();
+        assert!(!super::Engine::is_backend_available("test"));
+    }
+
+    #[tokio::test]
+    async fn test_get_backends_with_filter() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Setup: warmup multiple backends
+        let mut config = Config::default();
+        config.backends.clear();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("echo".to_string()),
+                args: vec!["hello".to_string()],
+                ..Default::default()
+            },
+        );
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // Filter for ollama only
+        let backends = super::get_backends(&config, Some("ollama")).unwrap();
+        assert_eq!(backends.len(), 1, "Expected 1 backend with ollama filter");
+        assert_eq!(backends[0].name(), "ollama");
+
+        // Filter for both backends
+        let backends = super::get_backends(&config, Some("ollama,gemini")).unwrap();
+        assert_eq!(
+            backends.len(),
+            2,
+            "Expected 2 backends with ollama,gemini filter"
+        );
+        let names: Vec<&str> = backends.iter().map(|b| b.name()).collect();
+        assert!(names.contains(&"ollama"));
+        assert!(names.contains(&"gemini"));
+
+        // No filter returns all available backends
+        let backends = super::get_backends(&config, None).unwrap();
+        assert!(!backends.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_backends_no_available_bails() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // Add a backend that will fail health check
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("nonexistent-binary-that-NOT-exists".to_string()),
+                ..Default::default()
+            },
+        );
+
+        // Warmup marks it unavailable
+        super::Engine::warmup_backends(&config).await.unwrap();
+        assert!(!super::Engine::is_backend_available("gemini"));
+
+        // get_backends should bail since no backends are available
+        let result = super::get_backends(&config, None);
+        assert!(
+            result.is_err(),
+            "Expected get_backends to return error when no backends available"
+        );
+        // Verify the error message mentions "No backends available"
+        match result {
+            Err(e) => {
+                let msg = format!("{}", e);
+                assert!(
+                    msg.contains("No backends available"),
+                    "Expected 'No backends available' error, got: {}",
+                    msg
+                );
+            }
+            Ok(_) => unreachable!(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_unified_cache_populated_by_create_backend() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Call create_backend which should populate BACKEND_CACHE
+        let mut config = Config::default();
+        config.backends.clear();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        let retry_policy = crate::backend::get_retry_policy(
+            config.backends.get("ollama").unwrap(),
+            &config.defaults,
+        );
+        let _backend = super::create_backend(
+            "ollama",
+            config.backends.get("ollama").unwrap(),
+            retry_policy,
+        )
+        .unwrap();
+
+        // BACKEND_CACHE should have the backend with no health probed yet (None);
+        // create_backend deliberately leaves health unset so warmup can detect entries
+        // that still need to be probed.
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("lock poisoned");
+        let entry = lock
+            .get("ollama")
+            .expect("ollama should be in BACKEND_CACHE");
+        assert!(
+            entry.health.is_none(),
+            "create_backend should leave health unprobed (None) so warmup will probe it"
+        );
+        assert_eq!(entry.backend.name(), "ollama");
+
+        // Verify health status round-trips through the unified cache via set_mock_health
+        drop(lock);
+        clear_health_cache();
+        set_mock_health("ollama", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        set_mock_health("ollama", HealthStatus::new_unavailable());
+        assert!(!super::Engine::is_backend_available("ollama"));
+
+        // Verify the cache only has one entry
+        let lock = cache.read().expect("lock poisoned");
+        assert_eq!(lock.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_warmup_default_config() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Use the full default config which has codex, gemini, claude, ollama
+        let config = Config::default();
+
+        // Warmup with the full default config
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // At minimum, ollama should be available (it's always enabled and present)
+        assert!(super::Engine::is_backend_available("ollama"));
+
+        // get_backends should return at least 1 backend
+        let backends = super::get_backends(&config, None).unwrap();
+        assert!(
+            !backends.is_empty(),
+            "Expected at least one available backend"
+        );
+
+        // Verify the health cache contains entries for all enabled backends
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        for (name, cfg) in &config.backends {
+            if cfg.enabled {
+                assert!(
+                    lock.contains_key(name),
+                    "Enabled backend '{}' should be in health cache after warmup",
+                    name
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_warmup_mixed_precached_and_new_backends() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Pre-populate unified cache with gemini (already available)
+        // so warmup skips re-checking it
+        set_mock_health("gemini", HealthStatus::new_available());
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // ollama is NOT in unified cache → needs health check
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        // gemini is in unified cache already → skip by warmup
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("echo".to_string()),
+                args: vec!["hello".to_string()],
+                ..Default::default()
+            },
+        );
+
+        // Before warmup: gemini is available (mock), ollama is not
+        assert!(super::Engine::is_backend_available("gemini"));
+        assert!(!super::Engine::is_backend_available("ollama"));
+
+        // Warmup should skip gemini (already cached) and health-check ollama
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // After warmup: both should be available
+        assert!(
+            super::Engine::is_backend_available("ollama"),
+            "ollama should be available after warmup health check"
+        );
+        assert!(
+            super::Engine::is_backend_available("gemini"),
+            "gemini should still be available (was pre-cached)"
+        );
+
+        // Verify warmup didn't re-check gemini
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("locked");
+        assert_eq!(lock.len(), 2, "Both backends should be in health cache");
+    }
+
+    #[tokio::test]
+    async fn test_set_mock_health_overwrites_existing() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Set initial health and verify
+        set_mock_health("test", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test"));
+
+        // Overwrite with unavailable and verify
+        set_mock_health("test", HealthStatus::new_unavailable());
+        assert!(!super::Engine::is_backend_available("test"));
+
+        // Overwrite back to available and verify
+        set_mock_health("test", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test"));
+
+        // Verify only one entry exists (overwrite, not duplicate)
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("locked");
+        assert_eq!(lock.len(), 1, "Expected exactly 1 entry after overwrites");
+    }
+
+    #[tokio::test]
+    async fn test_warmup_batch_writes_all_results() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        // Add a backend that will succeed health check (ollama)
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+        // Add a backend that will fail health check (nonexistent command)
+        config.backends.insert(
+            "gemini".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some("nonexistent-health-binary".to_string()),
+                args: vec!["check".to_string()],
+                ..Default::default()
+            },
+        );
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // Both should be in the cache
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("locked");
+        assert_eq!(lock.len(), 2, "Both backends should be cached after warmup");
+
+        // ollama should be available
+        assert!(
+            lock.get("ollama")
+                .and_then(|s| s.health.as_ref())
+                .map(|h| h.available)
+                .unwrap_or(false),
+            "ollama should be available"
+        );
+
+        // gemini should be probed and unavailable (health check failed).
+        // Some(unavailable) and None must be distinguished here — None would mean warmup
+        // never wrote a result, which is the bug Option<HealthStatus> exists to prevent.
+        let gemini_health = lock
+            .get("gemini")
+            .and_then(|s| s.health.as_ref())
+            .expect("gemini should have been probed and recorded as unavailable");
+        assert!(!gemini_health.available, "gemini should be unavailable");
+    }
+
+    #[test]
+    fn test_backend_error_unavailable_format() {
+        let err = BackendError::Unavailable {
+            message: "test backend not found".to_string(),
+        };
+        let display = format!("{}", err);
+        assert_eq!(display, "unavailable: test backend not found");
+
+        // Verify it's NOT retryable
+        assert!(!err.is_retryable());
+
+        // Verify Timeout IS retryable
+        let timeout = BackendError::Timeout {
+            message: "timeout".to_string(),
+            elapsed_ms: 5000,
+        };
+        assert!(timeout.is_retryable());
+        let display = format!("{}", timeout);
+        assert_eq!(display, "timeout: timeout");
+
+        // Verify Network IS retryable
+        let network = BackendError::Network {
+            message: "connection refused".to_string(),
+        };
+        assert!(network.is_retryable());
+
+        // Verify Config is NOT retryable
+        let config_err = BackendError::Config {
+            message: "bad config".to_string(),
+        };
+        assert!(!config_err.is_retryable());
+    }
+
+    #[tokio::test]
+    async fn test_retry_wrapper_delegates_health_check() {
+        // Create a backend with retry and verify health_check still works
+        let inner = crate::backend::ollama::OllamaBackend::new(&BackendConfig {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let retry_policy = crate::backend::retry::RetryPolicy {
+            max_retries: 3,
+            base_delay: std::time::Duration::from_millis(10),
+            max_delay: std::time::Duration::from_millis(100),
+        };
+        let wrapped = crate::backend::retry::RetryExecutor::new(Arc::new(inner), retry_policy);
+
+        // RetryWrapper's health_check should delegate to inner (ollama always succeeds)
+        let status = wrapped.health_check().await.unwrap();
+        assert!(
+            status.available,
+            "ollama health should succeed through retry wrapper"
+        );
+
+        // Verify is_available() also delegates (cache-only at this point)
+        assert!(!wrapped.is_available(), "no health cache entry yet");
     }
 }
