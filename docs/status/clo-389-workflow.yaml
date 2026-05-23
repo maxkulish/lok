@@ -18,7 +18,7 @@ workflow:
   current_phase: complete
   status: active
   created_at: '2026-05-23T14:22:20.558Z'
-  updated_at: '2026-05-23T15:08:11.922Z'
+  updated_at: '2026-05-23T15:10:47.151Z'
 phases:
   discovery:
     status: complete
@@ -58,8 +58,17 @@ phases:
     reviews_addressed: true
     pre_merge_refetch_passed: true
     pre_merge_refetch_at: '2026-05-23T15:08:06Z'
+    merged_at: '2026-05-23T15:10:00Z'
+    merge_commit: 2092d63
   complete:
     status: pending
+    merge_commit: 2092d63
+    merged_at: '2026-05-23T15:10:00Z'
+    aggregation_files_updated: true
+    lessons_learned:
+      - L1 - Centralize static test locks for concurrent global state access
+      - L2 - Enforce strict tag mapping for untagged model validations
+    lessons_file: .pi/lessons/clo-389-ollama-probe-lessons.md
 history:
   - timestamp: '2026-05-23T14:22:20.558Z'
     action: workflow_started
@@ -151,3 +160,19 @@ history:
     action: phase_transition
     phase: pr
     details: Transitioned from pr to complete
+  - timestamp: '2026-05-23T15:08:55.253Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #38 merged. Merge commit 2092d63.'
+  - timestamp: '2026-05-23T15:08:57.106Z'
+    action: pr_merged
+    phase: pr
+    details: Merge commit 2092d63
+  - timestamp: '2026-05-23T15:10:08.426Z'
+    action: project_sync_complete
+    phase: complete
+    details: PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-389 --complete
+  - timestamp: '2026-05-23T15:10:47.151Z'
+    action: lessons_extracted
+    phase: complete
+    details: '2 lessons recorded. File: .pi/lessons/clo-389-ollama-probe-lessons.md'
