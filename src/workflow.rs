@@ -163,8 +163,6 @@ impl Workflow {
                                 if status.available {
                                     let has_model = status.models.iter().any(|m| {
                                         m.name == *model_name
-                                            || (m.name.contains(':')
-                                                && m.name.split(':').next().unwrap() == *model_name)
                                             || (!model_name.contains(':')
                                                 && format!("{}:latest", model_name) == m.name)
                                     });
@@ -5508,6 +5506,12 @@ timeout = 0
                     size: None,
                     digest: None,
                 },
+                crate::backend::ModelInfo {
+                    name: "llama3:8b".to_string(),
+                    modified_at: None,
+                    size: None,
+                    digest: None,
+                },
             ],
         };
         crate::backend::set_mock_health("ollama", status);
@@ -5548,6 +5552,25 @@ model = "nonexistent:latest"
         let err = result.unwrap_err().to_string();
         assert!(err.contains("requests ollama model 'nonexistent:latest' which is not present in HealthStatus.models"));
         assert!(err.contains("ollama pull nonexistent:latest"));
+
+        // Test 3: Untagged model "llama3" should fail when only "llama3:8b" is present (no "llama3:latest")
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-workflow"
+
+[[steps]]
+name = "step1"
+backend = "ollama"
+prompt = "test"
+model = "llama3"
+"#,
+        )
+        .unwrap();
+        let result = load_workflow(&workflow_path).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("requests ollama model 'llama3' which is not present in HealthStatus.models"));
 
         // Clean up
         crate::backend::clear_health_cache();
