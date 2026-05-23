@@ -869,7 +869,7 @@ async fn main() -> Result<()> {
                 list_workflows().await?;
             }
             WorkflowCommands::Validate { path } => {
-                validate_workflow(&path).await?;
+                validate_workflow(&path, &config).await?;
             }
         },
         Commands::Run {
@@ -1487,7 +1487,9 @@ async fn list_workflows() -> Result<()> {
     Ok(())
 }
 
-async fn validate_workflow(path: &Path) -> Result<()> {
+async fn validate_workflow(path: &Path, config: &config::Config) -> Result<()> {
+    // Warm up backends first so that the health cache is populated for validation
+    let _ = backend::Engine::warmup_backends(config).await;
     let wf = workflow::load_workflow(path).await?;
 
     println!("{} {}", "✓".green(), "Workflow is valid".bold());
