@@ -15,10 +15,10 @@ linear:
   blocks: []
   blocked_by: []
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: active
   created_at: '2026-05-23T14:22:20.558Z'
-  updated_at: '2026-05-23T14:53:17.654Z'
+  updated_at: '2026-05-23T15:08:11.922Z'
 phases:
   discovery:
     status: complete
@@ -49,7 +49,15 @@ phases:
     validation_synthesis_verdict: PASS
     validation_fix_iteration_count: 1
   pr:
-    status: pending
+    status: complete
+    pr_url: https://github.com/maxkulish/lok/pull/38
+    pr_number: 38
+    ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-23T15:05:13Z'
+    reviews_addressed: true
+    pre_merge_refetch_passed: true
+    pre_merge_refetch_at: '2026-05-23T15:08:06Z'
   complete:
     status: pending
 history:
@@ -113,3 +121,33 @@ history:
     action: phase_transition
     phase: implement
     details: Transitioned from implement to pr
+  - timestamp: '2026-05-23T14:54:29.461Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + test all pass'
+  - timestamp: '2026-05-23T14:54:57.299Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #38 opened: https://github.com/maxkulish/lok/pull/38'
+  - timestamp: '2026-05-23T14:55:10.203Z'
+    action: ci_passed
+    phase: pr
+    details: All required checks passing (no checks configured / green)
+  - timestamp: '2026-05-23T15:05:23.667Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: 'Current-head bot review observed for PR #38 at head 0d90f26; fetching inline comments and review threads.'
+  - timestamp: '2026-05-23T15:07:41.735Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      1 threads resolved; replies posted 1/1; /gemini review trailer verified on every reply (Gemini, Copilot, human
+      alike); unresolved-thread re-check clean.
+  - timestamp: '2026-05-23T15:08:09.769Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads.'
+  - timestamp: '2026-05-23T15:08:11.922Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
