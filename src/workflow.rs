@@ -161,16 +161,20 @@ impl Workflow {
                         if let Some(entry) = lock.get("ollama") {
                             if let Some(ref status) = entry.health {
                                 if status.available {
+                                    let latest_name = if !model_name.contains(':') {
+                                        Some(format!("{}:latest", model_name))
+                                    } else {
+                                        None
+                                    };
                                     let has_model = status.models.iter().any(|m| {
                                         m.name == *model_name
-                                            || (!model_name.contains(':')
-                                                && format!("{}:latest", model_name) == m.name)
+                                            || latest_name.as_ref() == Some(&m.name)
                                     });
                                     if !has_model {
                                         return Err(WorkflowError::UnknownModel {
                                             workflow: self.name.clone(),
                                             step: step.name.clone(),
-                                            backend: "ollama".to_string(),
+                                            backend: backend_name.clone(),
                                             model: model_name.clone(),
                                         });
                                     }
@@ -5570,7 +5574,9 @@ model = "llama3"
         let result = load_workflow(&workflow_path).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("requests ollama model 'llama3' which is not present in HealthStatus.models"));
+        assert!(err.contains(
+            "requests ollama model 'llama3' which is not present in HealthStatus.models"
+        ));
 
         // Clean up
         crate::backend::clear_health_cache();
