@@ -1,6 +1,6 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-05-21 (CLO-388 complete)
+**Last Updated**: 2026-05-23 (CLO-389 complete)
 
 ## Active Work (WIP Limit: 3)
 
@@ -18,6 +18,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-389](https://linear.app/cloud-ai/issue/CLO-389) | FR-11 + FR-11a: Ollama health probe (/api/version + /api/tags) + ModelInfo + workflow model validation | 2026-05-23 | Implemented active Ollama health check probing version/tags, cached HealthStatus.models, and added workflow step model validation with strict matching and helpful pull suggestions. |
 | [CLO-388](https://linear.app/cloud-ai/issue/CLO-388) | FR-9a + FR-10 + FR-15: Engine warmup + HealthCache + sync is_available cache-only | 2026-05-21 | Implemented parallel async warmup, std OnceLock-based HealthCache, and made backend is_available checks cache-only with zero syscalls. |
 | [CLO-382](https://linear.app/cloud-ai/issue/CLO-382/fr-26-gemini-backend-extracts-token-counts-from-json-envelope) | FR-26: Gemini backend extracts token counts from JSON envelope | 2026-05-20 | Gemini JSON envelope schema parsed; handles nested stats.models.*.tokens shapes with flat fallback; captured real CLI v0.42.0 envelope fixture and integrated validation tests |
 | [CLO-384](https://linear.app/cloud-ai/issue/CLO-384/fr-23-per-step-timeout-layered-override-step-backend-global) | FR-23: per-step `timeout` layered override (step > backend > global) | 2026-05-20 | Implemented layered timeout resolution with humantime config deserialization and unified effective timeout use across LLM, shell, format, and verify paths |
