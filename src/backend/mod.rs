@@ -800,6 +800,14 @@ pub fn list_backends(config: &Config) -> Result<()> {
 }
 
 #[cfg(test)]
+pub static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[cfg(test)]
+pub async fn acquire_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
+    TEST_MUTEX.lock().await
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1378,12 +1386,6 @@ mod tests {
             result.unwrap_err(),
             BackendError::Unavailable { .. }
         ));
-    }
-
-    static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-    async fn acquire_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
-        TEST_MUTEX.lock().await
     }
 
     #[tokio::test]
@@ -2138,27 +2140,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_wrapper_delegates_health_check() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
         // Create a backend with retry and verify health_check still works
-        let inner = crate::backend::ollama::OllamaBackend::new(&BackendConfig {
-            enabled: true,
-            ..Default::default()
-        })
-        .unwrap();
+        let inner = Arc::new(
+            crate::backend::ollama::OllamaBackend::new(&BackendConfig {
+                enabled: true,
+                ..Default::default()
+            })
+            .unwrap(),
+        );
         let retry_policy = crate::backend::retry::RetryPolicy {
             max_retries: 3,
             base_delay: std::time::Duration::from_millis(10),
             max_delay: std::time::Duration::from_millis(100),
         };
-        let wrapped = crate::backend::retry::RetryExecutor::new(Arc::new(inner), retry_policy);
+        let wrapped = crate::backend::retry::RetryExecutor::new(inner.clone(), retry_policy);
 
-        // RetryWrapper's health_check should delegate to inner (ollama always succeeds)
-        let status = wrapped.health_check().await.unwrap();
-        assert!(
-            status.available,
-            "ollama health should succeed through retry wrapper"
-        );
+        // RetryWrapper's health_check should delegate to inner
+        let _status = wrapped.health_check().await.unwrap();
 
         // Verify is_available() also delegates (cache-only at this point)
-        assert!(!wrapped.is_available(), "no health cache entry yet");
+        assert_eq!(wrapped.is_available(), inner.is_available());
     }
 }

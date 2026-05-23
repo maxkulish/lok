@@ -147,6 +147,16 @@ impl OllamaBackend {
     }
 }
 
+#[derive(Deserialize)]
+struct VersionResponse {
+    version: String,
+}
+
+#[derive(Deserialize)]
+struct TagsResponse {
+    models: Vec<super::ModelInfo>,
+}
+
 #[async_trait]
 impl Backend for OllamaBackend {
     fn name(&self) -> &str {
@@ -165,7 +175,48 @@ impl Backend for OllamaBackend {
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
-        Ok(super::HealthStatus::new_available())
+        let version_url = format!("{}/api/version", self.base_url);
+        let version_res = match self
+            .client
+            .get(&version_url)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp,
+            _ => return Ok(super::HealthStatus::new_unavailable()),
+        };
+
+        let version_data: VersionResponse = match version_res.json().await {
+            Ok(data) => data,
+            _ => return Ok(super::HealthStatus::new_unavailable()),
+        };
+
+        let tags_url = format!("{}/api/tags", self.base_url);
+        let tags_res = match self
+            .client
+            .get(&tags_url)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp,
+            _ => return Ok(super::HealthStatus::new_unavailable()),
+        };
+
+        let tags_data: TagsResponse = match tags_res.json().await {
+            Ok(data) => data,
+            _ => return Ok(super::HealthStatus::new_unavailable()),
+        };
+
+        Ok(super::HealthStatus {
+            available: true,
+            version: Some(version_data.version),
+            auth_method: None,
+            capabilities: None,
+            unusable_flags: Vec::new(),
+            models: tags_data.models,
+        })
     }
 }
 
@@ -219,5 +270,42 @@ mod tests {
         assert!(parsed.model.is_none());
         assert!(parsed.prompt_eval_count.is_none());
         assert!(parsed.eval_count.is_none());
+    }
+
+    #[test]
+    fn test_ollama_tags_deserialization() {
+        let json = r#"{
+            "models": [
+                {
+                    "name": "llama3:latest",
+                    "model": "llama3:latest",
+                    "modified_at": "2024-05-16T15:22:20.558Z",
+                    "size": 4200000000,
+                    "digest": "sha256:abc123xyz"
+                }
+            ]
+        }"#;
+        let parsed: TagsResponse = serde_json::from_str(json).expect("should parse");
+        assert_eq!(parsed.models.len(), 1);
+        let model = &parsed.models[0];
+        assert_eq!(model.name, "llama3:latest");
+        assert_eq!(
+            model.modified_at.as_deref(),
+            Some("2024-05-16T15:22:20.558Z")
+        );
+        assert_eq!(model.size, Some(4200000000));
+        assert_eq!(model.digest.as_deref(), Some("sha256:abc123xyz"));
+    }
+
+    #[tokio::test]
+    async fn test_ollama_health_check_connection_refused() {
+        let config = BackendConfig {
+            enabled: true,
+            command: Some("http://127.0.0.1:54321".to_string()),
+            ..Default::default()
+        };
+        let backend = OllamaBackend::new(&config).expect("should construct");
+        let health = backend.health_check().await.expect("should not error");
+        assert!(!health.available);
     }
 }

@@ -1,0 +1,109 @@
+task_id: CLO-389
+task_type: development
+classification_reason: ''
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Personal-health
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+workflow:
+  current_phase: implement
+  status: active
+  created_at: '2026-05-23T14:22:20.558Z'
+  updated_at: '2026-05-23T14:42:29.231Z'
+phases:
+  discovery:
+    status: complete
+  design:
+    status: complete
+    design_doc: docs/designs/clo-389-ollama-probe.md
+    draft_ready: true
+    finalized: true
+    review_completed: true
+    human_review_completed: true
+    assumptions_surfaced: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-389-ollama-probe.md
+    approved: true
+  implement:
+    status: validating
+    commits: []
+    assumptions_revalidated: true
+    assumption_outcomes: []
+    codex_validated: true
+    codex_verdict: PASS
+    codex_report: docs/reviews/clo-389-codex-validation.md
+    gemini_validation_report: docs/reviews/clo-389-gemini-validation.md
+    validation_synthesis_report: docs/reviews/clo-389-validation-synthesis.md
+    validation_synthesis_verdict: PASS
+    validation_fix_iteration_count: 0
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-23T14:22:20.558Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-389 as development
+  - timestamp: '2026-05-23T14:22:31.914Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-23T14:26:49.861Z'
+    action: discovery_approved
+    phase: discovery
+    details: Discovery completed and approved
+  - timestamp: '2026-05-23T14:27:13.410Z'
+    action: discovery_approved
+    phase: discovery
+    details: Fixing discovery status field directly
+  - timestamp: '2026-05-23T14:27:19.946Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-23T14:27:23.053Z'
+    action: design_approved
+    phase: design
+    details: Design completed and approved
+  - timestamp: '2026-05-23T14:27:28.123Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-23T14:28:22.445Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-23T14:41:36.350Z'
+    action: implement_completed
+    phase: implement
+    details: Implementation completed and all unit/integration tests successfully passed
+  - timestamp: '2026-05-23T14:42:22.243Z'
+    action: implementation_complete
+    phase: implement
+    details: All implementation sub-tasks for Ollama active health probe and model validation completed
+  - timestamp: '2026-05-23T14:42:23.697Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: Validated implementation assumptions and generated synthesis validation reports
+  - timestamp: '2026-05-23T14:42:25.463Z'
+    action: codex_validation_complete
+    phase: implement
+    details: Pre-PR validation successfully finished using custom-designed unit and integration tests
+  - timestamp: '2026-05-23T14:42:27.243Z'
+    action: pre_flight_checks_passed
+    phase: implement
+    details: All tests and checks passed cleanly; cargo test and formatting are 100% clean
+  - timestamp: '2026-05-23T14:42:29.231Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr

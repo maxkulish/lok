@@ -69,6 +69,14 @@ pub enum WorkflowError {
         timeout: u64,
         min: u64,
     },
+
+    #[error("Workflow '{workflow}': step '{step}' requests {backend} model '{model}' which is not present in HealthStatus.models\n  remediation hint: ollama pull {model}")]
+    UnknownModel {
+        workflow: String,
+        step: String,
+        backend: String,
+        model: String,
+    },
 }
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
@@ -141,6 +149,37 @@ impl Workflow {
                         timeout: timeout_ms,
                         min: MIN_TIMEOUT_MS,
                     });
+                }
+            }
+
+            // Validate backend models if backend is "ollama" and a model is requested
+            for backend_name in step.get_backends() {
+                if backend_name == "ollama" {
+                    if let Some(ref model_name) = step.model {
+                        let cache = crate::backend::get_backend_cache();
+                        let lock = cache.read().expect("backend cache lock poisoned");
+                        if let Some(entry) = lock.get("ollama") {
+                            if let Some(ref status) = entry.health {
+                                if status.available {
+                                    let has_model = status.models.iter().any(|m| {
+                                        m.name == *model_name
+                                            || (m.name.contains(':')
+                                                && m.name.split(':').next().unwrap() == *model_name)
+                                            || (!model_name.contains(':')
+                                                && format!("{}:latest", model_name) == m.name)
+                                    });
+                                    if !has_model {
+                                        return Err(WorkflowError::UnknownModel {
+                                            workflow: self.name.clone(),
+                                            step: step.name.clone(),
+                                            backend: "ollama".to_string(),
+                                            model: model_name.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -5440,6 +5479,78 @@ timeout = 0
 
         let result = load_workflow(&workflow_path).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ollama_model_validation() {
+        let _guard = crate::backend::acquire_test_lock().await;
+        let dir = tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+
+        // Set up mock health cache with a known model list for ollama
+        crate::backend::clear_health_cache();
+        let status = crate::backend::HealthStatus {
+            available: true,
+            version: Some("0.1.48".to_string()),
+            auth_method: None,
+            capabilities: None,
+            unusable_flags: Vec::new(),
+            models: vec![
+                crate::backend::ModelInfo {
+                    name: "llama3.2:latest".to_string(),
+                    modified_at: None,
+                    size: None,
+                    digest: None,
+                },
+                crate::backend::ModelInfo {
+                    name: "phi3:latest".to_string(),
+                    modified_at: None,
+                    size: None,
+                    digest: None,
+                },
+            ],
+        };
+        crate::backend::set_mock_health("ollama", status);
+
+        // Test 1: Valid model "llama3.2" (matches "llama3.2:latest") should pass
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-workflow"
+
+[[steps]]
+name = "step1"
+backend = "ollama"
+prompt = "test"
+model = "llama3.2"
+"#,
+        )
+        .unwrap();
+        let result = load_workflow(&workflow_path).await;
+        assert!(result.is_ok());
+
+        // Test 2: Invalid model "nonexistent:latest" should fail with remediation hint
+        std::fs::write(
+            &workflow_path,
+            r#"
+name = "test-workflow"
+
+[[steps]]
+name = "step1"
+backend = "ollama"
+prompt = "test"
+model = "nonexistent:latest"
+"#,
+        )
+        .unwrap();
+        let result = load_workflow(&workflow_path).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("requests ollama model 'nonexistent:latest' which is not present in HealthStatus.models"));
+        assert!(err.contains("ollama pull nonexistent:latest"));
+
+        // Clean up
+        crate::backend::clear_health_cache();
     }
 
     #[tokio::test]
