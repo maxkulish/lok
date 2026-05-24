@@ -596,19 +596,21 @@ impl GeminiBackend {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let version = stdout.lines().next().unwrap_or("").trim().to_string();
-        if version.is_empty() {
-            return Err(super::BackendError::Unavailable {
-                message: "opencode --version returned empty output".to_string(),
-            });
-        }
+        let version = stdout
+            .lines()
+            .map(|l| l.trim())
+            .find(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .ok_or_else(|| super::BackendError::Unavailable {
+                message: "opencode --version returned no valid version information".to_string(),
+            })?;
         Ok(version)
     }
 
     /// Detect Google auth from `~/.local/share/opencode/auth.json`.
     /// Returns the auth mode ("oauth" or "api-key") if a `google` key exists.
     fn detect_auth_from_file() -> Option<String> {
-        let home = std::env::var("HOME").ok()?;
+        let home = std::env::var_os("HOME")?;
         let auth_path = PathBuf::from(home).join(".local/share/opencode/auth.json");
         Self::detect_auth_from_file_at(&auth_path)
     }
@@ -628,12 +630,10 @@ impl GeminiBackend {
     /// Detect Google auth from GEMINI_API_KEY / GOOGLE_API_KEY environment variables.
     /// Returns "api-key" if either env var is set.
     fn detect_auth_from_env() -> Option<String> {
-        if std::env::var("GEMINI_API_KEY")
-            .ok()
+        if std::env::var_os("GEMINI_API_KEY")
             .filter(|v| !v.is_empty())
             .is_some()
-            || std::env::var("GOOGLE_API_KEY")
-                .ok()
+            || std::env::var_os("GOOGLE_API_KEY")
                 .filter(|v| !v.is_empty())
                 .is_some()
         {
@@ -827,16 +827,16 @@ impl super::Backend for GeminiBackend {
             (Some(method.clone()), Some(method), None)
         } else {
             match Self::detect_auth_from_cli(&cmd_str).await {
-                    Ok(Some(method)) => (Some(method.clone()), Some(method), None),
-                    Ok(None) | Err(_) => (
-                        Some("none".to_string()),
-                        Some("none".to_string()),
-                        Some(
-                            "No Google auth detected. Run `opencode auth login` to set up credentials (not `opencode login`)."
-                                .to_string(),
-                        ),
+                Ok(Some(method)) => (Some(method.clone()), Some(method), None),
+                Ok(None) | Err(_) => (
+                    Some("none".to_string()),
+                    Some("none".to_string()),
+                    Some(
+                        "No Google auth detected. Run `opencode auth login` to set up credentials (not `opencode login`)."
+                            .to_string(),
                     ),
-                }
+                ),
+            }
         };
 
         let available = auth_method.as_deref() != Some("none");
