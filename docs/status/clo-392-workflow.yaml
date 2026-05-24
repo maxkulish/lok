@@ -23,7 +23,7 @@ workflow:
   current_phase: complete
   status: complete
   created_at: '2026-05-24T06:52:54.711Z'
-  updated_at: '2026-05-24T11:30:14.015Z'
+  updated_at: '2026-05-24T14:36:43.028Z'
 phases:
   discovery:
     status: complete
@@ -165,9 +165,9 @@ phases:
       - L1 - Validation-gate bounded fix iteration prevents unbounded loops
       - L2 - Explicit return types prevent reviewer confusion under anyhow::Result
       - L3 - Hardcoded flag lists in workflow validation are a coupling hotspot
-    docs_pr_merge_commit: 642c0e6
-    docs_pr_number: '41'
-    docs_pr_url: https://github.com/maxkulish/lok/pull/41
+    docs_pr_merge_commit: null
+    docs_pr_number: 45
+    docs_pr_url: https://github.com/maxkulish/lok/pull/45
 history:
   - timestamp: '2026-05-24T06:52:54.711Z'
     action: workflow_started
@@ -373,5 +373,17 @@ history:
     details: >-
       Task CLO-392 fully completed. PR #40 merged (89cd121). Docs PR #41 merged (642c0e6). Linear updated to Done. 3
       lessons recorded.
+  - timestamp: '2026-05-24T11:31:00.837Z'
+    action: workflow_complete
+    phase: complete
+    details: >-
+      Task CLO-392 fully finalized. PR #40 merged (89cd121). Docs PR #41 merged (642c0e6). Workflow state synced to main
+      (7eb4685). Linear: Done. All 3 lessons recorded.
+  - timestamp: '2026-05-24T14:36:43.028Z'
+    action: docs_pr_merged
+    phase: complete
+    details: >-
+      Docs PR #45 opened: https://github.com/maxkulish/lok/pull/45. Files: docs/status/clo-392-workflow.yaml (clean
+      history from main, no conflicts), .pi/orchestrator/phases/pr.md, .pi/orchestrator/phases/complete.md
 task_title: 'FR-13: Codex health probe + version-aware unusable-flag matrix'
 task_url: https://linear.app/cloud-ai/issue/CLO-392/fr-13-codex-health-probe-version-aware-unusable-flag-matrix
