@@ -22,10 +22,10 @@ linear:
   branch_suggested: kmamemo/clo-394-fr-12a-replace-gemini-cli-backend-with-opencode-subprocess
   branch_actual: feat/clo-394
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-05-24T06:53:45.570Z'
-  updated_at: '2026-05-24T15:12:25.899Z'
+  updated_at: '2026-05-24T15:27:40.435Z'
 phases:
   discovery:
     status: complete
@@ -135,9 +135,10 @@ phases:
     plan_file: docs/plans/clo-394-opencode-gemini-backend.md
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
       - 84de3c6
+      - 95d4361
     assumption_outcomes:
       - evidence: src/backend/gemini.rs::tests::gemini_default_config_uses_opencode_command_and_run_json_args + 6 argv tests
         outcome: held
@@ -186,8 +187,19 @@ phases:
         outcome: held
         text: Existing in-tree workflows and tasks that select gemini continue to work with the migrated defaults.
     assumptions_revalidated: true
+    codex_report: docs/reviews/clo-394-codex-validation.md
+    codex_validated: true
+    codex_verdict: FAIL
+    gemini_validation_report: docs/reviews/clo-394-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-394-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
   pr:
-    status: pending
+    status: in_progress
+    pr_number: 48
+    pr_url: https://github.com/maxkulish/lok/pull/48
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-24T15:27:23Z'
   complete:
     status: pending
 history:
@@ -283,5 +295,30 @@ history:
     action: implementation_complete
     phase: implement
     details: All sub-tasks landed. fmt+clippy+test green (608+8+5+6+8 tests). 1 commit (84de3c6). Doctor hint fixed.
+  - timestamp: '2026-05-24T15:20:11.530Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL (multi-step text join, legacy npx path). Gemini: PASS_WITH_NOTES (minor style note). Synthesis:
+      PASS_WITH_NOTES (no Must-Fix items). 1 fix iteration applied: doc comment on parse_opencode_output.
+      fmt+clippy+test green.
+  - timestamp: '2026-05-24T15:20:43.848Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-24T15:21:15.506Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + test all pass (608+608+8+8+5+6 tests)'
+  - timestamp: '2026-05-24T15:21:37.903Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #48 opened: https://github.com/maxkulish/lok/pull/48'
+  - timestamp: '2026-05-24T15:27:40.435Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: >-
+      gemini-code-assist[bot] review (COMMENTED) observed on current head 95d4361 at 2026-05-24T15:27:23Z (+354s after
+      PR creation)
 task_title: 'FR-12a: Replace Gemini CLI backend with opencode subprocess'
 task_url: https://linear.app/cloud-ai/issue/CLO-394/fr-12a-replace-gemini-cli-backend-with-opencode-subprocess

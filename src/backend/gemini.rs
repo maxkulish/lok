@@ -54,8 +54,12 @@ impl GeminiBackend {
     }
 
     fn pick_u32(value: &serde_json::Value, keys: &[&str]) -> Option<u32> {
-        keys.iter()
-            .find_map(|key| value.get(key).and_then(|v| v.as_u64()).map(|n| n as u32))
+        keys.iter().find_map(|key| {
+            value
+                .get(key)
+                .and_then(|v| v.as_u64())
+                .map(|n| n.try_into().unwrap_or(u32::MAX))
+        })
     }
 
     pub(crate) fn parse_gemini_envelope(stdout: &str) -> Option<GeminiEnvelope> {
