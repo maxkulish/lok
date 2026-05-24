@@ -3,11 +3,15 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 use std::time::Instant;
 use tokio::process::Command;
+use tokio::time::timeout;
 
 use super::{BackendError, TokenUsage};
 
@@ -306,16 +310,172 @@ impl super::Backend for ClaudeBackend {
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
-        let available = match &self.mode {
-            ClaudeMode::Api { api_key, .. } => !api_key.expose_secret().is_empty(),
-            ClaudeMode::Cli { command, .. } => which::which(command).is_ok(),
-        };
-        if available {
-            Ok(super::HealthStatus::new_available())
-        } else {
-            Err(super::BackendError::Unavailable {
-                message: format!("Claude backend '{}' is not available", self.name()),
-            })
+        match &self.mode {
+            ClaudeMode::Api { .. } => self.probe_api().await,
+            ClaudeMode::Cli { .. } => self.probe_cli().await,
+        }
+    }
+}
+
+/// Per-version cache for `claude --help` output so we don't re-parse on every warmup.
+/// The lock is held only for a short HashMap lookup/insert — never across an `.await`.
+/// The Option<String> value distinguishes: key missing = never attempted,
+/// Some(Some(text)) = cached help output, Some(None) = attempted but failed.
+static HELP_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Compiled once — avoids re-compiling on every `parse_semver_line` call.
+static SEMVER_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"\d+\.\d+\.\d+").expect("valid semver regex"));
+
+/// Parse a semver string (X.Y.Z) from text using regex.
+fn parse_semver_line(text: &str) -> Option<String> {
+    SEMVER_RE.find(text).map(|m| m.as_str().to_string())
+}
+
+/// Get `claude --help` output, memoized per version string.
+/// If version is None, the result is not cached (re-runs on next warmup).
+async fn get_help_output(path: &Path, version: Option<&str>) -> Option<String> {
+    if let Some(v) = version {
+        // SAFETY: std::sync::Mutex is safe here because the lock is held for
+        // a very short, non-async operation (HashMap lookup). Do NOT hold this
+        // lock across an `.await` boundary.
+        match HELP_CACHE.lock().unwrap().get(v) {
+            // Cached success
+            Some(Some(text)) => return Some(text.clone()),
+            // Cached failure (previously attempted and failed)
+            Some(None) => return None,
+            // Not yet attempted — continue
+            None => {}
+        }
+    }
+    let output = timeout(
+        Duration::from_secs(2),
+        Command::new(path).arg("--help").kill_on_drop(true).output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    if !output.status.success() {
+        if let Some(v) = version {
+            HELP_CACHE.lock().unwrap().insert(v.to_string(), None);
+        }
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    if let Some(v) = version {
+        HELP_CACHE
+            .lock()
+            .unwrap()
+            .insert(v.to_string(), Some(text.clone()));
+    }
+    Some(text)
+}
+
+impl ClaudeBackend {
+    /// Offline API probe — checks ANTHROPIC_API_KEY and model non-empty.
+    async fn probe_api(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
+        match &self.mode {
+            ClaudeMode::Api { api_key, model, .. } => {
+                if api_key.expose_secret().trim().is_empty() {
+                    return Ok(super::HealthStatus {
+                        available: false,
+                        mode: Some("api".into()),
+                        diagnostic: Some("ANTHROPIC_API_KEY not set or empty".into()),
+                        ..super::HealthStatus::new_unavailable()
+                    });
+                }
+                if model.trim().is_empty() {
+                    return Ok(super::HealthStatus {
+                        available: false,
+                        mode: Some("api".into()),
+                        diagnostic: Some("model config is empty".into()),
+                        ..super::HealthStatus::new_unavailable()
+                    });
+                }
+                Ok(super::HealthStatus {
+                    available: true,
+                    mode: Some("api".into()),
+                    ..super::HealthStatus::new_available()
+                })
+            }
+            _ => Err(BackendError::Config {
+                message: "not API mode".to_string(),
+            }),
+        }
+    }
+
+    /// CLI probe — runs `claude --version` (2s) and `claude --help` (2s).
+    async fn probe_cli(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
+        match &self.mode {
+            ClaudeMode::Cli { command, .. } => {
+                // 1. Check binary exists
+                let path = match which::which(command) {
+                    Ok(p) => p,
+                    Err(_) => {
+                        return Ok(super::HealthStatus {
+                            available: false,
+                            mode: Some("cli".into()),
+                            diagnostic: Some(format!(
+                                "claude CLI command '{}' not found on PATH",
+                                command
+                            )),
+                            ..super::HealthStatus::new_unavailable()
+                        });
+                    }
+                };
+
+                // 2. Run claude --version with 2s budget
+                let version_output = timeout(
+                    Duration::from_secs(2),
+                    Command::new(&path)
+                        .arg("--version")
+                        .kill_on_drop(true)
+                        .output(),
+                )
+                .await;
+
+                let version = match version_output {
+                    Ok(Ok(output)) if output.status.success() => {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        parse_semver_line(&stdout)
+                    }
+                    Ok(Ok(_)) => None,
+                    Ok(Err(e)) => {
+                        eprintln!("claude --version IO error: {:?}", e);
+                        None
+                    }
+                    Err(_elapsed) => {
+                        eprintln!("claude --version timed out after 2s");
+                        None
+                    }
+                };
+
+                // 3. Check --help for --output-format json (cached per version)
+                let help_cache_entry = get_help_output(&path, version.as_deref()).await;
+                let supports_json = help_cache_entry
+                    .as_deref()
+                    .map(|help| help.contains("--output-format") && help.contains("json"))
+                    .unwrap_or(false);
+
+                // 4. Build unusable_flags if json not supported
+                let mut unusable_flags = Vec::new();
+                if !supports_json {
+                    eprintln!("claude CLI --output-format json not advertised in --help");
+                    unusable_flags.push("--output-format json".into());
+                }
+
+                Ok(super::HealthStatus {
+                    available: true,
+                    version,
+                    mode: Some("cli".into()),
+                    unusable_flags,
+                    ..super::HealthStatus::new_available()
+                })
+            }
+            _ => Err(BackendError::Config {
+                message: "not CLI mode".to_string(),
+            }),
         }
     }
 }
@@ -323,6 +483,57 @@ impl super::Backend for ClaudeBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::LazyLock;
+    use tokio::sync::Mutex as TokioMutex;
+
+    /// Global lock for tests that modify global state (PATH env var).
+    /// Prevents concurrent execution of CLI mock tests.
+    static PATH_LOCK: LazyLock<TokioMutex<()>> = LazyLock::new(|| TokioMutex::new(()));
+
+    /// Helper: creates a mock `claude` binary at a temp directory and returns
+    /// (TempDir, PathBuf to the binary, the original PATH for restoration).
+    /// The mock binary outputs `version_text` for `--version` and `help_text` for `--help`.
+    fn setup_mock_claude(
+        version_text: &str,
+        help_text: &str,
+    ) -> (tempfile::TempDir, std::path::PathBuf, Option<String>) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin_path = dir.path().join("claude");
+
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&bin_path).expect("create mock binary");
+            // Write help text to a file alongside the binary
+            let help_path = dir.path().join("help.txt");
+            std::fs::write(&help_path, help_text).expect("write help file");
+            let help_path_str = help_path.to_string_lossy().to_string();
+            writeln!(
+                f,
+                "#!/bin/sh\ncase \"$1\" in\n  --version) echo '{}' ;;\n  --help)    /bin/cat {help};;\n  *)\texit 1 ;;
+esac\n",
+                version_text,
+                help = help_path_str
+            )
+            .expect("write mock script");
+            use std::os::unix::fs::PermissionsExt;
+            f.set_permissions(std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+
+        let orig_path = std::env::var_os("PATH").map(|p| p.to_string_lossy().to_string());
+        std::env::set_var("PATH", dir.path().to_string_lossy().to_string());
+
+        (dir, bin_path, orig_path)
+    }
+
+    /// Helper: restores the original PATH after a mock test.
+    fn restore_path(orig_path: Option<String>) {
+        match orig_path {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+    }
 
     #[test]
     fn test_claude_response_deserialize_with_usage() {
@@ -349,5 +560,155 @@ mod tests {
         assert_eq!(parsed.content.len(), 1);
         assert!(parsed.model.is_none());
         assert!(parsed.usage.is_none());
+    }
+
+    // --- API probe tests ---
+
+    #[tokio::test]
+    async fn test_probe_api_valid_key_and_model() {
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Api {
+                api_key: SecretString::from("sk-ant-test123"),
+                model: "claude-sonnet-4-20250514".into(),
+                client: reqwest::Client::new(),
+            },
+        };
+        let result = backend.probe_api().await.expect("should not error");
+        assert!(result.available);
+        assert_eq!(result.mode, Some("api".into()));
+        assert!(result.diagnostic.is_none());
+        assert!(result.version.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_probe_api_empty_key() {
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Api {
+                api_key: SecretString::from(""),
+                model: "claude-sonnet-4-20250514".into(),
+                client: reqwest::Client::new(),
+            },
+        };
+        let result = backend.probe_api().await.expect("should not error");
+        assert!(!result.available);
+        assert_eq!(result.mode, Some("api".into()));
+        assert_eq!(
+            result.diagnostic.as_deref(),
+            Some("ANTHROPIC_API_KEY not set or empty")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_probe_api_empty_model() {
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Api {
+                api_key: SecretString::from("sk-ant-test123"),
+                model: "".into(),
+                client: reqwest::Client::new(),
+            },
+        };
+        let result = backend.probe_api().await.expect("should not error");
+        assert!(!result.available);
+        assert_eq!(result.mode, Some("api".into()));
+        assert_eq!(result.diagnostic.as_deref(), Some("model config is empty"));
+    }
+
+    // --- CLI probe tests ---
+
+    #[tokio::test]
+    async fn test_probe_cli_present_with_json_support() {
+        let _lock = PATH_LOCK.lock().await;
+        let (_dir, _path, orig_path) = setup_mock_claude(
+            "Claude CLI 0.42.0",
+            "Usage: claude [OPTIONS]
+--output-format <FORMAT>  [json|text]
+",
+        );
+
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Cli {
+                command: "claude".into(),
+                model: None,
+            },
+        };
+        let result = backend.probe_cli().await.expect("should not error");
+
+        restore_path(orig_path);
+
+        assert!(result.available);
+        assert_eq!(result.mode, Some("cli".into()));
+        assert_eq!(result.version.as_deref(), Some("0.42.0"));
+        assert!(result.unusable_flags.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_probe_cli_present_without_json_support() {
+        let _lock = PATH_LOCK.lock().await;
+        let (_dir, _path, orig_path) = setup_mock_claude(
+            "Claude CLI 1.2.3",
+            "Usage: claude [OPTIONS]
+  --model <MODEL>  Model name
+",
+        );
+
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Cli {
+                command: "claude".into(),
+                model: None,
+            },
+        };
+        let result = backend.probe_cli().await.expect("should not error");
+
+        restore_path(orig_path);
+
+        assert!(result.available);
+        assert_eq!(result.mode, Some("cli".into()));
+        assert_eq!(result.version.as_deref(), Some("1.2.3"));
+        assert_eq!(result.unusable_flags, vec!["--output-format json"]);
+    }
+
+    #[tokio::test]
+    async fn test_probe_cli_not_found() {
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Cli {
+                command: "claude-nonexistent-xyz".into(),
+                model: None,
+            },
+        };
+        let result = backend.probe_cli().await.expect("should not error");
+        assert!(!result.available);
+        assert_eq!(result.mode, Some("cli".into()));
+        assert!(result.diagnostic.is_some());
+        assert!(result
+            .diagnostic
+            .as_deref()
+            .unwrap()
+            .contains("not found on PATH"));
+    }
+
+    #[test]
+    fn test_parse_semver_line_standard() {
+        assert_eq!(
+            parse_semver_line("Claude CLI 0.42.0"),
+            Some("0.42.0".into())
+        );
+    }
+
+    #[test]
+    fn test_parse_semver_line_with_prefix() {
+        assert_eq!(
+            parse_semver_line("claude version 1.2.3 (build 456)"),
+            Some("1.2.3".into())
+        );
+    }
+
+    #[test]
+    fn test_parse_semver_line_no_version() {
+        assert_eq!(parse_semver_line("Claude CLI (unknown version)"), None);
+    }
+
+    #[test]
+    fn test_parse_semver_line_empty() {
+        assert_eq!(parse_semver_line(""), None);
     }
 }

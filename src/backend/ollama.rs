@@ -212,6 +212,8 @@ impl Backend for OllamaBackend {
         Ok(super::HealthStatus {
             available: true,
             version: Some(version_data.version),
+            mode: None,
+            diagnostic: None,
             auth_method: None,
             capabilities: None,
             unusable_flags: Vec::new(),
