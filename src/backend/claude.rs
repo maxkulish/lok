@@ -496,7 +496,11 @@ mod tests {
     fn setup_mock_claude(
         version_text: &str,
         help_text: &str,
-    ) -> (tempfile::TempDir, std::path::PathBuf, Option<String>) {
+    ) -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        Option<std::ffi::OsString>,
+    ) {
         let dir = tempfile::tempdir().expect("tempdir");
         let bin_path = dir.path().join("claude");
 
@@ -529,20 +533,18 @@ esac\n",
         // reachable. Use split_paths/join_paths so the separator and any
         // non-UTF8 entries in PATH are preserved correctly across platforms.
         let orig_path_os = std::env::var_os("PATH");
-        let mut paths: Vec<std::path::PathBuf> = match orig_path_os.as_ref() {
-            Some(p) => std::env::split_paths(p).collect(),
-            None => Vec::new(),
-        };
-        paths.insert(0, dir.path().to_path_buf());
-        let new_path = std::env::join_paths(paths).expect("failed to join PATH");
+        let new_path = std::env::join_paths(
+            std::iter::once(dir.path().to_path_buf())
+                .chain(orig_path_os.as_ref().into_iter().flat_map(std::env::split_paths)),
+        )
+        .expect("failed to join PATH");
         std::env::set_var("PATH", new_path);
-        let orig_path = orig_path_os.map(|p| p.to_string_lossy().to_string());
 
-        (dir, bin_path, orig_path)
+        (dir, bin_path, orig_path_os)
     }
 
     /// Helper: restores the original PATH after a mock test.
-    fn restore_path(orig_path: Option<String>) {
+    fn restore_path(orig_path: Option<std::ffi::OsString>) {
         match orig_path {
             Some(p) => std::env::set_var("PATH", p),
             None => std::env::remove_var("PATH"),
