@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-05-23
+**Last Updated**: 2026-05-24 (CLO-391 started)
 
 ## Summary
 
@@ -16,6 +16,15 @@
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 13 | 13 | Complete |
+| Phase 11: Health Checks | 1 | 0 | In Progress |
+
+## Phase 11: Health Checks
+
+Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 step 6 (Health Checks + Warmup)
+
+| Task | Title | Status | Dependencies |
+|------|-------|--------|--------------|
+| [CLO-391](https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli) | FR-13a: Claude dual-mode health probe (Api vs Cli) | In Progress | CLO-388 |
 
 ## Phase 2: Validation Pipeline
 
@@ -81,6 +90,8 @@ Driven by Mentis pre-PR validation incident (2026-04-07): Haiku returned unparse
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-212](https://linear.app/cloud-ai/issue/CLO-212) | Add configurable role routing with [roles]/[teams] config | Done | CLO-203 |
+
+| Phase 11: Health Checks | 1 | 0 | In Progress |
 
 ## Phase 10: Predictable CLI Execution (Phase 2 PRD v5)
 
