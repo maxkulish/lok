@@ -58,6 +58,11 @@ impl<'a> StepContext<'a> {
 pub struct HealthStatus {
     pub available: bool,
     pub version: Option<String>,
+    /// Discriminator for backends with multiple probe modes
+    /// (e.g. "api" | "cli" for Claude, None for single-mode backends).
+    pub mode: Option<String>,
+    /// Human-readable failure reason when available is false.
+    pub diagnostic: Option<String>,
     pub auth_method: Option<String>,
     pub capabilities: Option<serde_json::Value>,
     pub unusable_flags: Vec<String>,
@@ -77,6 +82,8 @@ impl HealthStatus {
         Self {
             available: true,
             version: None,
+            mode: None,
+            diagnostic: None,
             auth_method: None,
             capabilities: None,
             unusable_flags: Vec::new(),
@@ -88,6 +95,8 @@ impl HealthStatus {
         Self {
             available: false,
             version: None,
+            mode: None,
+            diagnostic: None,
             auth_method: None,
             capabilities: None,
             unusable_flags: Vec::new(),
@@ -164,6 +173,48 @@ mod tests {
         // Verify StepContext can be passed by value (e.g. through RetryExecutor)
         fn assert_copy<T: Copy>() {}
         assert_copy::<StepContext>();
+    }
+
+    #[test]
+    fn test_health_status_mode_and_diagnostic_serde() {
+        // Verify that mode and diagnostic fields round-trip through JSON serde
+        let status = HealthStatus {
+            available: false,
+            version: None,
+            mode: Some("api".into()),
+            diagnostic: Some("ANTHROPIC_API_KEY not set".into()),
+            auth_method: None,
+            capabilities: None,
+            unusable_flags: vec!["--output-format json".into()],
+            models: Vec::new(),
+        };
+
+        let json = serde_json::to_string(&status).unwrap();
+        let deserialized: HealthStatus = serde_json::from_str(&json).unwrap();
+
+        assert!(!deserialized.available);
+        assert_eq!(deserialized.mode, Some("api".into()));
+        assert_eq!(
+            deserialized.diagnostic,
+            Some("ANTHROPIC_API_KEY not set".into())
+        );
+        assert_eq!(
+            deserialized.unusable_flags,
+            vec!["--output-format json".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_health_status_constructors_default_to_mode_none() {
+        let available = HealthStatus::new_available();
+        assert!(available.available);
+        assert!(available.mode.is_none());
+        assert!(available.diagnostic.is_none());
+
+        let unavailable = HealthStatus::new_unavailable();
+        assert!(!unavailable.available);
+        assert!(unavailable.mode.is_none());
+        assert!(unavailable.diagnostic.is_none());
     }
 
     #[test]

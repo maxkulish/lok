@@ -64,13 +64,38 @@ update_workflow_state({
 })
 ```
 
-## Step 2 - Local cleanup
+## Step 2 - Local cleanup (with worktree safety guard)
+
+Before any cleanup, check for untracked or uncommitted files on the
+feature branch. `git branch -D` silently destroys uncommitted work.
 
 ```bash
+# Check for dirty files before switching away
+if git status --porcelain | grep -q .; then
+  echo "WARNING: dirty working tree detected. Uncommitted files will be lost."
+  echo ""
+  git status --short
+  echo ""
+  echo "Options:"
+  echo "  1. Commit these files to the feature branch and push (if they belong to this task)"
+  echo "  2. Stash them: git stash push -m \"clo-XX: uncommitted artifacts\""
+  echo "  3. Abort and inspect manually"
+  echo ""
+  echo "Refusing to run git branch -D with dirty files."
+  exit 1
+fi
+
 git checkout main
 git pull
-git branch -D feat/clo-XX-<slug>     # only if it still exists locally
+git branch -D feat/clo-XX-<slug>     # safe to force-delete — working tree was clean
 ```
+
+⚠️ **Never use `-D` (force delete) without checking `git status --porcelain`
+first.** The force flag bypasses Git's "unmerged branch" safety check.
+Untracked files (`.pi/lessons/*`, `docs/status/*`) are especially
+dangerous because they are not tracked by any branch and `git checkout`
+carries them silently — but `git branch -D` after checkout does not
+error. The file is simply orphaned.
 
 ## Step 3 - Project sync complete
 

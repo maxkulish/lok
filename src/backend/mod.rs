@@ -12,6 +12,7 @@ mod retry;
 #[allow(unused_imports)]
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
+pub use codex::FLAG_MATRIX;
 #[allow(unused_imports)]
 pub use context::{HealthStatus, Message, ModelInfo, Role, SandboxMode, StepContext, StepOptions};
 pub use retry::{RetryExecutor, RetryPolicy};
@@ -492,7 +493,7 @@ impl Engine {
                     futures.push(async move {
                         let name = backend.name().to_string();
                         let res = backend.health_check().await;
-                        (name, res)
+                        (name, Arc::clone(&backend), res)
                     });
                 }
                 Err(e) => {
@@ -514,11 +515,12 @@ impl Engine {
 
         // Process results outside the write lock to minimize lock hold time
         // (eprintln! can block on I/O, so it runs before the lock)
-        let mut updates: Vec<(String, HealthStatus)> = Vec::with_capacity(results.len());
-        for (name, res) in results {
+        let mut updates: Vec<(String, Arc<dyn Backend>, HealthStatus)> =
+            Vec::with_capacity(results.len());
+        for (name, backend, res) in results {
             match res {
                 Ok(status) => {
-                    updates.push((name, status));
+                    updates.push((name, backend, status));
                 }
                 Err(e) => {
                     eprintln!(
@@ -527,18 +529,24 @@ impl Engine {
                         name,
                         e
                     );
-                    updates.push((name, HealthStatus::new_unavailable()));
+                    updates.push((name, backend, HealthStatus::new_unavailable()));
                 }
             }
         }
 
-        // Update unified cache (backend was already inserted by create_backend)
+        // Update unified cache. Use insert() (not get_mut()) so the writeback is
+        // idempotent: if another caller clears the cache between create_backend and
+        // here, the probed result still lands instead of being silently dropped.
         let cache = get_backend_cache();
         let mut lock = cache.write().expect("backend cache lock poisoned");
-        for (name, status) in updates {
-            if let Some(entry) = lock.get_mut(&name) {
-                entry.health = Some(status);
-            }
+        for (name, backend, status) in updates {
+            lock.insert(
+                name,
+                CachedBackend {
+                    backend,
+                    health: Some(status),
+                },
+            );
         }
 
         Ok(())
@@ -1729,6 +1737,53 @@ mod tests {
         assert!(
             !health.available,
             "gemini health status should be unavailable"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_codex_health_check_cached() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'codex-cli 0.118.0'\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+
+        let mut config = Config::default();
+        config.backends.clear();
+        config.backends.insert(
+            "codex".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some(path.to_string_lossy().into_owned()),
+                ..Default::default()
+            },
+        );
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        let status = lock.get("codex").expect("codex should be in cache");
+        let health = status
+            .health
+            .as_ref()
+            .expect("codex should have been probed by warmup");
+        assert_eq!(health.version, Some("0.118.0".to_string()));
+        assert_eq!(
+            health.unusable_flags,
+            vec![
+                "--output-schema",
+                "-o",
+                "--ephemeral",
+                "--ignore-user-config",
+                "--ignore-rules"
+            ]
         );
     }
 

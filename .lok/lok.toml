@@ -25,8 +25,8 @@ timeout = 900
 [backends.gemini]
 enabled = true
 command = "opencode"
-args = ["run", "--format", "json"]
 model = "google/gemini-2.5-flash"
+args = ["run", "--model", "google/gemini-3.5-flash", "--dangerously-skip-permissions", "--format", "default"]
 timeout = 300
 
 [backends.ollama]
