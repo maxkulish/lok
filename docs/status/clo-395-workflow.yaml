@@ -16,7 +16,7 @@ linear:
   blocked_by: []
 workflow:
   current_phase: complete
-  status: active
+  status: complete
   created_at: '2026-05-24T20:09:11.998Z'
   updated_at: '2026-05-24T20:44:00.000Z'
 phases:
@@ -57,6 +57,10 @@ phases:
     merged_at: '2026-05-24T20:43:37Z'
     merge_commit: 99813584569be57d13226cbb051a54455e27637d
     aggregation_files_updated: true
+    lessons_file: .pi/lessons/clo-395-opencode-health-probe-lessons.md
+    docs_pr_number: 51
+    docs_pr_url: https://github.com/maxkulish/lok/pull/51
+    status: complete
 history:
   - timestamp: '2026-05-24T20:09:11.998Z'
     action: workflow_started
