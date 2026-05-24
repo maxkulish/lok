@@ -23,7 +23,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-24T06:52:54.711Z'
-  updated_at: '2026-05-24T10:49:28.388Z'
+  updated_at: '2026-05-24T10:57:15.762Z'
 phases:
   discovery:
     status: complete
@@ -110,8 +110,31 @@ phases:
     plan_file: docs/plans/clo-392-codex-health-probe.md
     approved: true
   implement:
-    status: pending
-    commits: []
+    status: validating
+    commits:
+      - 851fe3a
+    assumption_outcomes:
+      - evidence: >-
+          src/backend/codex.rs::parse_version_happy_path, parse_version_0_118, parse_version_0_119, parse_version_0_122,
+          parse_version_leading_noise
+        outcome: held
+        text: codex --version prints a semver-like triplet
+      - evidence: src/backend/codex.rs FLAG_MATRIX sourced from docs/investigations/codex-quick-ref.md
+        outcome: held
+        text: flag matrix is authoritative
+      - evidence: src/backend/mod.rs::warmup_backends cache.write() used once per invocation
+        outcome: held
+        text: BACKEND_CACHE write lock not poisoned during warmup
+      - evidence: New tests exercise pure functions directly without cache mock
+        outcome: held
+        text: Tests mock BACKEND_CACHE under shared test mutex
+      - evidence: which::which called only in health_check during warmup from single async task
+        outcome: held
+        text: which::which sync blocking acceptable for warmup-only
+      - evidence: FLAG_MATRIX documentation references quick-ref source doc
+        outcome: held
+        text: flag matrix kept in sync with quick-ref on every release
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -205,5 +228,17 @@ history:
       apply to `HealthStatus` fields; (2) L1 from timeout-layering - `tokio::time::timeout` is the outer wrapper, no
       inner preempting deadline; (3) L2 from CLO-373 - don't invent invariants for Codex output shapes beyond what's
       observed.
+  - timestamp: '2026-05-24T10:57:05.128Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST1 landed: FlagRequirement, FLAG_MATRIX, parse_version, compare_versions with 16 unit tests. Commit 851fe3a.'
+  - timestamp: '2026-05-24T10:57:11.661Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: '6 assumptions reviewed. held: 6, violated: 0, untested: 0. All assumptions verified by test suite and code review.'
+  - timestamp: '2026-05-24T10:57:15.762Z'
+    action: implementation_complete
+    phase: implement
+    details: All sub-tasks landed. fmt+clippy+test green. 621 tests pass. 1 commit.
 task_title: 'FR-13: Codex health probe + version-aware unusable-flag matrix'
 task_url: https://linear.app/cloud-ai/issue/CLO-392/fr-13-codex-health-probe-version-aware-unusable-flag-matrix

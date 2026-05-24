@@ -152,6 +152,42 @@ impl Workflow {
                 }
             }
 
+            // Validate Codex backend flags that are always used (--json, --ephemeral)
+            for backend_name in step.get_backends() {
+                if let Some(ref status) = crate::backend::get_backend_cache()
+                    .read()
+                    .expect("backend cache lock poisoned")
+                    .get(&backend_name)
+                    .and_then(|e| e.health.as_ref())
+                {
+                    if backend_name == "codex" && !status.unusable_flags.is_empty() {
+                        let flags_used = if step.model.is_some() {
+                            vec!["--json", "--ephemeral", "-o", "-s", "--model"]
+                        } else {
+                            vec!["--json", "--ephemeral", "-o", "-s"]
+                        };
+                        for flag in &status.unusable_flags {
+                            if flags_used.contains(&flag.as_str()) {
+                                if let Some(req) =
+                                    crate::backend::FLAG_MATRIX.iter().find(|r| r.flag == *flag)
+                                {
+                                    let (maj, min, pat) = req.min_version;
+                                    eprintln!(
+                                        "{} Codex step '{}' requires '{}' which is unavailable in v{} (requires >= {}.{}.{})"
+                                        ,
+                                        "warning:".yellow(),
+                                        step.name,
+                                        flag,
+                                        status.version.as_deref().unwrap_or("?"),
+                                        maj, min, pat,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Validate backend models if backend is "ollama" and a model is requested
             for backend_name in step.get_backends() {
                 if backend_name == "ollama" {
@@ -6929,5 +6965,59 @@ prompt = "p"
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn test_codex_unusable_flags_warning() {
+        let cache = crate::backend::get_backend_cache();
+        let mut lock = cache.write().expect("lock poisoned");
+        lock.clear();
+        lock.insert(
+            "codex".to_string(),
+            crate::backend::CachedBackend {
+                backend: std::sync::Arc::new(crate::backend::StubBackend {
+                    name: "codex".to_string(),
+                }),
+                health: Some(crate::backend::HealthStatus {
+                    available: true,
+                    version: Some("0.118.0".to_string()),
+                    unusable_flags: vec!["--ephemeral".to_string()],
+                    ..crate::backend::HealthStatus::new_available()
+                }),
+            },
+        );
+        drop(lock);
+
+        let wf = Workflow {
+            name: "test".to_string(),
+            description: None,
+            steps: vec![Step {
+                name: "s1".to_string(),
+                backend: "codex".to_string(),
+                backends: vec![],
+                model: None,
+                prompt: "ok".to_string(),
+                depends_on: vec![],
+                when: None,
+                shell: None,
+                apply_edits: false,
+                verify: None,
+                fix_retries: 0,
+                retries: 0,
+                retry_delay: default_retry_delay(),
+                for_each: None,
+                output_format: None,
+                continue_on_error: None,
+                min_deps_success: None,
+                timeout: None,
+                sandbox: None,
+                consensus: None,
+                validate: None,
+            }],
+            continue_on_error: false,
+            extends: None,
+            timeout: None,
+        };
+        assert!(wf.validate().is_ok());
     }
 }

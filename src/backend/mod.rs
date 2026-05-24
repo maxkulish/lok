@@ -12,6 +12,7 @@ mod retry;
 #[allow(unused_imports)]
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
+pub use codex::FLAG_MATRIX;
 #[allow(unused_imports)]
 pub use context::{HealthStatus, Message, ModelInfo, Role, SandboxMode, StepContext, StepOptions};
 pub use retry::{RetryExecutor, RetryPolicy};
@@ -532,13 +533,6 @@ impl Engine {
             }
         }
 
-        // Collect warnings before moves
-        let warnings: Vec<(String, HealthStatus)> = updates
-            .iter()
-            .filter(|(_, s)| !s.unusable_flags.is_empty())
-            .map(|(n, s)| (n.clone(), s.clone()))
-            .collect();
-
         // Update unified cache (backend was already inserted by create_backend)
         let cache = get_backend_cache();
         let mut lock = cache.write().expect("backend cache lock poisoned");
@@ -546,16 +540,6 @@ impl Engine {
             if let Some(entry) = lock.get_mut(&name) {
                 entry.health = Some(status);
             }
-        }
-
-        for (name, status) in warnings {
-            eprintln!(
-                "{} Backend '{}' reports unusable flags (v{}): {}",
-                "warning:".yellow(),
-                name,
-                status.version.as_deref().unwrap_or("?"),
-                status.unusable_flags.join(", "),
-            );
         }
 
         Ok(())
@@ -1746,6 +1730,53 @@ mod tests {
         assert!(
             !health.available,
             "gemini health status should be unavailable"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_codex_health_check_cached() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'codex-cli 0.118.0'\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+
+        let mut config = Config::default();
+        config.backends.clear();
+        config.backends.insert(
+            "codex".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                command: Some(path.to_string_lossy().into_owned()),
+                ..Default::default()
+            },
+        );
+
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        let status = lock.get("codex").expect("codex should be in cache");
+        let health = status
+            .health
+            .as_ref()
+            .expect("codex should have been probed by warmup");
+        assert_eq!(health.version, Some("0.118.0".to_string()));
+        assert_eq!(
+            health.unusable_flags,
+            vec![
+                "--output-schema",
+                "-o",
+                "--ephemeral",
+                "--ignore-user-config",
+                "--ignore-rules"
+            ]
         );
     }
 

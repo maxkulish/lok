@@ -14,14 +14,14 @@ pub struct CodexBackend {
 }
 
 /// One entry in the flag matrix.
-struct FlagRequirement {
-    flag: &'static str,
-    min_version: (u32, u32, u32), // (major, minor, patch)
+pub struct FlagRequirement {
+    pub flag: &'static str,
+    pub min_version: (u32, u32, u32), // (major, minor, patch)
 }
 
 /// Canonical flag-version matrix for Codex CLI.
 /// Sourced from docs/investigations/codex-quick-ref.md.
-const FLAG_MATRIX: &[FlagRequirement] = &[
+pub const FLAG_MATRIX: &[FlagRequirement] = &[
     FlagRequirement {
         flag: "--json",
         min_version: (0, 118, 0),
@@ -339,7 +339,10 @@ impl super::Backend for CodexBackend {
         // 2. Version probe with 2 s timeout
         let output = tokio::time::timeout(
             Duration::from_secs(2),
-            Command::new(&cmd).arg("--version").output(),
+            Command::new(&cmd)
+                .arg("--version")
+                .kill_on_drop(true)
+                .output(),
         )
         .await
         .map_err(|_| super::BackendError::Unavailable {
@@ -691,7 +694,9 @@ mod tests {
         );
     }
 
-    // ── parse_version tests ─────────────────────────────────────────────
+    // ── parse_version tests ───────────────────────────────
+
+    use crate::backend::Backend;
 
     #[test]
     fn parse_version_happy_path() {
@@ -816,5 +821,98 @@ mod tests {
             .map(|req| req.flag)
             .collect();
         assert!(unusable.is_empty());
+    }
+
+    #[tokio::test]
+    async fn codex_health_check_success() {
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'codex-cli 0.119.0'\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+
+        let cfg = crate::config::BackendConfig {
+            command: Some(path.to_string_lossy().into_owned()),
+            args: vec![" exec".to_string(), "--json".to_string()],
+            ..Default::default()
+        };
+        let backend = CodexBackend::new(&cfg).unwrap();
+        let status = backend.health_check().await.unwrap();
+        assert!(status.available);
+        assert_eq!(status.version, Some("0.119.0".to_string()));
+        assert_eq!(
+            status.unusable_flags,
+            vec!["--ignore-user-config", "--ignore-rules"]
+        );
+    }
+
+    #[tokio::test]
+    async fn codex_health_check_unparseable() {
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'nightly'\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+
+        let cfg = crate::config::BackendConfig {
+            command: Some(path.to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+        let backend = CodexBackend::new(&cfg).unwrap();
+        let err = backend.health_check().await.unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Failed to parse codex version"), "{}", msg);
+    }
+
+    #[tokio::test]
+    async fn codex_health_check_bad_exit() {
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'broken' >&2\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+
+        let cfg = crate::config::BackendConfig {
+            command: Some(path.to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+        let backend = CodexBackend::new(&cfg).unwrap();
+        let err = backend.health_check().await.unwrap_err();
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("exited 1") || msg.contains("codex --version exited"),
+            "{}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn codex_health_check_timeout() {
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\nsleep 10\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+
+        let cfg = crate::config::BackendConfig {
+            command: Some(path.to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+        let backend = CodexBackend::new(&cfg).unwrap();
+        let err = backend.health_check().await.unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("timed out"), "{}", msg);
     }
 }
