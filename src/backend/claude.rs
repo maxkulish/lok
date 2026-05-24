@@ -496,7 +496,11 @@ mod tests {
     fn setup_mock_claude(
         version_text: &str,
         help_text: &str,
-    ) -> (tempfile::TempDir, std::path::PathBuf, Option<String>) {
+    ) -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        Option<std::ffi::OsString>,
+    ) {
         let dir = tempfile::tempdir().expect("tempdir");
         let bin_path = dir.path().join("claude");
 
@@ -526,20 +530,21 @@ esac\n",
         // and strip away /bin, /usr/bin, etc. — breaking any sibling test
         // that shells out to `sleep`, `echo`, `cat`, etc. Prepending keeps
         // the mock `claude` winning the lookup while leaving system dirs
-        // reachable.
-        let orig_path = std::env::var_os("PATH").map(|p| p.to_string_lossy().to_string());
-        let mock_dir = dir.path().to_string_lossy().to_string();
-        let new_path = match orig_path.as_deref() {
-            Some(orig) => format!("{}:{}", mock_dir, orig),
-            None => mock_dir,
-        };
+        // reachable. Use split_paths/join_paths so the separator and any
+        // non-UTF8 entries in PATH are preserved correctly across platforms.
+        let orig_path_os = std::env::var_os("PATH");
+        let new_path = std::env::join_paths(
+            std::iter::once(dir.path().to_path_buf())
+                .chain(orig_path_os.as_ref().into_iter().flat_map(std::env::split_paths)),
+        )
+        .expect("failed to join PATH");
         std::env::set_var("PATH", new_path);
 
-        (dir, bin_path, orig_path)
+        (dir, bin_path, orig_path_os)
     }
 
     /// Helper: restores the original PATH after a mock test.
-    fn restore_path(orig_path: Option<String>) {
+    fn restore_path(orig_path: Option<std::ffi::OsString>) {
         match orig_path {
             Some(p) => std::env::set_var("PATH", p),
             None => std::env::remove_var("PATH"),
