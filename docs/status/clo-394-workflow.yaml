@@ -25,7 +25,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-24T06:53:45.570Z'
-  updated_at: '2026-05-24T15:27:40.435Z'
+  updated_at: '2026-05-24T15:32:23.934Z'
 phases:
   discovery:
     status: complete
@@ -320,5 +320,11 @@ history:
     details: >-
       gemini-code-assist[bot] review (COMMENTED) observed on current head 95d4361 at 2026-05-24T15:27:23Z (+354s after
       PR creation)
+  - timestamp: '2026-05-24T15:32:23.934Z'
+    action: pre_flight_checks_passed
+    phase: implement
+    details: >-
+      Pre-merge gate green: fmt + clippy + 635 tests all pass (608 unit + 8 codex_fixtures + 8 codex_parse_output + 5
+      gemini_fixtures + 6 integration)
 task_title: 'FR-12a: Replace Gemini CLI backend with opencode subprocess'
 task_url: https://linear.app/cloud-ai/issue/CLO-394/fr-12a-replace-gemini-cli-backend-with-opencode-subprocess
