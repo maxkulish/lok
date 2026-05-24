@@ -88,6 +88,62 @@ use tokio::process::Command;
 /// Minimum timeout value in milliseconds (values 1 to MIN-1 are rejected)
 const MIN_TIMEOUT_MS: u64 = 100;
 
+/// Collect warnings for Codex steps that depend on flags reported as
+/// unusable by the backend health probe.  Returns a list of formatted
+/// warning strings so callers can choose to print (or test) them.
+fn codex_unusable_flag_warnings(step: &Step) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    for backend_name in step.get_backends() {
+        if backend_name != "codex" {
+            continue;
+        }
+
+        let status = match crate::backend::get_backend_cache()
+            .read()
+            .expect("backend cache lock poisoned")
+            .get(&backend_name)
+            .and_then(|e| e.health.clone())
+        {
+            Some(s) => s,
+            None => continue,
+        };
+
+        if status.unusable_flags.is_empty() {
+            continue;
+        }
+
+        let flags_used: [&'static str; 5] = if step.model.is_some() {
+            ["--json", "--ephemeral", "-o", "-s", "--model"]
+        } else {
+            // The last slot is a sentinel – we only iterate over 4 entries
+            ["--json", "--ephemeral", "-o", "-s", ""]
+        };
+        let flags_len = if step.model.is_some() { 5 } else { 4 };
+
+        for flag in &status.unusable_flags {
+            if flags_used[..flags_len].contains(&flag.as_str()) {
+                if let Some(req) = crate::backend::FLAG_MATRIX
+                    .iter()
+                    .find(|r| r.flag == flag.as_str())
+                {
+                    let (maj, min, pat) = req.min_version;
+                    warnings.push(format!(
+                        "Codex step '{}' requires '{}' which is unavailable in v{} (requires >= {}.{}.{})"
+                        ,
+                        step.name,
+                        flag,
+                        status.version.as_deref().unwrap_or("?"),
+                        maj, min, pat,
+                    ));
+                }
+            }
+        }
+    }
+
+    warnings
+}
+
 /// Default verify output cap: 1 MiB per stream. Matches
 /// `apply_verify::edit_parser::MAX_INPUT_SIZE` by design (C-12).
 const DEFAULT_VERIFY_MAX_OUTPUT_BYTES: usize = 1_048_576;
@@ -153,39 +209,8 @@ impl Workflow {
             }
 
             // Validate Codex backend flags that are always used (--json, --ephemeral)
-            for backend_name in step.get_backends() {
-                if let Some(ref status) = crate::backend::get_backend_cache()
-                    .read()
-                    .expect("backend cache lock poisoned")
-                    .get(&backend_name)
-                    .and_then(|e| e.health.as_ref())
-                {
-                    if backend_name == "codex" && !status.unusable_flags.is_empty() {
-                        let flags_used = if step.model.is_some() {
-                            vec!["--json", "--ephemeral", "-o", "-s", "--model"]
-                        } else {
-                            vec!["--json", "--ephemeral", "-o", "-s"]
-                        };
-                        for flag in &status.unusable_flags {
-                            if flags_used.contains(&flag.as_str()) {
-                                if let Some(req) =
-                                    crate::backend::FLAG_MATRIX.iter().find(|r| r.flag == *flag)
-                                {
-                                    let (maj, min, pat) = req.min_version;
-                                    eprintln!(
-                                        "{} Codex step '{}' requires '{}' which is unavailable in v{} (requires >= {}.{}.{})"
-                                        ,
-                                        "warning:".yellow(),
-                                        step.name,
-                                        flag,
-                                        status.version.as_deref().unwrap_or("?"),
-                                        maj, min, pat,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
+            for warning in codex_unusable_flag_warnings(step) {
+                eprintln!("{} {}", "warning:".yellow(), warning);
             }
 
             // Validate backend models if backend is "ollama" and a model is requested
@@ -7018,6 +7043,12 @@ prompt = "p"
             extends: None,
             timeout: None,
         };
+        let step = &wf.steps[0];
+        let warnings = codex_unusable_flag_warnings(step);
+        assert_eq!(
+            warnings,
+            vec!["Codex step 's1' requires '--ephemeral' which is unavailable in v0.118.0 (requires >= 0.119.0)"]
+        );
         assert!(wf.validate().is_ok());
     }
 }

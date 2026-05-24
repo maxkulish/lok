@@ -58,22 +58,22 @@ pub const FLAG_MATRIX: &[FlagRequirement] = &[
 
 /// Parse a version string, scanning for the first `major.minor.patch` triplet.
 /// Uses manual scanning (no regex) to keep dependencies zero for this slice.
-fn parse_version(s: &str) -> Result<(u32, u32, u32), super::BackendError> {
+fn parse_version(s: &str) -> std::result::Result<(u32, u32, u32), super::BackendError> {
     let line = s.lines().next().unwrap_or(s);
     let mut digits = Vec::with_capacity(3);
-    let mut current = 0u32;
+    let mut current = 0u64;
     let mut in_number = false;
     for c in line.chars() {
         if c.is_ascii_digit() {
             in_number = true;
-            current = current * 10 + (c as u32 - '0' as u32);
+            current = current * 10 + (c as u64 - '0' as u64);
         } else if c == '.' && in_number {
-            digits.push(current);
+            digits.push(current as u32);
             current = 0;
             in_number = false;
         } else {
             if in_number {
-                digits.push(current);
+                digits.push(current as u32);
                 current = 0;
                 in_number = false;
             }
@@ -85,7 +85,7 @@ fn parse_version(s: &str) -> Result<(u32, u32, u32), super::BackendError> {
         }
     }
     if in_number {
-        digits.push(current);
+        digits.push(current as u32);
     }
     if digits.len() != 3 {
         return Err(super::BackendError::Unavailable {

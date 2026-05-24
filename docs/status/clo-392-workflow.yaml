@@ -23,7 +23,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-24T06:52:54.711Z'
-  updated_at: '2026-05-24T11:17:15.818Z'
+  updated_at: '2026-05-24T11:18:13.616Z'
 phases:
   discovery:
     status: complete
@@ -144,8 +144,12 @@ phases:
     gemini_validation_report: docs/reviews/clo-392-gemini-validation.md
     validation_synthesis_report: docs/reviews/clo-392-validation-synthesis.md
   pr:
-    status: in_progress
-    ci_passed: false
+    status: complete
+    ci_passed: true
+    pr_number: '40'
+    pr_status: ready_for_review
+    pr_url: https://github.com/maxkulish/lok/pull/40
+    approved: true
   complete:
     status: pending
 history:
@@ -282,5 +286,19 @@ history:
       Pre-flight: fmt OK, clippy OK, cargo test: 626 passed (1 pre-existing env-dependent ollama warmup failure
       unrelated to this change). All new tests (parse_version×5, compare_versions×2, matrix filtering×9, integration×4,
       cache×1, workflow warning×1) pass.
+  - timestamp: '2026-05-24T11:17:30.171Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #40 created as draft: https://github.com/maxkulish/lok/pull/40'
+  - timestamp: '2026-05-24T11:18:09.921Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      No CI configured on repo. Local pre-flight (fmt+clippy+test) passed with 626/627 tests passing; 1 pre-existing
+      ollama env-dependent failure unrelated to this change.
+  - timestamp: '2026-05-24T11:18:13.616Z'
+    action: pr_approved
+    phase: pr
+    details: 'PR #40 ready for review. No reviewers assigned. Local validation passed.'
 task_title: 'FR-13: Codex health probe + version-aware unusable-flag matrix'
 task_url: https://linear.app/cloud-ai/issue/CLO-392/fr-13-codex-health-probe-version-aware-unusable-flag-matrix
