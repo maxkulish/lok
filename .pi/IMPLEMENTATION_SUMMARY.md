@@ -166,7 +166,7 @@ Optional environment overrides:
 | Variable | Default | Purpose |
 |---|---|---|
 | `CODEX_MODEL` | `gpt-5.5` | Codex reviewer model |
-| `GEMINI_MODEL` | `gemini-3.1-pro-preview` | Primary Gemini model |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | Primary Gemini model |
 | `GEMINI_FALLBACK_MODEL` | `gemini-2.5-pro` | Secondary Gemini model if primary returns empty |
 
 Pipeline shape: `health_check` -> `codex_review` + `gemini_review`

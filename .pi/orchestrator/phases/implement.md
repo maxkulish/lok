@@ -215,7 +215,7 @@ Optional environment overrides:
 | Variable | Default | Purpose |
 |---|---|---|
 | `CODEX_MODEL` | `gpt-5.5` | Codex model used for the codex reviewer |
-| `GEMINI_MODEL` | `gemini-3.1-pro-preview` | Primary Gemini model |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | Primary Gemini model |
 | `GEMINI_FALLBACK_MODEL` | `gemini-2.5-pro` | Used if the primary returns empty |
 
 The workflow writes (and the rest of this phase reads):
@@ -304,7 +304,7 @@ update_workflow_state({
   },
   token_usage: [
     { provider: "codex", model: "gpt-5.5", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-codex" },
-    { provider: "gemini", model: "gemini-3.1-pro-preview", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-gemini" },
+    { provider: "gemini", model: "gemini-3.5-flash", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-gemini" },
     { provider: "claude", model: "claude-opus-4", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-synthesis" }
   ]
 })

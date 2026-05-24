@@ -20,11 +20,11 @@ table is a routing aid.
 | Phase                   | Persona                 | Default model               | Role            | Output                                              |
 |-------------------------|-------------------------|-----------------------------|-----------------|-----------------------------------------------------|
 | `design`                | `claude-designer.md`    | Claude Opus 4.x             | Drafter         | `docs/designs/clo-XX-<slug>.md`                     |
-| `design`                | `gemini-architect.md`   | `gemini-3.1-pro-preview`    | Design reviewer | `docs/reviews/clo-XX-design-gemini.md`              |
-| `spec`                  | `gemini-architect.md`   | `gemini-3.1-pro-preview`    | Spec reviewer   | `docs/reviews/clo-XX-spec-gemini.md`                |
+| `design`                | `gemini-architect.md`   | `gemini-3.5-flash`    | Design reviewer | `docs/reviews/clo-XX-design-gemini.md`              |
+| `spec`                  | `gemini-architect.md`   | `gemini-3.5-flash`    | Spec reviewer   | `docs/reviews/clo-XX-spec-gemini.md`                |
 | `spec`                  | `ollama-rust-reviewer.md` | local Ollama (Qwen / similar) | Spec reviewer (footguns) | `docs/reviews/clo-XX-spec-ollama.md`        |
 | `implement` (step 4)    | `codex-pre-pr.md`       | `gpt-5.5` (Codex)           | Validation gate | `docs/reviews/clo-XX-codex-validation.md`           |
-| `implement` (step 4)    | `gemini-architect.md`   | `gemini-3.1-pro-preview`    | Validation gate | `docs/reviews/clo-XX-gemini-validation.md`          |
+| `implement` (step 4)    | `gemini-architect.md`   | `gemini-3.5-flash`    | Validation gate | `docs/reviews/clo-XX-gemini-validation.md`          |
 | `implement` (step 4)    | `security-reviewer.md`  | Claude Opus 4.x             | Conditional - LLM backend / secret handling changes | inline in validation synthesis |
 | `implement` (step 4)    | `ops-reviewer.md`       | Claude Opus 4.x             | Conditional - rarely (lok is a CLI; only applies to deploy / packaging changes) | inline in validation synthesis |
 
