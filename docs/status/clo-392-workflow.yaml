@@ -373,5 +373,11 @@ history:
     details: >-
       Task CLO-392 fully completed. PR #40 merged (89cd121). Docs PR #41 merged (642c0e6). Linear updated to Done. 3
       lessons recorded.
+  - timestamp: '2026-05-24T11:31:00.837Z'
+    action: workflow_complete
+    phase: complete
+    details: >-
+      Task CLO-392 fully finalized. PR #40 merged (89cd121). Docs PR #41 merged (642c0e6). Workflow state synced to main
+      (7eb4685). Linear: Done. All 3 lessons recorded.
 task_title: 'FR-13: Codex health probe + version-aware unusable-flag matrix'
 task_url: https://linear.app/cloud-ai/issue/CLO-392/fr-13-codex-health-probe-version-aware-unusable-flag-matrix
