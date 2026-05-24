@@ -493,7 +493,7 @@ impl Engine {
                     futures.push(async move {
                         let name = backend.name().to_string();
                         let res = backend.health_check().await;
-                        (name, res)
+                        (name, Arc::clone(&backend), res)
                     });
                 }
                 Err(e) => {
@@ -515,11 +515,12 @@ impl Engine {
 
         // Process results outside the write lock to minimize lock hold time
         // (eprintln! can block on I/O, so it runs before the lock)
-        let mut updates: Vec<(String, HealthStatus)> = Vec::with_capacity(results.len());
-        for (name, res) in results {
+        let mut updates: Vec<(String, Arc<dyn Backend>, HealthStatus)> =
+            Vec::with_capacity(results.len());
+        for (name, backend, res) in results {
             match res {
                 Ok(status) => {
-                    updates.push((name, status));
+                    updates.push((name, backend, status));
                 }
                 Err(e) => {
                     eprintln!(
@@ -528,18 +529,24 @@ impl Engine {
                         name,
                         e
                     );
-                    updates.push((name, HealthStatus::new_unavailable()));
+                    updates.push((name, backend, HealthStatus::new_unavailable()));
                 }
             }
         }
 
-        // Update unified cache (backend was already inserted by create_backend)
+        // Update unified cache. Use insert() (not get_mut()) so the writeback is
+        // idempotent: if another caller clears the cache between create_backend and
+        // here, the probed result still lands instead of being silently dropped.
         let cache = get_backend_cache();
         let mut lock = cache.write().expect("backend cache lock poisoned");
-        for (name, status) in updates {
-            if let Some(entry) = lock.get_mut(&name) {
-                entry.health = Some(status);
-            }
+        for (name, backend, status) in updates {
+            lock.insert(
+                name,
+                CachedBackend {
+                    backend,
+                    health: Some(status),
+                },
+            );
         }
 
         Ok(())

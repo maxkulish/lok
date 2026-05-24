@@ -521,8 +521,19 @@ esac\n",
                 .expect("chmod");
         }
 
+        // Prepend the mock dir to PATH rather than replacing it. PATH is
+        // process-global, so a replace would leak into other parallel tests
+        // and strip away /bin, /usr/bin, etc. — breaking any sibling test
+        // that shells out to `sleep`, `echo`, `cat`, etc. Prepending keeps
+        // the mock `claude` winning the lookup while leaving system dirs
+        // reachable.
         let orig_path = std::env::var_os("PATH").map(|p| p.to_string_lossy().to_string());
-        std::env::set_var("PATH", dir.path().to_string_lossy().to_string());
+        let mock_dir = dir.path().to_string_lossy().to_string();
+        let new_path = match orig_path.as_deref() {
+            Some(orig) => format!("{}:{}", mock_dir, orig),
+            None => mock_dir,
+        };
+        std::env::set_var("PATH", new_path);
 
         (dir, bin_path, orig_path)
     }

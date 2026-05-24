@@ -179,7 +179,7 @@ impl Backend for OllamaBackend {
         let version_res = match self
             .client
             .get(&version_url)
-            .timeout(std::time::Duration::from_secs(2))
+            .timeout(std::time::Duration::from_secs(5))
             .send()
             .await
         {
@@ -196,7 +196,7 @@ impl Backend for OllamaBackend {
         let tags_res = match self
             .client
             .get(&tags_url)
-            .timeout(std::time::Duration::from_secs(2))
+            .timeout(std::time::Duration::from_secs(5))
             .send()
             .await
         {
