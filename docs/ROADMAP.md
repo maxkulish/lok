@@ -25,6 +25,7 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 step 6 (Heal
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-391](https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli) | FR-13a: Claude dual-mode health probe (Api vs Cli) | In Progress | CLO-388 |
+| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 14 | 13 | In Progress |
 
 ## Phase 2: Validation Pipeline
 
@@ -112,3 +113,4 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 release plan
 | [CLO-384](https://linear.app/cloud-ai/issue/CLO-384/fr-23-per-step-timeout-layered-override-step-backend-global) | FR-23: per-step `timeout` layered override (step > backend > global) | Done | CLO-371 |
 | [CLO-388](https://linear.app/cloud-ai/issue/CLO-388) | FR-9a + FR-10 + FR-15: Engine warmup + HealthCache + sync is_available cache-only | Done | CLO-371 |
 | [CLO-389](https://linear.app/cloud-ai/issue/CLO-389) | FR-11 + FR-11a: Ollama health probe (/api/version + /api/tags) + ModelInfo + workflow model validation | Done | CLO-388 |
+| [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | In Progress | CLO-388, CLO-371 |

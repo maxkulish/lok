@@ -22,10 +22,10 @@ linear:
   priority: 2
   branch_actual: feat/clo-391-claude-dual-health-probe
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: checkpoint
   created_at: '2026-05-24T06:52:00.863Z'
-  updated_at: '2026-05-24T11:34:53.936Z'
+  updated_at: '2026-05-24T11:52:13.981Z'
 phases:
   discovery:
     status: complete
@@ -68,10 +68,12 @@ phases:
     plan_file: docs/plans/clo-391-claude-dual-health-probe.md
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
-      - e1f0e31
       - 747a681
+      - e1f0e31
+      - ea1def2
+      - 8e2d28c
     assumption_outcomes:
       - evidence: src/backend/claude.rs::probe_api() — only checks api_key.expose_secret().trim() and model.trim()
         outcome: held
@@ -86,8 +88,36 @@ phases:
         outcome: held
         text: A single ClaudeBackend is in one mode at a time
     assumptions_revalidated: true
+    codex_report: docs/reviews/clo-391-codex-validation.md
+    codex_validated: true
+    codex_verdict: FAIL
+    gemini_validation_report: docs/reviews/clo-391-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-391-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    token_usage:
+      - recorded_at: '2026-05-24T11:50:55.243Z'
+        provider: codex
+        model: gpt-5.5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-05-24T11:50:55.243Z'
+        provider: gemini
+        model: gemini-3.1-pro-preview
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-gemini
+      - recorded_at: '2026-05-24T11:50:55.243Z'
+        provider: claude
+        model: claude-opus-4
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
   pr:
-    status: pending
+    status: in_progress
+    pr_number: 43
+    pr_url: https://github.com/maxkulish/lok/pull/43
   complete:
     status: pending
 history:
@@ -197,5 +227,31 @@ history:
     details: >-
       All sub-tasks landed (ST1-ST12). 12 new claude probe tests passing. 2 pre-existing flaky tests unrelated.
       fmt+clippy+test green.
+  - timestamp: '2026-05-24T11:50:55.243Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL. Gemini: REVIEW_FAILED. Synthesis: PASS_WITH_NOTES. 1 fix iteration applied (cliplt, kill_on_drop,
+      eprintln consistency).
+  - timestamp: '2026-05-24T11:51:05.321Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      Validation fix iteration committed: ea1def2 (fixes) + 8e2d28c (synthesis re-validation). Commits: 747a681,
+      e1f0e31, ea1def2, 8e2d28c
+  - timestamp: '2026-05-24T11:51:24.518Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-24T11:51:53.936Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate: fmt + clippy green. 3 test failures are pre-existing flaky (PATH/tempfile interference in parallel
+      runner). All claude probe tests pass.
+  - timestamp: '2026-05-24T11:52:13.981Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #43 opened: https://github.com/maxkulish/lok/pull/43'
 task_title: 'FR-13a: Claude dual-mode health probe (Api vs Cli)'
 task_url: https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli
