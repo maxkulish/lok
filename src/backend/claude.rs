@@ -534,8 +534,12 @@ esac\n",
         // non-UTF8 entries in PATH are preserved correctly across platforms.
         let orig_path_os = std::env::var_os("PATH");
         let new_path = std::env::join_paths(
-            std::iter::once(dir.path().to_path_buf())
-                .chain(orig_path_os.as_ref().into_iter().flat_map(std::env::split_paths)),
+            std::iter::once(dir.path().to_path_buf()).chain(
+                orig_path_os
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(std::env::split_paths),
+            ),
         )
         .expect("failed to join PATH");
         std::env::set_var("PATH", new_path);
