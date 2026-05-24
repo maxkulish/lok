@@ -10,7 +10,7 @@ shell = """
 GEMINI_OK=false
 OLLAMA_OK=false
 
-if timeout 10 gemini --model "${GEMINI_MODEL:-gemini-3.1-pro-preview}" -p "reply OK" -o text 2>/dev/null | grep -qi "ok"; then
+if timeout 15 opencode run "reply OK" --model "google/${GEMINI_MODEL:-gemini-3.5-flash}" --dangerously-skip-permissions 2>/dev/null | grep -qi "ok"; then
   GEMINI_OK=true
 fi
 
@@ -35,20 +35,22 @@ if echo '{{ steps.health_check.output }}' | grep -q 'gemini=false'; then
 fi
 
 PROMPT=$(sed 's|__DOC_PATH__|{{ arg.1 }}|g' .lok/prompts/design-review-prompt.md)
-PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.1-pro-preview}"
+PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.5-flash}"
 FALLBACK_MODEL="${GEMINI_FALLBACK_MODEL:-gemini-2.5-pro}"
 
-OUTPUT=$(timeout 300 gemini --model "$PRIMARY_MODEL" -y --sandbox \
-  --include-directories docs,src \
-  -p "$PROMPT" -o text 2>/tmp/lok-gemini-stderr.log)
+OUTPUT=$(timeout 300 opencode run "$PROMPT" \
+  --model "google/$PRIMARY_MODEL" \
+  --dangerously-skip-permissions \
+  --dir "$PWD" 2>/tmp/lok-opencode-stderr.log)
 
 if [ -z "$OUTPUT" ] || [ ${#OUTPUT} -lt 100 ]; then
-  OUTPUT=$(timeout 300 gemini --model "$FALLBACK_MODEL" -y --sandbox \
-    --include-directories docs,src \
-    -p "$PROMPT" -o text 2>/tmp/lok-gemini-stderr.log)
+  OUTPUT=$(timeout 300 opencode run "$PROMPT" \
+    --model "google/$FALLBACK_MODEL" \
+    --dangerously-skip-permissions \
+    --dir "$PWD" 2>/tmp/lok-opencode-stderr.log)
 
   if [ -z "$OUTPUT" ] || [ ${#OUTPUT} -lt 100 ]; then
-    STDERR=$(head -5 /tmp/lok-gemini-stderr.log 2>/dev/null || echo "no stderr")
+    STDERR=$(head -5 /tmp/lok-opencode-stderr.log 2>/dev/null || echo "no stderr")
     echo "REVIEW_FAILED: Empty output from both $PRIMARY_MODEL and $FALLBACK_MODEL (stderr: $STDERR)"
     exit 0
   fi
@@ -290,7 +292,7 @@ shell = """
 mkdir -p docs/reviews
 REVIEW_DATE=$(date +%Y-%m-%d)
 
-printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Gemini 3.1 Pro' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-gemini.md
+printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Gemini 3.5 Flash' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-gemini.md
 cat >> docs/reviews/{{ arg.2 }}-review-gemini.md << 'ENDGEMINI'
 {{ steps.gemini_review.output }}
 ENDGEMINI
@@ -308,7 +310,7 @@ if [ -n "$FALLBACK_OUTPUT" ] && ! echo "$FALLBACK_OUTPUT" | grep -q 'REVIEW_FAIL
 ENDFALLBACK
 fi
 
-printf '%s\n' '# Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Reviewers**: Gemini 3.1 Pro, Codex/Ollama (glm-5:cloud), Claude (fallback if needed)' '' '---' '' > docs/reviews/{{ arg.2 }}-review-synthesis.md
+printf '%s\n' '# Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Reviewers**: Gemini 3.5 Flash, Codex/Ollama (glm-5:cloud), Claude (fallback if needed)' '' '---' '' > docs/reviews/{{ arg.2 }}-review-synthesis.md
 cat >> docs/reviews/{{ arg.2 }}-review-synthesis.md << 'ENDSYNTH'
 {{ steps.synthesis.output }}
 ENDSYNTH

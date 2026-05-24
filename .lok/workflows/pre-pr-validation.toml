@@ -8,7 +8,7 @@ description = "Multi-model pre-PR validation: health-check + Codex + Gemini + Cl
 #
 # Environment overrides (documented in .pi/orchestrator/phases/implement.md):
 #   CODEX_MODEL              default "gpt-5.5"
-#   GEMINI_MODEL             default "gemini-3.1-pro-preview"
+#   GEMINI_MODEL             default "gemini-3.5-flash"
 #   GEMINI_FALLBACK_MODEL    default "gemini-2.5-pro"
 
 # Step 1: Pre-flight health check - probe reviewer binaries
@@ -24,7 +24,7 @@ if command -v codex >/dev/null 2>&1; then
   CODEX_OK=true
 fi
 
-if timeout 10 gemini --model "${GEMINI_MODEL:-gemini-3.1-pro-preview}" -p "reply OK" -o text 2>/dev/null | grep -qi "ok"; then
+if timeout 15 opencode run "reply OK" --model "google/${GEMINI_MODEL:-gemini-3.5-flash}" --dangerously-skip-permissions 2>/dev/null | grep -qi "ok"; then
   GEMINI_OK=true
 fi
 
@@ -95,7 +95,7 @@ retries = 3
 continue_on_error = true
 depends_on = ["health_check"]
 shell = '''
-PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.1-pro-preview}"
+PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.5-flash}"
 FALLBACK_MODEL="${GEMINI_FALLBACK_MODEL:-gemini-2.5-pro}"
 
 PROMPT=$(sed \
@@ -104,17 +104,19 @@ PROMPT=$(sed \
   -e 's|__CLO_ID__|{{ arg.3 }}|g' \
   .lok/prompts/pre-pr-validation-prompt.md)
 
-OUTPUT=$(timeout 300 gemini --model "$PRIMARY_MODEL" -y --sandbox \
-  --include-directories docs,src \
-  -p "$PROMPT" -o text 2>/tmp/lok-gemini-prepr-stderr.log)
+OUTPUT=$(timeout 300 opencode run "$PROMPT" \
+  --model "google/$PRIMARY_MODEL" \
+  --dangerously-skip-permissions \
+  --dir "$PWD" 2>/tmp/lok-opencode-prepr-stderr.log)
 
 if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
-  OUTPUT=$(timeout 300 gemini --model "$FALLBACK_MODEL" -y --sandbox \
-    --include-directories docs,src \
-    -p "$PROMPT" -o text 2>/tmp/lok-gemini-prepr-stderr.log)
+  OUTPUT=$(timeout 300 opencode run "$PROMPT" \
+    --model "google/$FALLBACK_MODEL" \
+    --dangerously-skip-permissions \
+    --dir "$PWD" 2>/tmp/lok-opencode-prepr-stderr.log)
 
   if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
-    STDERR=$(head -5 /tmp/lok-gemini-prepr-stderr.log 2>/dev/null || echo "no stderr")
+    STDERR=$(head -5 /tmp/lok-opencode-prepr-stderr.log 2>/dev/null || echo "no stderr")
     echo "REVIEW_FAILED: Empty output from both $PRIMARY_MODEL and $FALLBACK_MODEL (stderr: $STDERR)"
     exit 0
   fi
@@ -341,7 +343,7 @@ write_review \
 write_review \
   "$TMP_DIR/gemini.md" \
   "docs/reviews/${TASK_LC}-gemini-validation.md" \
-  "Gemini (${GEMINI_MODEL:-gemini-3.1-pro-preview})"
+  "Gemini (${GEMINI_MODEL:-gemini-3.5-flash})"
 
 {% if steps.claude_fallback is defined %}
 cat <<'LOK_WF_FALLBACK_OUTPUT_EOF' > "$TMP_DIR/fallback.md"

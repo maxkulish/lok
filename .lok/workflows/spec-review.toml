@@ -21,7 +21,7 @@ if command -v ollama >/dev/null 2>&1; then
   OLLAMA_OK=true
 fi
 
-if timeout 10 gemini --model "${GEMINI_MODEL:-gemini-3.1-pro-preview}" -p "reply OK" -o text 2>/dev/null | grep -qi "ok"; then
+if timeout 15 opencode run "reply OK" --model "google/${GEMINI_MODEL:-gemini-3.5-flash}" --dangerously-skip-permissions 2>/dev/null | grep -qi "ok"; then
   GEMINI_OK=true
 fi
 
@@ -43,13 +43,14 @@ PROMPT=$(sed \
   -e 's|__LINEAR_LABELS__|{{ arg.5 }}|g' \
   .lok/prompts/spec-review-prompt.md)
 
-OUTPUT=$(timeout 300 gemini --model "${GEMINI_MODEL:-gemini-3.1-pro-preview}" -y --sandbox \
-  --include-directories docs,src \
-  -p "$PROMPT" -o text 2>/tmp/lok-gemini-spec-stderr.log)
+OUTPUT=$(timeout 300 opencode run "$PROMPT" \
+  --model "google/${GEMINI_MODEL:-gemini-3.5-flash}" \
+  --dangerously-skip-permissions \
+  --dir "$PWD" 2>/tmp/lok-opencode-spec-stderr.log)
 
 if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
-  STDERR=$(head -5 /tmp/lok-gemini-spec-stderr.log 2>/dev/null || echo "no stderr")
-  echo "REVIEW_FAILED: Empty output from Gemini (stderr: $STDERR)"
+  STDERR=$(head -5 /tmp/lok-opencode-spec-stderr.log 2>/dev/null || echo "no stderr")
+  echo "REVIEW_FAILED: Empty output from opencode/Gemini (stderr: $STDERR)"
   exit 0
 fi
 
@@ -219,7 +220,7 @@ shell = """
 mkdir -p docs/reviews
 REVIEW_DATE=$(date +%Y-%m-%d)
 
-printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Gemini 3.1 Pro' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-gemini.md
+printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Gemini 3.5 Flash' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-gemini.md
 cat >> docs/reviews/{{ arg.2 }}-spec-review-gemini.md << 'ENDGEMINI'
 {{ steps.gemini_review.output }}
 ENDGEMINI
