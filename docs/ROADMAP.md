@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-05-24 (CLO-391 complete)
+**Last Updated**: 2026-05-24 (CLO-395 complete)
 
 ## Summary
 
@@ -15,8 +15,8 @@
 | Phase 7: MiniJinja Templates | 2 | 2 | Complete |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
-| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 13 | 13 | Complete |
-| Phase 11: Health Checks | 1 | 1 | Complete |
+| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
+| Phase 11: Health Checks | 1 | 0 | In Progress |
 
 ## Phase 11: Health Checks
 
@@ -113,3 +113,5 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 release plan
 | [CLO-388](https://linear.app/cloud-ai/issue/CLO-388) | FR-9a + FR-10 + FR-15: Engine warmup + HealthCache + sync is_available cache-only | Done | CLO-371 |
 | [CLO-389](https://linear.app/cloud-ai/issue/CLO-389) | FR-11 + FR-11a: Ollama health probe (/api/version + /api/tags) + ModelInfo + workflow model validation | Done | CLO-388 |
 | [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | In Progress | CLO-388, CLO-371 |
+| [CLO-394](https://linear.app/cloud-ai/issue/CLO-394/fr-12a-replace-gemini-cli-backend-with-opencode-subprocess) | FR-12a: Replace Gemini CLI backend with opencode subprocess | Done | CLO-371 |
+| [CLO-395](https://linear.app/cloud-ai/issue/CLO-395/fr-12b-opencode-health-probe-google-auth-detection) | FR-12b: opencode health probe + Google auth detection | Done | CLO-394, CLO-388 |

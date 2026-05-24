@@ -15,10 +15,10 @@ linear:
   blocks: []
   blocked_by: []
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: active
   created_at: '2026-05-24T20:09:11.998Z'
-  updated_at: '2026-05-24T20:43:10.410Z'
+  updated_at: '2026-05-24T20:44:00.000Z'
 phases:
   discovery:
     status: complete
@@ -54,6 +54,9 @@ phases:
     pre_merge_refetch_passed: true
   complete:
     status: pending
+    merged_at: '2026-05-24T20:43:37Z'
+    merge_commit: 99813584569be57d13226cbb051a54455e27637d
+    aggregation_files_updated: true
 history:
   - timestamp: '2026-05-24T20:09:11.998Z'
     action: workflow_started
