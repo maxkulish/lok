@@ -25,7 +25,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-24T06:53:45.570Z'
-  updated_at: '2026-05-24T15:40:22.906Z'
+  updated_at: '2026-05-24T15:41:06.259Z'
 phases:
   discovery:
     status: complete
@@ -204,6 +204,11 @@ phases:
     status: pending
     merge_commit: 06e0af3
     merged_at: '2026-05-24T15:32:37Z'
+    aggregation_files_updated: false
+    lessons_file: .pi/lessons/clo-394-opencode-migration-lessons.md
+    lessons_learned:
+      - 'L1 - OpenCode NDJSON: join all text events works for single-turn, pollutes multi-step agentic runs'
+      - L2 - Bot reviewers catch real defects like lossy u64→u32 narrowing
 history:
   - timestamp: '2026-05-24T06:53:45.570Z'
     action: workflow_started
@@ -332,5 +337,13 @@ history:
     action: pr_merged
     phase: complete
     details: 'PR #48 merged. Merge commit 06e0af3.'
+  - timestamp: '2026-05-24T15:40:49.288Z'
+    action: project_sync_complete
+    phase: complete
+    details: PROJECT.md/ROADMAP.md/DEPENDENCIES.md do not exist in this repo — aggregation files not used. Sync skipped.
+  - timestamp: '2026-05-24T15:41:06.259Z'
+    action: lessons_extracted
+    phase: complete
+    details: 2 lessons recorded in .pi/lessons/clo-394-opencode-migration-lessons.md
 task_title: 'FR-12a: Replace Gemini CLI backend with opencode subprocess'
 task_url: https://linear.app/cloud-ai/issue/CLO-394/fr-12a-replace-gemini-cli-backend-with-opencode-subprocess
