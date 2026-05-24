@@ -47,6 +47,28 @@ update_workflow_state({
 })
 ```
 
+## Step 0.5 - Stage and commit remaining changes (MANDATORY)
+
+Before pushing, check for any unstaged or untracked files. The implement
+phase may leave post-implementation artifacts dirty (workflow YAML updates,
+lessons files, review reports). These must be committed to the PR branch.
+
+```bash
+git status --short
+```
+
+Review each file. If it belongs to this task (workflow state, lessons,
+review files, implementation artifacts), stage and commit:
+
+```bash
+git add -A
+git commit -m "chore(CLO-XX): update workflow state and post-implementation artifacts"
+```
+
+If there are files unrelated to this task (e.g., from a different branch
+or task), warn the user and stop — do not cherry-pick across task
+boundaries. If there are NO dirty files, proceed directly to Step 1.
+
 ## Step 1 - Push the branch
 
 ```bash
