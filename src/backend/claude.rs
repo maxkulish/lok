@@ -3,11 +3,15 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 use std::time::Instant;
 use tokio::process::Command;
+use tokio::time::timeout;
 
 use super::{BackendError, TokenUsage};
 
@@ -306,16 +310,155 @@ impl super::Backend for ClaudeBackend {
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
-        let available = match &self.mode {
-            ClaudeMode::Api { api_key, .. } => !api_key.expose_secret().is_empty(),
-            ClaudeMode::Cli { command, .. } => which::which(command).is_ok(),
-        };
-        if available {
-            Ok(super::HealthStatus::new_available())
-        } else {
-            Err(super::BackendError::Unavailable {
-                message: format!("Claude backend '{}' is not available", self.name()),
-            })
+        match &self.mode {
+            ClaudeMode::Api { .. } => self.probe_api().await,
+            ClaudeMode::Cli { .. } => self.probe_cli().await,
+        }
+    }
+}
+
+/// Per-version cache for `claude --help` output so we don't re-parse on every warmup.
+/// The lock is held only for a short HashMap lookup/insert — never across an `.await`.
+static HELP_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+/// Parse a semver string (X.Y.Z) from any line of text using regex.
+fn parse_semver_line(line: &str) -> Option<String> {
+    // Find any X.Y.Z somewhere in the line
+    let re = regex::Regex::new(r"\d+\.\d+\.\d+").ok()?;
+    re.find(line).map(|m| m.as_str().to_string())
+}
+
+/// Get `claude --help` output, memoized per version string.
+/// If version is None, the result is not cached (re-runs on next warmup).
+async fn get_help_output(path: &Path, version: Option<&str>) -> Option<String> {
+    let cache = HELP_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(v) = version {
+        // SAFETY: std::sync::Mutex is safe here because the lock is held for
+        // a very short, non-async operation (HashMap lookup). Do NOT hold this
+        // lock across an `.await` boundary.
+        if let Some(cached) = cache.lock().unwrap().get(v) {
+            return Some(cached.clone());
+        }
+    }
+    let output = timeout(Duration::from_secs(2), Command::new(path)
+        .arg("--help")
+        .output())
+        .await
+        .ok()?
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    if let Some(v) = version {
+        cache.lock().unwrap().insert(v.to_string(), text.clone());
+    }
+    Some(text)
+}
+
+impl ClaudeBackend {
+    /// Offline API probe — checks ANTHROPIC_API_KEY and model non-empty.
+    async fn probe_api(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
+        match &self.mode {
+            ClaudeMode::Api { api_key, model, .. } => {
+                if api_key.expose_secret().trim().is_empty() {
+                    return Ok(super::HealthStatus {
+                        available: false,
+                        mode: Some("api".into()),
+                        diagnostic: Some("ANTHROPIC_API_KEY not set or empty".into()),
+                        ..super::HealthStatus::new_unavailable()
+                    });
+                }
+                if model.trim().is_empty() {
+                    return Ok(super::HealthStatus {
+                        available: false,
+                        mode: Some("api".into()),
+                        diagnostic: Some("model config is empty".into()),
+                        ..super::HealthStatus::new_unavailable()
+                    });
+                }
+                Ok(super::HealthStatus {
+                    available: true,
+                    mode: Some("api".into()),
+                    ..super::HealthStatus::new_available()
+                })
+            }
+            _ => Err(BackendError::Config {
+                message: "not API mode".to_string(),
+            }),
+        }
+    }
+
+    /// CLI probe — runs `claude --version` (2s) and `claude --help` (2s).
+    async fn probe_cli(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
+        match &self.mode {
+            ClaudeMode::Cli { command, .. } => {
+                // 1. Check binary exists
+                let path = match which::which(command) {
+                    Ok(p) => p,
+                    Err(_) => {
+                        return Ok(super::HealthStatus {
+                            available: false,
+                            mode: Some("cli".into()),
+                            diagnostic: Some(format!(
+                                "claude CLI command '{}' not found on PATH",
+                                command
+                            )),
+                            ..super::HealthStatus::new_unavailable()
+                        });
+                    }
+                };
+
+                // 2. Run claude --version with 2s budget
+                let version_output = timeout(
+                    Duration::from_secs(2),
+                    Command::new(&path).arg("--version").output(),
+                )
+                .await;
+
+                let version = match version_output {
+                    Ok(Ok(output)) if output.status.success() => {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        parse_semver_line(stdout.lines().next().unwrap_or(""))
+                    }
+                    Ok(Ok(_)) => None,
+                    Ok(Err(e)) => {
+                        eprintln!("claude --version IO error: {:?}", e);
+                        None
+                    }
+                    Err(_elapsed) => {
+                        eprintln!("claude --version timed out after 2s");
+                        None
+                    }
+                };
+
+                // 3. Check --help for --output-format json (cached per version)
+                let help_cache_entry = get_help_output(&path, version.as_deref()).await;
+                let supports_json = help_cache_entry
+                    .as_deref()
+                    .map(|help| help.contains("--output-format") && help.contains("json"))
+                    .unwrap_or(false);
+
+                // 4. Build unusable_flags if json not supported
+                let mut unusable_flags = Vec::new();
+                if !supports_json {
+                    eprintln!(
+                        "claude CLI --output-format json not advertised in --help"
+                    );
+                    unusable_flags.push("--output-format json".into());
+                }
+
+                Ok(super::HealthStatus {
+                    available: true,
+                    version,
+                    mode: Some("cli".into()),
+                    unusable_flags,
+                    ..super::HealthStatus::new_available()
+                })
+            }
+            _ => Err(BackendError::Config {
+                message: "not CLI mode".to_string(),
+            }),
         }
     }
 }
