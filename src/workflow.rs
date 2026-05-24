@@ -5494,6 +5494,8 @@ timeout = 0
         let status = crate::backend::HealthStatus {
             available: true,
             version: Some("0.1.48".to_string()),
+            mode: None,
+            diagnostic: None,
             auth_method: None,
             capabilities: None,
             unusable_flags: Vec::new(),
