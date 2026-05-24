@@ -1,6 +1,6 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-05-24 (CLO-391 complete)
+**Last Updated**: 2026-05-24 (CLO-395 complete)
 
 ## Active Work (WIP Limit: 3)
 
@@ -18,6 +18,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-395](https://linear.app/cloud-ai/issue/CLO-395/fr-12b-opencode-health-probe-google-auth-detection) | FR-12b: opencode health probe + Google auth detection | 2026-05-24 | Replaced which-only stub with multi-step probe: version (--version, 1s), auth (auth.json → env → CLI), models (models google). 13 unit tests. PR #50. |
 | [CLO-391](https://linear.app/cloud-ai/issue/CLO-391) | FR-13a: Claude dual-mode health probe (Api vs Cli) | 2026-05-24 | Implemented `mode` and `diagnostic` fields in `HealthStatus`; added `probe_api()` (offline key/model check) and `probe_cli()` (binary + version + `--help` + JSON support); 12 unit tests; merged in PR #43. |
 | [CLO-389](https://linear.app/cloud-ai/issue/CLO-389) | FR-11 + FR-11a: Ollama health probe (/api/version + /api/tags) + ModelInfo + workflow model validation | 2026-05-23 | Implemented active Ollama health check probing version/tags, cached HealthStatus.models, and added workflow step model validation with strict matching and helpful pull suggestions. |
 | [CLO-388](https://linear.app/cloud-ai/issue/CLO-388) | FR-9a + FR-10 + FR-15: Engine warmup + HealthCache + sync is_available cache-only | 2026-05-21 | Implemented parallel async warmup, std OnceLock-based HealthCache, and made backend is_available checks cache-only with zero syscalls. |
