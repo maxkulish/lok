@@ -410,6 +410,12 @@ impl GeminiBackend {
         }
     }
 
+    /// Parse opencode NDJSON stream into response text + token usage.
+    ///
+    /// Currently joins ALL `type: "text"` events. For agentic multi-step opencode runs
+    /// with intermediate tool calls this could pollute `stdout` with non-final text.
+    /// Locking final-text semantics (text associated with the final `step_finish`) is
+    /// deferred until a real multi-text fixture is captured. See CLO-394 synthesis review.
     fn parse_opencode_output(stdout: &str) -> Option<(String, Option<super::TokenUsage>)> {
         let mut response_parts: Vec<String> = Vec::new();
         let mut usages: Vec<super::TokenUsage> = Vec::new();

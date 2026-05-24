@@ -7,30 +7,22 @@
 
 ## Verdict: FAIL
 
-Review scope note: `git diff main...HEAD` is empty. The implementation exists only as unstaged/untracked working-tree changes, so the branch as committed does not implement CLO-394.
-
 ## Findings
 
-- CRITICAL: Branch diff is empty.
-  `git diff main...HEAD` produced no changes, while `git status` shows modified/untracked CLO-394 files. A PR from this branch would not contain the implementation.
+MEDIUM: `parse_opencode_output` returns all text events, not the final response text required by the design.
+The design explicitly requires `QueryOutput.stdout` to contain "final response text" (design). The implementation accumulates every parsed `type == "text"` event and joins them (gemini.rs:413, gemini.rs:445). For agentic opencode runs with tool calls or intermediate assistant messages, this can pollute `stdout` with non-final text and break downstream workflows that expect a final answer or final JSON/edit payload.
 
-- MEDIUM: Legacy pinned Gemini CLI execution compatibility regresses.
-  In src/backend/gemini.rs:531, non-`opencode` commands now return `base_args + prompt` only. That drops the previous model/sandbox flag behavior and the stdin pipe workaround for `npx @google/gemini-cli`. The design keeps a legacy parser fallback for pinned `command = "npx"` configs, but this execution path may no longer reach successful JSON output.
-
-- LOW: Parser can over-collect non-assistant JSON text if opencode event shape drifts.
-  src/backend/gemini.rs:347 treats any no-`type` JSON object with `text`/`content`/`output` as response text. That is tolerant, but it can mix tool/progress output into `QueryOutput.stdout` if opencode emits untyped or `kind`-based events. The design asks for final response text, not arbitrary visible event text.
-
-- LOW: Doctor install hint is misleading as a copy-paste command.
-  src/main.rs:720 uses `brew install ... | curl ...` as if it were a pipeline. README correctly uses "or". This should be two alternatives, not a pipe.
+LOW: Legacy pinned `npx @google/gemini-cli` configs lose prior model/sandbox behavior.
+The plan says legacy `command = "npx"` configs should keep working (plan). The new non-opencode branch appends only the prompt and returns early (gemini.rs:531), so model overrides and sandbox/apply-edits routing are no longer passed to legacy Gemini CLI. This is likely acceptable if legacy support is parser-only, but it contradicts the migration note that pinned users continue to invoke the old CLI without behavior loss.
 
 ## Missing Items
 
-- The committed branch is missing all implementation changes because `main...HEAD` is empty.
-- I could not run the test gate. `cargo fmt --check` and `git diff --check` passed, but `cargo test gemini --bin lok --test gemini_fixtures` failed before build because the read-only sandbox cannot open `target/debug/.cargo-lock`.
+- No parser test covers multi-step opencode NDJSON with multiple text events and verifies only the final response is surfaced.
+- Cargo failed opening `target/debug/.cargo-lock` with `Operation not permitted` in read-only environment.
 
 ## Recommendations
 
-- Commit/stage the working-tree changes before review/PR.
-- Decide whether legacy `command = "npx"` configs are intended to remain executable. If yes, preserve old model/sandbox argument injection and stdin behavior, or explicitly document that only parser compatibility remains.
-- Tighten opencode parsing around known assistant/final event fields and add fixture coverage for tool/progress events without `type`.
-- Change the doctor hint to `brew install anomalyco/tap/opencode or curl -fsSL https://opencode.ai/install | bash`.
+- Change opencode parsing to return the final assistant text, or text associated with the final `step_finish`/stop event, rather than joining every text event.
+- Add a fixture with intermediate text, tool use, and final text to lock that behavior.
+- Decide whether legacy `npx` configs need model/sandbox compatibility; if yes, preserve old flag injection for that path.
+- Run the planned gate: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`.
