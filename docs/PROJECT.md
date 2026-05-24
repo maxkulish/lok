@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-05-23 (CLO-389 complete)
+**Last Updated**: 2026-05-24 (CLO-392 started)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | In Progress | Phase 10 | - |
 
 ## Up Next (Prioritized Backlog)
 
