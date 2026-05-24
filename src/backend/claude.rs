@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 use std::time::Instant;
 use tokio::process::Command;
@@ -319,25 +319,34 @@ impl super::Backend for ClaudeBackend {
 
 /// Per-version cache for `claude --help` output so we don't re-parse on every warmup.
 /// The lock is held only for a short HashMap lookup/insert — never across an `.await`.
-static HELP_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+/// The Option<String> value distinguishes: key missing = never attempted,
+/// Some(Some(text)) = cached help output, Some(None) = attempted but failed.
+static HELP_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Parse a semver string (X.Y.Z) from any line of text using regex.
-fn parse_semver_line(line: &str) -> Option<String> {
-    // Find any X.Y.Z somewhere in the line
-    let re = regex::Regex::new(r"\d+\.\d+\.\d+").ok()?;
-    re.find(line).map(|m| m.as_str().to_string())
+/// Compiled once — avoids re-compiling on every `parse_semver_line` call.
+static SEMVER_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"\d+\.\d+\.\d+").expect("valid semver regex"));
+
+/// Parse a semver string (X.Y.Z) from text using regex.
+fn parse_semver_line(text: &str) -> Option<String> {
+    SEMVER_RE.find(text).map(|m| m.as_str().to_string())
 }
 
 /// Get `claude --help` output, memoized per version string.
 /// If version is None, the result is not cached (re-runs on next warmup).
 async fn get_help_output(path: &Path, version: Option<&str>) -> Option<String> {
-    let cache = HELP_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(v) = version {
         // SAFETY: std::sync::Mutex is safe here because the lock is held for
         // a very short, non-async operation (HashMap lookup). Do NOT hold this
         // lock across an `.await` boundary.
-        if let Some(cached) = cache.lock().unwrap().get(v) {
-            return Some(cached.clone());
+        match HELP_CACHE.lock().unwrap().get(v) {
+            // Cached success
+            Some(Some(text)) => return Some(text.clone()),
+            // Cached failure (previously attempted and failed)
+            Some(None) => return None,
+            // Not yet attempted — continue
+            None => {}
         }
     }
     let output = timeout(
@@ -348,11 +357,17 @@ async fn get_help_output(path: &Path, version: Option<&str>) -> Option<String> {
     .ok()?
     .ok()?;
     if !output.status.success() {
+        if let Some(v) = version {
+            HELP_CACHE.lock().unwrap().insert(v.to_string(), None);
+        }
         return None;
     }
     let text = String::from_utf8_lossy(&output.stdout).to_string();
     if let Some(v) = version {
-        cache.lock().unwrap().insert(v.to_string(), text.clone());
+        HELP_CACHE
+            .lock()
+            .unwrap()
+            .insert(v.to_string(), Some(text.clone()));
     }
     Some(text)
 }
@@ -423,7 +438,7 @@ impl ClaudeBackend {
                 let version = match version_output {
                     Ok(Ok(output)) if output.status.success() => {
                         let stdout = String::from_utf8_lossy(&output.stdout);
-                        parse_semver_line(stdout.lines().next().unwrap_or(""))
+                        parse_semver_line(&stdout)
                     }
                     Ok(Ok(_)) => None,
                     Ok(Err(e)) => {
