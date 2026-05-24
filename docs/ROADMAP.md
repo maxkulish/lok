@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-05-24 (CLO-391 started)
+**Last Updated**: 2026-05-24 (CLO-391 complete)
 
 ## Summary
 
@@ -16,7 +16,7 @@
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 13 | 13 | Complete |
-| Phase 11: Health Checks | 1 | 0 | In Progress |
+| Phase 11: Health Checks | 1 | 1 | Complete |
 
 ## Phase 11: Health Checks
 
@@ -24,8 +24,7 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 step 6 (Heal
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-391](https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli) | FR-13a: Claude dual-mode health probe (Api vs Cli) | In Progress | CLO-388 |
-| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 14 | 13 | In Progress |
+| [CLO-391](https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli) | FR-13a: Claude dual-mode health probe (Api vs Cli) | Done | CLO-388 |
 
 ## Phase 2: Validation Pipeline
 

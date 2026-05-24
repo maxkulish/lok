@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-05-24
+**Last Updated**: 2026-05-24 (CLO-391 complete)
 
 ## Current Blockers
 

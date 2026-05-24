@@ -1,12 +1,11 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-05-24 (CLO-391 started)
+**Last Updated**: 2026-05-24 (CLO-391 complete)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-391](https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli) | FR-13a: Claude dual-mode health probe (Api vs Cli) | In Progress | Phase 11 | - |
 | [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | In Progress | Phase 10 | - |
 
 ## Up Next (Prioritized Backlog)
@@ -19,6 +18,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-391](https://linear.app/cloud-ai/issue/CLO-391) | FR-13a: Claude dual-mode health probe (Api vs Cli) | 2026-05-24 | Implemented `mode` and `diagnostic` fields in `HealthStatus`; added `probe_api()` (offline key/model check) and `probe_cli()` (binary + version + `--help` + JSON support); 12 unit tests; merged in PR #43. |
 | [CLO-389](https://linear.app/cloud-ai/issue/CLO-389) | FR-11 + FR-11a: Ollama health probe (/api/version + /api/tags) + ModelInfo + workflow model validation | 2026-05-23 | Implemented active Ollama health check probing version/tags, cached HealthStatus.models, and added workflow step model validation with strict matching and helpful pull suggestions. |
 | [CLO-388](https://linear.app/cloud-ai/issue/CLO-388) | FR-9a + FR-10 + FR-15: Engine warmup + HealthCache + sync is_available cache-only | 2026-05-21 | Implemented parallel async warmup, std OnceLock-based HealthCache, and made backend is_available checks cache-only with zero syscalls. |
 | [CLO-382](https://linear.app/cloud-ai/issue/CLO-382/fr-26-gemini-backend-extracts-token-counts-from-json-envelope) | FR-26: Gemini backend extracts token counts from JSON envelope | 2026-05-20 | Gemini JSON envelope schema parsed; handles nested stats.models.*.tokens shapes with flat fallback; captured real CLI v0.42.0 envelope fixture and integrated validation tests |

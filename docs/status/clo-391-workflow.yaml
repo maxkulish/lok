@@ -22,10 +22,10 @@ linear:
   priority: 2
   branch_actual: feat/clo-391-claude-dual-health-probe
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: checkpoint
   created_at: '2026-05-24T06:52:00.863Z'
-  updated_at: '2026-05-24T11:52:13.981Z'
+  updated_at: '2026-05-24T14:23:55.130Z'
 phases:
   discovery:
     status: complete
@@ -115,11 +115,21 @@ phases:
         completion_tokens: 0
         task_label: pre-pr-validation-synthesis
   pr:
-    status: in_progress
+    status: complete
     pr_number: 43
     pr_url: https://github.com/maxkulish/lok/pull/43
+    ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-24T11:57:11Z'
+    reviews_addressed: true
+    pre_merge_refetch_at: '2026-05-24T14:23:45Z'
+    pre_merge_refetch_passed: true
+    merge_commit: 688f82c9884a6e2dc9f95f6fbe3507ae078b4b1c
+    merged_at: '2026-05-24T14:23:43Z'
   complete:
     status: pending
+    merge_commit: 688f82c9884a6e2dc9f95f6fbe3507ae078b4b1c
+    merged_at: '2026-05-24T14:23:43Z'
 history:
   - timestamp: '2026-05-24T06:52:00.863Z'
     action: workflow_started
@@ -253,5 +263,35 @@ history:
     action: pr_created
     phase: pr
     details: 'PR #43 opened: https://github.com/maxkulish/lok/pull/43'
+  - timestamp: '2026-05-24T11:57:03.261Z'
+    action: ci_passed
+    phase: pr
+    details: No CI configured on this repository. No checks to wait for.
+  - timestamp: '2026-05-24T12:15:28.244Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: 'Current-head bot review observed for PR #43 at head 9418041: gemini-code-assist COMMENTED at 2026-05-24T11:57:11Z.'
+  - timestamp: '2026-05-24T14:23:01.090Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      2 threads resolved; replies posted 2/2; /gemini review trailer verified on every reply; Gemini re-reviewed and
+      approved both fixes on HEAD 40e61d0; unresolved-thread re-check clean.
+  - timestamp: '2026-05-24T14:23:22.322Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads since 2026-05-24T14:23:01.090Z.'
+  - timestamp: '2026-05-24T14:23:24.884Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-05-24T14:23:55.126Z'
+    action: pr_merged
+    phase: pr
+    details: Merge commit 688f82c
+  - timestamp: '2026-05-24T14:23:55.130Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #43 merged. Merge commit 688f82c.'
 task_title: 'FR-13a: Claude dual-mode health probe (Api vs Cli)'
 task_url: https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli
