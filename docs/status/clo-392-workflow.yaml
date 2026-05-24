@@ -20,10 +20,10 @@ linear:
   priority: High
   branch_actual: feat/clo-392
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-05-24T06:52:54.711Z'
-  updated_at: '2026-05-24T10:57:15.762Z'
+  updated_at: '2026-05-24T11:17:15.818Z'
 phases:
   discovery:
     status: complete
@@ -110,9 +110,10 @@ phases:
     plan_file: docs/plans/clo-392-codex-health-probe.md
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
       - 851fe3a
+      - 00fafa5
     assumption_outcomes:
       - evidence: >-
           src/backend/codex.rs::parse_version_happy_path, parse_version_0_118, parse_version_0_119, parse_version_0_122,
@@ -135,8 +136,16 @@ phases:
         outcome: held
         text: flag matrix kept in sync with quick-ref on every release
     assumptions_revalidated: true
+    validation_codex_verdict: PASS_WITH_NOTES
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    codex_report: docs/reviews/clo-392-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/clo-392-gemini-validation.md
+    validation_synthesis_report: docs/reviews/clo-392-validation-synthesis.md
   pr:
-    status: pending
+    status: in_progress
+    ci_passed: false
   complete:
     status: pending
 history:
@@ -240,5 +249,38 @@ history:
     action: implementation_complete
     phase: implement
     details: All sub-tasks landed. fmt+clippy+test green. 621 tests pass. 1 commit.
+  - timestamp: '2026-05-24T11:14:55.088Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      fix iteration: validation synthesis PROCEED_WITH_FIXES applied. 3 issues resolved: (1) moved warning to
+      workflow.rs with min_version, (2) added .kill_on_drop(true) to version probe, (3) added fake shell integration
+      tests + cache test + workflow warning test.
+  - timestamp: '2026-05-24T11:15:15.957Z'
+    action: validation_complete
+    phase: implement
+    details: >-
+      Re-validate after fix iteration. All 3 MUST FIX items from synthesis applied: (1) warning relocated to
+      Workflow::validate with step scanning and min_version (FLAG_MATRIX), (2) .kill_on_drop(true) on version probe, (3)
+      integration tests added (codex_health_{success,unparseable,bad_exit,timeout}, test_codex_health_cached,
+      test_codex_unusable_flags_warning). fmt+clippy+test green (626 pass, 1 pre-existing env-dependent ollama warmup
+      failure unrelated to this change).
+  - timestamp: '2026-05-24T11:15:36.189Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Validation gate completed. Codex review OK. Gemini failed due to workspace trust (tooling artifact). Synthesis
+      PROCEED_WITH_FIXES applied in iteration. All 3 MUST FIX items resolved.
+  - timestamp: '2026-05-24T11:15:44.701Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-24T11:17:15.818Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-flight: fmt OK, clippy OK, cargo test: 626 passed (1 pre-existing env-dependent ollama warmup failure
+      unrelated to this change). All new tests (parse_version×5, compare_versions×2, matrix filtering×9, integration×4,
+      cache×1, workflow warning×1) pass.
 task_title: 'FR-13: Codex health probe + version-aware unusable-flag matrix'
 task_url: https://linear.app/cloud-ai/issue/CLO-392/fr-13-codex-health-probe-version-aware-unusable-flag-matrix
