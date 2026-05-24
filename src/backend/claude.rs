@@ -526,14 +526,17 @@ esac\n",
         // and strip away /bin, /usr/bin, etc. — breaking any sibling test
         // that shells out to `sleep`, `echo`, `cat`, etc. Prepending keeps
         // the mock `claude` winning the lookup while leaving system dirs
-        // reachable.
-        let orig_path = std::env::var_os("PATH").map(|p| p.to_string_lossy().to_string());
-        let mock_dir = dir.path().to_string_lossy().to_string();
-        let new_path = match orig_path.as_deref() {
-            Some(orig) => format!("{}:{}", mock_dir, orig),
-            None => mock_dir,
+        // reachable. Use split_paths/join_paths so the separator and any
+        // non-UTF8 entries in PATH are preserved correctly across platforms.
+        let orig_path_os = std::env::var_os("PATH");
+        let mut paths: Vec<std::path::PathBuf> = match orig_path_os.as_ref() {
+            Some(p) => std::env::split_paths(p).collect(),
+            None => Vec::new(),
         };
+        paths.insert(0, dir.path().to_path_buf());
+        let new_path = std::env::join_paths(paths).expect("failed to join PATH");
         std::env::set_var("PATH", new_path);
+        let orig_path = orig_path_os.map(|p| p.to_string_lossy().to_string());
 
         (dir, bin_path, orig_path)
     }
