@@ -1,4 +1,1 @@
-{
-  "session_id": "00000000-0000-0000-0000-000000000000",
-  "response": "The sky is blue."
-}
+{"type":"text","timestamp":"2026-01-01T00:00:00Z","sessionID":"00000000-0000-0000-0000-000000000000","part":{"type":"text","text":"Hi! How can I help you today?"}}

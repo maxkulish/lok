@@ -24,6 +24,43 @@ fn load_fixture(name: &str) -> String {
         .unwrap_or_else(|error| panic!("failed to read {name}: {error}"))
 }
 
+fn parse_json_values(content: &str) -> Vec<serde_json::Value> {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(content) {
+        return vec![value];
+    }
+
+    content
+        .lines()
+        .enumerate()
+        .filter_map(|(idx, line)| {
+            let line = line.trim();
+            if line.is_empty() {
+                return None;
+            }
+            match serde_json::from_str::<serde_json::Value>(line) {
+                Ok(value) => Some(value),
+                Err(error) => panic!("invalid JSON fixture line {}: {error}", idx + 1),
+            }
+        })
+        .collect()
+}
+
+fn has_user_visible_text(value: &serde_json::Value) -> bool {
+    value.get("response").is_some()
+        || value.get("text").is_some()
+        || value.get("content").is_some()
+        || value
+            .get("message")
+            .and_then(|message| message.get("content"))
+            .is_some()
+        || value.get("output").is_some()
+        || value.get("result").is_some()
+        || value
+            .get("part")
+            .and_then(|part| part.get("text"))
+            .is_some()
+}
+
 #[test]
 fn fixtures_under_size_cap() {
     let mut corpus_bytes: u64 = 0;
@@ -63,15 +100,15 @@ fn every_fixture_is_valid_json_or_known_malformed() {
             continue;
         }
 
-        let value = serde_json::from_str::<serde_json::Value>(&content)
-            .unwrap_or_else(|e| panic!("{name}: fixture must be valid JSON: {e}"));
+        let values = parse_json_values(&content);
+        assert!(
+            !values.is_empty(),
+            "{name}: expected at least one JSON object"
+        );
 
-        // Success fixtures should have a response field; error-envelope does not (by design)
         if name != "error-envelope.json" {
-            assert!(
-                value.get("response").is_some(),
-                "{name}: expected 'response' field"
-            );
+            let has_text = values.iter().any(has_user_visible_text);
+            assert!(has_text, "{name}: expected response-like text field");
         }
     }
 }
@@ -79,45 +116,75 @@ fn every_fixture_is_valid_json_or_known_malformed() {
 #[test]
 fn success_with_stats_fixture_contains_expected_shape() {
     let content = load_fixture("success-with-stats.json");
-    let value = serde_json::from_str::<serde_json::Value>(&content)
-        .expect("success-with-stats.json is valid JSON");
+    let values = parse_json_values(&content);
 
-    let response = value
-        .get("response")
-        .and_then(|v| v.as_str())
-        .expect("response is a string");
-    assert!(!response.is_empty());
+    assert!(
+        values.iter().any(|value| {
+            value.get("message").is_some()
+                || value.get("response").is_some()
+                || value.get("text").is_some()
+                || value
+                    .get("part")
+                    .and_then(|part| part.get("text"))
+                    .is_some()
+                || value
+                    .get("output")
+                    .or_else(|| value.get("result"))
+                    .is_some()
+        }),
+        "expected message/response/text/output/result field for success fixture"
+    );
 
-    let stats = value.get("stats").expect("stats present");
-    let models = stats
-        .get("models")
-        .and_then(|m| m.as_object())
-        .expect("stats.models is an object");
-    assert!(!models.is_empty());
-
-    for (model_name, model) in models {
-        let tokens = model
-            .get("tokens")
-            .and_then(|t| t.as_object())
-            .unwrap_or_else(|| panic!("{model_name} has tokens object"));
-        assert!(
-            tokens.get("prompt").is_some(),
-            "{model_name}: tokens.prompt missing"
-        );
-        assert!(
-            tokens.get("candidates").is_some(),
-            "{model_name}: tokens.candidates missing"
-        );
-    }
+    let usage_present = values.iter().any(|value| {
+        value.get("usage").is_some()
+            || value.get("stats").is_some()
+            || value.get("tokens").is_some()
+            || value
+                .get("part")
+                .and_then(|part| {
+                    part.get("tokens")
+                        .or_else(|| part.get("usage"))
+                        .or_else(|| part.get("stats"))
+                })
+                .is_some()
+    });
+    assert!(
+        usage_present,
+        "expected usage-like field for success-with-stats fixture"
+    );
 }
 
 #[test]
 fn success_no_stats_fixture_has_response_no_stats() {
     let content = load_fixture("success-no-stats.json");
-    let value = serde_json::from_str::<serde_json::Value>(&content)
-        .expect("success-no-stats.json is valid JSON");
-    assert!(value.get("response").is_some());
-    assert!(value.get("stats").is_none());
+    let values = parse_json_values(&content);
+    assert!(
+        values.iter().any(|value| {
+            value.get("message").is_some()
+                || value.get("response").is_some()
+                || value.get("text").is_some()
+                || value
+                    .get("part")
+                    .and_then(|part| part.get("text"))
+                    .is_some()
+        }),
+        "expected response-like text for success-no-stats fixture"
+    );
+
+    let has_usage = values.iter().any(|value| {
+        value.get("stats").is_some()
+            || value.get("usage").is_some()
+            || value.get("tokens").is_some()
+            || value
+                .get("part")
+                .and_then(|part| {
+                    part.get("tokens")
+                        .or_else(|| part.get("usage"))
+                        .or_else(|| part.get("stats"))
+                })
+                .is_some()
+    });
+    assert!(!has_usage, "expected no usage in success-no-stats fixture");
 }
 
 #[test]

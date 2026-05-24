@@ -411,15 +411,15 @@ impl Default for Config {
             "gemini".to_string(),
             BackendConfig {
                 enabled: true,
-                command: Some("npx".to_string()),
+                command: Some("opencode".to_string()),
                 args: vec![
-                    "@google/gemini-cli".to_string(),
-                    "--output-format".to_string(),
+                    "run".to_string(),
+                    "--format".to_string(),
                     "json".to_string(),
                 ],
-                skip_lines: 1,
+                skip_lines: 0,
                 api_key_env: None,
-                model: None,
+                model: Some("google/gemini-2.5-flash".to_string()),
                 timeout: Some(Duration::from_secs(600)), // Gemini goes agentic, needs more time
                 max_retries: None,
                 retry_delay_ms: None,
@@ -682,8 +682,10 @@ max_tokens = 8192
         let gemini = config.backends.get("gemini").unwrap();
 
         assert!(gemini.enabled);
-        assert_eq!(gemini.command, Some("npx".to_string()));
-        assert_eq!(gemini.skip_lines, 1);
+        assert_eq!(gemini.command, Some("opencode".to_string()));
+        assert_eq!(gemini.args, vec!["run", "--format", "json"]);
+        assert_eq!(gemini.model, Some("google/gemini-2.5-flash".to_string()));
+        assert_eq!(gemini.skip_lines, 0);
     }
 
     #[test]

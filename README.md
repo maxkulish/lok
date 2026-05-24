@@ -49,7 +49,7 @@ Lok wraps existing LLM CLI tools. Install the ones you want to use:
 | Backend | Install | Notes |
 |---------|---------|-------|
 | Codex | `npm install -g @openai/codex` | Fast code analysis |
-| Gemini | `npm install -g @google/gemini-cli` | Deep security audits |
+| Gemini | `brew install anomalyco/tap/opencode` or `curl -fsSL https://opencode.ai/install | bash` | Deep security audits |
 | Claude | [claude.ai/download](https://claude.ai/download) | Claude Code CLI |
 | Ollama | [ollama.ai](https://ollama.ai) | Local models, no API keys |
 
