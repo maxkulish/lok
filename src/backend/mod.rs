@@ -532,6 +532,13 @@ impl Engine {
             }
         }
 
+        // Collect warnings before moves
+        let warnings: Vec<(String, HealthStatus)> = updates
+            .iter()
+            .filter(|(_, s)| !s.unusable_flags.is_empty())
+            .map(|(n, s)| (n.clone(), s.clone()))
+            .collect();
+
         // Update unified cache (backend was already inserted by create_backend)
         let cache = get_backend_cache();
         let mut lock = cache.write().expect("backend cache lock poisoned");
@@ -539,6 +546,16 @@ impl Engine {
             if let Some(entry) = lock.get_mut(&name) {
                 entry.health = Some(status);
             }
+        }
+
+        for (name, status) in warnings {
+            eprintln!(
+                "{} Backend '{}' reports unusable flags (v{}): {}",
+                "warning:".yellow(),
+                name,
+                status.version.as_deref().unwrap_or("?"),
+                status.unusable_flags.join(", "),
+            );
         }
 
         Ok(())

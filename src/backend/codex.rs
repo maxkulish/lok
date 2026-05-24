@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
 use std::process::Stdio;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 use tokio::process::Command;
 
@@ -11,6 +11,101 @@ pub struct CodexBackend {
     command: String,
     args: Vec<String>,
     default_model: Option<String>,
+}
+
+/// One entry in the flag matrix.
+struct FlagRequirement {
+    flag: &'static str,
+    min_version: (u32, u32, u32), // (major, minor, patch)
+}
+
+/// Canonical flag-version matrix for Codex CLI.
+/// Sourced from docs/investigations/codex-quick-ref.md.
+const FLAG_MATRIX: &[FlagRequirement] = &[
+    FlagRequirement {
+        flag: "--json",
+        min_version: (0, 118, 0),
+    },
+    FlagRequirement {
+        flag: "--model",
+        min_version: (0, 118, 0),
+    },
+    FlagRequirement {
+        flag: "-s",
+        min_version: (0, 118, 0),
+    },
+    FlagRequirement {
+        flag: "--output-schema",
+        min_version: (0, 119, 0),
+    },
+    FlagRequirement {
+        flag: "-o",
+        min_version: (0, 119, 0),
+    },
+    FlagRequirement {
+        flag: "--ephemeral",
+        min_version: (0, 119, 0),
+    },
+    FlagRequirement {
+        flag: "--ignore-user-config",
+        min_version: (0, 122, 0),
+    },
+    FlagRequirement {
+        flag: "--ignore-rules",
+        min_version: (0, 122, 0),
+    },
+];
+
+/// Parse a version string, scanning for the first `major.minor.patch` triplet.
+/// Uses manual scanning (no regex) to keep dependencies zero for this slice.
+fn parse_version(s: &str) -> Result<(u32, u32, u32), super::BackendError> {
+    let line = s.lines().next().unwrap_or(s);
+    let mut digits = Vec::with_capacity(3);
+    let mut current = 0u32;
+    let mut in_number = false;
+    for c in line.chars() {
+        if c.is_ascii_digit() {
+            in_number = true;
+            current = current * 10 + (c as u32 - '0' as u32);
+        } else if c == '.' && in_number {
+            digits.push(current);
+            current = 0;
+            in_number = false;
+        } else {
+            if in_number {
+                digits.push(current);
+                current = 0;
+                in_number = false;
+            }
+            if digits.len() == 3 {
+                break;
+            }
+            // Reset on non-dot separator between numbers
+            digits.clear();
+        }
+    }
+    if in_number {
+        digits.push(current);
+    }
+    if digits.len() != 3 {
+        return Err(super::BackendError::Unavailable {
+            message: format!("No version triplet found in: {:?}", s.trim()),
+        });
+    }
+    Ok((digits[0], digits[1], digits[2]))
+}
+
+/// Compare two version tuples. Returns true when `installed >= required`.
+fn compare_versions(installed: (u32, u32, u32), required: (u32, u32, u32)) -> bool {
+    let (maj_i, min_i, pat_i) = installed;
+    let (maj_r, min_r, pat_r) = required;
+    if maj_i != maj_r {
+        return maj_i > maj_r;
+    }
+    if min_i != min_r {
+        return min_i > min_r;
+    }
+    pat_i >= pat_r
 }
 
 impl CodexBackend {
@@ -236,13 +331,54 @@ impl super::Backend for CodexBackend {
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
-        if which::which(&self.command).is_ok() {
-            Ok(super::HealthStatus::new_available())
-        } else {
-            Err(super::BackendError::Unavailable {
-                message: format!("Codex CLI command '{}' not found on PATH", self.command),
-            })
+        // 1. PATH probe (fast failure) — synchronous but only during warmup
+        let cmd = which::which(&self.command).map_err(|_| super::BackendError::Unavailable {
+            message: format!("Codex CLI command '{}' not found on PATH", self.command),
+        })?;
+
+        // 2. Version probe with 2 s timeout
+        let output = tokio::time::timeout(
+            Duration::from_secs(2),
+            Command::new(&cmd).arg("--version").output(),
+        )
+        .await
+        .map_err(|_| super::BackendError::Unavailable {
+            message: format!("Codex CLI '{}' --version timed out after 2s", self.command),
+        })?
+        .map_err(|e| super::BackendError::Unavailable {
+            message: format!("Failed to spawn codex --version: {}", e),
+        })?;
+
+        // 3. Validate exit status before parsing
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(super::BackendError::Unavailable {
+                message: format!(
+                    "codex --version exited {:?}: {}",
+                    output.status.code(),
+                    stderr.trim()
+                ),
+            });
         }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let (major, minor, patch) =
+            parse_version(&stdout).map_err(|e| super::BackendError::Unavailable {
+                message: format!("Failed to parse codex version: {}", e),
+            })?;
+
+        let unusable: Vec<String> = FLAG_MATRIX
+            .iter()
+            .filter(|req| !compare_versions((major, minor, patch), req.min_version))
+            .map(|req| req.flag.to_string())
+            .collect();
+
+        Ok(super::HealthStatus {
+            available: true,
+            version: Some(format!("{major}.{minor}.{patch}")),
+            unusable_flags: unusable,
+            ..super::HealthStatus::new_available()
+        })
     }
 }
 
@@ -553,5 +689,132 @@ mod tests {
             "expected exactly one -s flag with apply_edits default; got argv {:?}",
             argv
         );
+    }
+
+    // ── parse_version tests ─────────────────────────────────────────────
+
+    #[test]
+    fn parse_version_happy_path() {
+        let v = super::parse_version("codex-cli 0.119.0").unwrap();
+        assert_eq!(v, (0, 119, 0));
+    }
+
+    #[test]
+    fn parse_version_leading_noise() {
+        let v = super::parse_version("foo bar 0.122.1 qux").unwrap();
+        assert_eq!(v, (0, 122, 1));
+    }
+
+    #[test]
+    fn parse_version_nightly_fails() {
+        assert!(super::parse_version("nightly").is_err());
+    }
+
+    #[test]
+    fn parse_version_ancient() {
+        let v = super::parse_version("codex 0.117.5").unwrap();
+        assert_eq!(v, (0, 117, 5));
+    }
+
+    #[test]
+    fn parse_version_0_118() {
+        let v = super::parse_version("0.118.0").unwrap();
+        assert_eq!(v, (0, 118, 0));
+    }
+
+    #[test]
+    fn parse_version_0_119() {
+        let v = super::parse_version("codex-cli 0.119.0 (npm)").unwrap();
+        assert_eq!(v, (0, 119, 0));
+    }
+
+    #[test]
+    fn parse_version_0_122() {
+        let v = super::parse_version("0.122.0").unwrap();
+        assert_eq!(v, (0, 122, 0));
+    }
+
+    // ── compare_versions tests ───────────────────────────────────────────
+
+    #[test]
+    fn compare_versions_exact_match() {
+        assert!(super::compare_versions((0, 119, 0), (0, 119, 0)));
+    }
+
+    #[test]
+    fn compare_versions_newer_patch() {
+        assert!(super::compare_versions((0, 119, 1), (0, 119, 0)));
+    }
+
+    #[test]
+    fn compare_versions_newer_minor() {
+        assert!(super::compare_versions((0, 120, 0), (0, 119, 5)));
+    }
+
+    #[test]
+    fn compare_versions_older_patch() {
+        assert!(!super::compare_versions((0, 119, 0), (0, 119, 1)));
+    }
+
+    #[test]
+    fn compare_versions_older_minor() {
+        assert!(!super::compare_versions((0, 118, 5), (0, 119, 0)));
+    }
+
+    // ── flag matrix tests ────────────────────────────────────────────────
+
+    #[test]
+    fn flag_matrix_ancient_version() {
+        let v = (0, 117, 5);
+        let unusable: Vec<&str> = super::FLAG_MATRIX
+            .iter()
+            .filter(|req| !super::compare_versions(v, req.min_version))
+            .map(|req| req.flag)
+            .collect();
+        assert_eq!(unusable.len(), 8);
+        assert!(unusable.contains(&"--json"));
+        assert!(unusable.contains(&"--ignore-rules"));
+    }
+
+    #[test]
+    fn flag_matrix_0_118() {
+        let v = (0, 118, 0);
+        let unusable: Vec<&str> = super::FLAG_MATRIX
+            .iter()
+            .filter(|req| !super::compare_versions(v, req.min_version))
+            .map(|req| req.flag)
+            .collect();
+        assert_eq!(
+            unusable,
+            vec![
+                "--output-schema",
+                "-o",
+                "--ephemeral",
+                "--ignore-user-config",
+                "--ignore-rules"
+            ]
+        );
+    }
+
+    #[test]
+    fn flag_matrix_0_119() {
+        let v = (0, 119, 0);
+        let unusable: Vec<&str> = super::FLAG_MATRIX
+            .iter()
+            .filter(|req| !super::compare_versions(v, req.min_version))
+            .map(|req| req.flag)
+            .collect();
+        assert_eq!(unusable, vec!["--ignore-user-config", "--ignore-rules"]);
+    }
+
+    #[test]
+    fn flag_matrix_0_122() {
+        let v = (0, 122, 0);
+        let unusable: Vec<&str> = super::FLAG_MATRIX
+            .iter()
+            .filter(|req| !super::compare_versions(v, req.min_version))
+            .map(|req| req.flag)
+            .collect();
+        assert!(unusable.is_empty());
     }
 }
