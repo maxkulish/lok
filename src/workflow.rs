@@ -341,8 +341,8 @@ pub struct Step {
 
     // Sandbox
     /// Sandbox mode for subprocess backends (FR-21).
-    /// Controls Codex `-s` and Gemini `--approval-mode`.
-    /// None = backend default (read-only).
+    /// Controls Codex `-s` and Gemini/opencode `--agent` routing.
+    /// None uses backend default (`read-only` for Codex, `build` for Gemini/opencode when not explicitly set).
     #[serde(default)]
     pub sandbox: Option<SandboxMode>,
 

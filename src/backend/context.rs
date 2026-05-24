@@ -97,7 +97,9 @@ impl HealthStatus {
 }
 
 /// Sandbox permission levels for subprocess backends.
-/// Maps to Codex `-s` and Gemini `--approval-mode`.
+/// - Codex: maps to `-s` modes.
+/// - Gemini (opencode): maps to `--agent` semantics,
+///   where `read-only` -> `plan` and `workspace-write`/`default` -> `build`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SandboxMode {

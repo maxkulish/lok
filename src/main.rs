@@ -714,7 +714,11 @@ async fn main() -> Result<()> {
 
             let checks = vec![
                 ("codex", "codex", "npm install -g @openai/codex"),
-                ("gemini", "npx", "Install Node.js (npx comes with npm)"),
+                (
+                    "gemini",
+                    "opencode",
+                    "Install opencode: brew install anomalyco/tap/opencode OR curl -fsSL https://opencode.ai/install | bash",
+                ),
                 (
                     "claude",
                     "claude",
@@ -742,7 +746,6 @@ async fn main() -> Result<()> {
 
             let keys = vec![
                 ("ANTHROPIC_API_KEY", "claude backend"),
-                ("GOOGLE_API_KEY", "gemini backend"),
                 ("AWS_PROFILE", "bedrock backend (or AWS_ACCESS_KEY_ID)"),
             ];
 
