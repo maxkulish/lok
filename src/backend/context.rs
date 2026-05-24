@@ -190,10 +190,16 @@ mod tests {
         let json = serde_json::to_string(&status).unwrap();
         let deserialized: HealthStatus = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(deserialized.available, false);
+        assert!(!deserialized.available);
         assert_eq!(deserialized.mode, Some("api".into()));
-        assert_eq!(deserialized.diagnostic, Some("ANTHROPIC_API_KEY not set".into()));
-        assert_eq!(deserialized.unusable_flags, vec!["--output-format json".to_string()]);
+        assert_eq!(
+            deserialized.diagnostic,
+            Some("ANTHROPIC_API_KEY not set".into())
+        );
+        assert_eq!(
+            deserialized.unusable_flags,
+            vec!["--output-format json".to_string()]
+        );
     }
 
     #[test]

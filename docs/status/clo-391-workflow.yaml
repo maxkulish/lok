@@ -25,7 +25,7 @@ workflow:
   current_phase: implement
   status: checkpoint
   created_at: '2026-05-24T06:52:00.863Z'
-  updated_at: '2026-05-24T10:40:58.379Z'
+  updated_at: '2026-05-24T11:34:53.936Z'
 phases:
   discovery:
     status: complete
@@ -68,7 +68,24 @@ phases:
     plan_file: docs/plans/clo-391-claude-dual-health-probe.md
     approved: true
   implement:
-    status: in_progress
+    status: validating
+    commits:
+      - e1f0e31
+      - 747a681
+    assumption_outcomes:
+      - evidence: src/backend/claude.rs::probe_api() — only checks api_key.expose_secret().trim() and model.trim()
+        outcome: held
+        text: API probe is offline-only (no network calls)
+      - evidence: src/backend/claude.rs::probe_cli() and get_help_output() — timeout(Duration::from_secs(2), ...)
+        outcome: held
+        text: CLI probe uses 2s timeout for both --version and --help
+      - evidence: src/backend/claude.rs::HELP_CACHE static — OnceLock<Mutex<HashMap<String, String>>>
+        outcome: held
+        text: Help output cached per-version to avoid re-parsing on every warmup
+      - evidence: 'src/backend/claude.rs::ClaudeBackend — single mode: ClaudeMode enum'
+        outcome: held
+        text: A single ClaudeBackend is in one mode at a time
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -160,5 +177,25 @@ history:
     action: phase_started
     phase: implement
     details: Implementation started. 16 tasks across 5 phases from plan docs/plans/clo-391-claude-dual-health-probe.md
+  - timestamp: '2026-05-24T11:02:26.239Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      Phase 2 (Tasks 2-6): API/CLI health probes, parse_semver_line, get_help_output, and health_check dispatch
+      implemented. Commit e1f0e31
+  - timestamp: '2026-05-24T11:34:26.537Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST1 landed: Add mode + diagnostic fields to HealthStatus. Commit 747a681'
+  - timestamp: '2026-05-24T11:34:51.134Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: '4 assumptions reviewed. held: 4, violated: 0, untested: 0. All design assumptions confirmed in implementation.'
+  - timestamp: '2026-05-24T11:34:53.936Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed (ST1-ST12). 12 new claude probe tests passing. 2 pre-existing flaky tests unrelated.
+      fmt+clippy+test green.
 task_title: 'FR-13a: Claude dual-mode health probe (Api vs Cli)'
 task_url: https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli

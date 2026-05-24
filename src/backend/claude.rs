@@ -340,12 +340,13 @@ async fn get_help_output(path: &Path, version: Option<&str>) -> Option<String> {
             return Some(cached.clone());
         }
     }
-    let output = timeout(Duration::from_secs(2), Command::new(path)
-        .arg("--help")
-        .output())
-        .await
-        .ok()?
-        .ok()?;
+    let output = timeout(
+        Duration::from_secs(2),
+        Command::new(path).arg("--help").kill_on_drop(true).output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -412,7 +413,10 @@ impl ClaudeBackend {
                 // 2. Run claude --version with 2s budget
                 let version_output = timeout(
                     Duration::from_secs(2),
-                    Command::new(&path).arg("--version").output(),
+                    Command::new(&path)
+                        .arg("--version")
+                        .kill_on_drop(true)
+                        .output(),
                 )
                 .await;
 
@@ -442,9 +446,7 @@ impl ClaudeBackend {
                 // 4. Build unusable_flags if json not supported
                 let mut unusable_flags = Vec::new();
                 if !supports_json {
-                    eprintln!(
-                        "claude CLI --output-format json not advertised in --help"
-                    );
+                    eprintln!("claude CLI --output-format json not advertised in --help");
                     unusable_flags.push("--output-format json".into());
                 }
 
@@ -466,6 +468,57 @@ impl ClaudeBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::LazyLock;
+    use tokio::sync::Mutex as TokioMutex;
+
+    /// Global lock for tests that modify global state (PATH env var).
+    /// Prevents concurrent execution of CLI mock tests.
+    static PATH_LOCK: LazyLock<TokioMutex<()>> = LazyLock::new(|| TokioMutex::new(()));
+
+    /// Helper: creates a mock `claude` binary at a temp directory and returns
+    /// (TempDir, PathBuf to the binary, the original PATH for restoration).
+    /// The mock binary outputs `version_text` for `--version` and `help_text` for `--help`.
+    fn setup_mock_claude(
+        version_text: &str,
+        help_text: &str,
+    ) -> (tempfile::TempDir, std::path::PathBuf, Option<String>) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin_path = dir.path().join("claude");
+
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&bin_path).expect("create mock binary");
+            // Write help text to a file alongside the binary
+            let help_path = dir.path().join("help.txt");
+            std::fs::write(&help_path, help_text).expect("write help file");
+            let help_path_str = help_path.to_string_lossy().to_string();
+            writeln!(
+                f,
+                "#!/bin/sh\ncase \"$1\" in\n  --version) echo '{}' ;;\n  --help)    /bin/cat {help};;\n  *)\texit 1 ;;
+esac\n",
+                version_text,
+                help = help_path_str
+            )
+            .expect("write mock script");
+            use std::os::unix::fs::PermissionsExt;
+            f.set_permissions(std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+
+        let orig_path = std::env::var_os("PATH").map(|p| p.to_string_lossy().to_string());
+        std::env::set_var("PATH", dir.path().to_string_lossy().to_string());
+
+        (dir, bin_path, orig_path)
+    }
+
+    /// Helper: restores the original PATH after a mock test.
+    fn restore_path(orig_path: Option<String>) {
+        match orig_path {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+    }
 
     #[test]
     fn test_claude_response_deserialize_with_usage() {
@@ -492,5 +545,155 @@ mod tests {
         assert_eq!(parsed.content.len(), 1);
         assert!(parsed.model.is_none());
         assert!(parsed.usage.is_none());
+    }
+
+    // --- API probe tests ---
+
+    #[tokio::test]
+    async fn test_probe_api_valid_key_and_model() {
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Api {
+                api_key: SecretString::from("sk-ant-test123"),
+                model: "claude-sonnet-4-20250514".into(),
+                client: reqwest::Client::new(),
+            },
+        };
+        let result = backend.probe_api().await.expect("should not error");
+        assert!(result.available);
+        assert_eq!(result.mode, Some("api".into()));
+        assert!(result.diagnostic.is_none());
+        assert!(result.version.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_probe_api_empty_key() {
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Api {
+                api_key: SecretString::from(""),
+                model: "claude-sonnet-4-20250514".into(),
+                client: reqwest::Client::new(),
+            },
+        };
+        let result = backend.probe_api().await.expect("should not error");
+        assert!(!result.available);
+        assert_eq!(result.mode, Some("api".into()));
+        assert_eq!(
+            result.diagnostic.as_deref(),
+            Some("ANTHROPIC_API_KEY not set or empty")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_probe_api_empty_model() {
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Api {
+                api_key: SecretString::from("sk-ant-test123"),
+                model: "".into(),
+                client: reqwest::Client::new(),
+            },
+        };
+        let result = backend.probe_api().await.expect("should not error");
+        assert!(!result.available);
+        assert_eq!(result.mode, Some("api".into()));
+        assert_eq!(result.diagnostic.as_deref(), Some("model config is empty"));
+    }
+
+    // --- CLI probe tests ---
+
+    #[tokio::test]
+    async fn test_probe_cli_present_with_json_support() {
+        let _lock = PATH_LOCK.lock().await;
+        let (_dir, _path, orig_path) = setup_mock_claude(
+            "Claude CLI 0.42.0",
+            "Usage: claude [OPTIONS]
+--output-format <FORMAT>  [json|text]
+",
+        );
+
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Cli {
+                command: "claude".into(),
+                model: None,
+            },
+        };
+        let result = backend.probe_cli().await.expect("should not error");
+
+        restore_path(orig_path);
+
+        assert!(result.available);
+        assert_eq!(result.mode, Some("cli".into()));
+        assert_eq!(result.version.as_deref(), Some("0.42.0"));
+        assert!(result.unusable_flags.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_probe_cli_present_without_json_support() {
+        let _lock = PATH_LOCK.lock().await;
+        let (_dir, _path, orig_path) = setup_mock_claude(
+            "Claude CLI 1.2.3",
+            "Usage: claude [OPTIONS]
+  --model <MODEL>  Model name
+",
+        );
+
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Cli {
+                command: "claude".into(),
+                model: None,
+            },
+        };
+        let result = backend.probe_cli().await.expect("should not error");
+
+        restore_path(orig_path);
+
+        assert!(result.available);
+        assert_eq!(result.mode, Some("cli".into()));
+        assert_eq!(result.version.as_deref(), Some("1.2.3"));
+        assert_eq!(result.unusable_flags, vec!["--output-format json"]);
+    }
+
+    #[tokio::test]
+    async fn test_probe_cli_not_found() {
+        let backend = ClaudeBackend {
+            mode: ClaudeMode::Cli {
+                command: "claude-nonexistent-xyz".into(),
+                model: None,
+            },
+        };
+        let result = backend.probe_cli().await.expect("should not error");
+        assert!(!result.available);
+        assert_eq!(result.mode, Some("cli".into()));
+        assert!(result.diagnostic.is_some());
+        assert!(result
+            .diagnostic
+            .as_deref()
+            .unwrap()
+            .contains("not found on PATH"));
+    }
+
+    #[test]
+    fn test_parse_semver_line_standard() {
+        assert_eq!(
+            parse_semver_line("Claude CLI 0.42.0"),
+            Some("0.42.0".into())
+        );
+    }
+
+    #[test]
+    fn test_parse_semver_line_with_prefix() {
+        assert_eq!(
+            parse_semver_line("claude version 1.2.3 (build 456)"),
+            Some("1.2.3".into())
+        );
+    }
+
+    #[test]
+    fn test_parse_semver_line_no_version() {
+        assert_eq!(parse_semver_line("Claude CLI (unknown version)"), None);
+    }
+
+    #[test]
+    fn test_parse_semver_line_empty() {
+        assert_eq!(parse_semver_line(""), None);
     }
 }
