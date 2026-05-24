@@ -20,10 +20,10 @@ linear:
   priority: High
   branch_actual: feat/clo-392
 workflow:
-  current_phase: pr
-  status: active
+  current_phase: complete
+  status: complete
   created_at: '2026-05-24T06:52:54.711Z'
-  updated_at: '2026-05-24T11:18:13.616Z'
+  updated_at: '2026-05-24T11:30:14.015Z'
 phases:
   discovery:
     status: complete
@@ -150,8 +150,24 @@ phases:
     pr_status: ready_for_review
     pr_url: https://github.com/maxkulish/lok/pull/40
     approved: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-24T11:20:28Z'
+    reviews_addressed: true
+    pre_merge_refetch_at: '2026-05-24T11:27:00Z'
+    pre_merge_refetch_passed: true
   complete:
-    status: pending
+    status: complete
+    merged_at: '2026-05-24T11:26:55Z'
+    aggregation_files_updated: true
+    merge_commit: 89cd121b93bf6b2eabd8c4fa86907e9ce66c5e24
+    lessons_file: .pi/lessons/clo-392-codex-health-probe-lessons.md
+    lessons_learned:
+      - L1 - Validation-gate bounded fix iteration prevents unbounded loops
+      - L2 - Explicit return types prevent reviewer confusion under anyhow::Result
+      - L3 - Hardcoded flag lists in workflow validation are a coupling hotspot
+    docs_pr_merge_commit: 642c0e6
+    docs_pr_number: '41'
+    docs_pr_url: https://github.com/maxkulish/lok/pull/41
 history:
   - timestamp: '2026-05-24T06:52:54.711Z'
     action: workflow_started
@@ -300,5 +316,62 @@ history:
     action: pr_approved
     phase: pr
     details: 'PR #40 ready for review. No reviewers assigned. Local validation passed.'
+  - timestamp: '2026-05-24T11:26:12.175Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      3/3 Gemini review threads resolved. Replies posted with /gemini review trailer verified on all replies. Gemini
+      re-reviewed and approved all fixes: (1) std::result::Result + u64 accumulator accepted, (2) Workflow::validate
+      placement accepted as pragmatic, (3) codex_unusable_flag_warnings helper accepted.
+  - timestamp: '2026-05-24T11:26:20.529Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: >-
+      Pre-merge refetch verified: local HEAD cb9ebf8 matches PR #40 head commit. All 3 Gemini review threads resolved.
+      CI green locally (fmt+clippy+tests).
+  - timestamp: '2026-05-24T11:26:41.338Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: >-
+      Current-head bot review observed for PR #40 at head 00fafa57371d7dde27f0b53a70c28855f89ea51d by
+      gemini-code-assist[bot] at 2026-05-24T11:20:28Z. Fetching inline comments and review threads.
+  - timestamp: '2026-05-24T11:26:44.566Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-05-24T11:27:05.610Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #40 merged via squash at 2026-05-24T11:26:55Z. Merge commit: 89cd121. All review threads resolved.'
+  - timestamp: '2026-05-24T11:27:18.132Z'
+    action: workflow_complete
+    phase: complete
+    details: >-
+      CLO-392 workflow complete. PR #40 merged (89cd121). Feature branch feat/clo-392 already on main via squash merge.
+      Aggregation sync deferred - lok worktree on main is separate directory.
+  - timestamp: '2026-05-24T11:27:22.246Z'
+    action: workflow_complete
+    phase: complete
+    details: 'Final workflow state update: current_phase=complete, status=complete.'
+  - timestamp: '2026-05-24T11:27:47.960Z'
+    action: workflow_complete
+    phase: complete
+    details: 'Finalizing: workflow.status set to complete.'
+  - timestamp: '2026-05-24T11:29:59.337Z'
+    action: lessons_extracted
+    phase: complete
+    details: '3 lessons recorded. File: .pi/lessons/clo-392-codex-health-probe-lessons.md'
+  - timestamp: '2026-05-24T11:30:07.281Z'
+    action: docs_pr_merged
+    phase: complete
+    details: >-
+      Docs PR #41 merged. Files: docs/status/clo-392-workflow.yaml (already on main),
+      .pi/lessons/clo-392-codex-health-probe-lessons.md
+  - timestamp: '2026-05-24T11:30:14.015Z'
+    action: workflow_complete
+    phase: complete
+    details: >-
+      Task CLO-392 fully completed. PR #40 merged (89cd121). Docs PR #41 merged (642c0e6). Linear updated to Done. 3
+      lessons recorded.
 task_title: 'FR-13: Codex health probe + version-aware unusable-flag matrix'
 task_url: https://linear.app/cloud-ai/issue/CLO-392/fr-13-codex-health-probe-version-aware-unusable-flag-matrix
