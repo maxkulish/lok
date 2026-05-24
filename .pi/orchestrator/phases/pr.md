@@ -47,6 +47,36 @@ update_workflow_state({
 })
 ```
 
+## Step 0.5 - Stage and commit remaining changes (MANDATORY)
+
+Before pushing, check for any unstaged or untracked files. The implement
+phase may leave post-implementation artifacts dirty (workflow YAML updates,
+lessons files, review reports). These must be committed to the PR branch.
+
+```bash
+git status --short
+```
+
+If the working tree is clean, proceed directly to Step 1.
+
+Review each dirty file:
+
+| If files are... | Then... |
+|---|---|
+| Task artifacts (workflow YAML, lessons, review reports, code changes) | Stage and commit them |
+| Unrelated to this task (different branch's work, uncommitted experiments) | Warn the user and stop — cross-task boundary |
+| `.pi/lessons/` files | **Stage and commit them.** Lessons are cross-task memory; losing them to a `git branch -D` in the complete phase is data loss. |
+
+```bash
+git add -A
+git commit -m "chore(CLO-XX): update workflow state and post-implementation artifacts"
+```
+
+⚠️ **Untracked files are especially vulnerable.** `git branch -D` in
+the `complete.md` phase destroys any file that was never staged. If you
+skip this step for untracked `.pi/lessons/*` or `docs/status/*` files,
+you will lose them permanently. Stage them now.
+
 ## Step 1 - Push the branch
 
 ```bash
@@ -257,7 +287,23 @@ update_workflow_state({
 })
 ```
 
-## Step 6 - Transition
+## Step 6 - Exit guard: verify clean working tree
+
+Before transitioning, confirm the working tree has no uncommitted files
+that would be lost by `complete.md`'s `git branch -D`:
+
+```bash
+git status --porcelain
+```
+
+If the tree is dirty, you MUST either:
+1. Commit the files to the current branch (preferred), OR
+2. Stash them (`git stash push -m "clo-XX: uncommitted artifacts before merge"`)
+
+Do NOT transition with dirty untracked files in `.pi/lessons/` or
+`docs/status/`. Those are the files most likely to be lost.
+
+Only once `git status --porcelain` is empty:
 
 ```ts
 transition_phase({
@@ -268,9 +314,3 @@ transition_phase({
 ```
 
 The actual merge happens in `complete.md` (squash + cleanup are coupled).
-
-## Notes
-
-- Never force-push to a shared PR branch without warning the user.
-- If a reviewer requests changes that contradict the design, surface
-  the conflict in the PR thread rather than silently complying.

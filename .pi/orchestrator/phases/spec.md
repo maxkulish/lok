@@ -28,7 +28,7 @@ phases:
     token_usage:                                              # optional, observational
       - recorded_at: "2026-05-16T12:00:00Z"
         provider: "gemini"
-        model: "gemini-3.1-pro-preview"
+        model: "gemini-3.5-flash"
         prompt_tokens: 0
         completion_tokens: 0
         task_label: "spec-review"
@@ -142,7 +142,7 @@ update_workflow_state({
     flagged_suggestions: [...]
   },
   token_usage: [
-    { provider: "gemini", model: "gemini-3.1-pro-preview", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-gemini" },
+    { provider: "gemini", model: "gemini-3.5-flash", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-gemini" },
     { provider: "ollama", model: "qwen-coder", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-ollama" }
   ]
 })

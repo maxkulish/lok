@@ -1,0 +1,297 @@
+task_id: clo-391
+task_type: development
+classification_reason: >-
+  Title 'FR-13a: Claude dual-mode health probe (Api vs Cli)' describes implementing two distinct probe implementations
+  with mechanical ACs (unit tests, cache integration) — no spec/ops signals. Classified as development.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Personal-health
+  status_at_start: Backlog
+  blocks:
+    - CLO-393
+  blocked_by:
+    - CLO-388
+  branch_suggested: kmamemo/clo-391-fr-13a-claude-dual-mode-health-probe-api-vs-cli
+  priority: 2
+  branch_actual: feat/clo-391-claude-dual-health-probe
+workflow:
+  current_phase: complete
+  status: checkpoint
+  created_at: '2026-05-24T06:52:00.863Z'
+  updated_at: '2026-05-24T14:23:55.130Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: Inline per-variant probes
+    approaches_identified: 2
+    approved: true
+    baseline_score: 6
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-391.md
+    prd_created: false
+    prd_exists: true
+    prd_file: docs/prds/prd-phase-2-predictable-cli-execution-v5.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/design-docs/clo-391-claude-dual-health-probe.md
+    draft_ready: true
+    review_completed: true
+    review_gemini: docs/reviews/clo-391-review-gemini.md
+    review_ollama: docs/reviews/clo-391-review-ollama.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    applied_suggestions:
+      - 'Added diagnostic: Option<String> to HealthStatus for failure transparency'
+      - Added logging guidance (warn on timeout, debug on parse failure)
+      - Combined api_key + model checks with trim() in probe_api
+      - Added Mutex safety comment in async context
+      - Added regex-based semver parsing approach
+      - Added diagnostic population on failure paths
+      - Clarified partial-probe failure behavior in edge cases
+      - Documented --help format check as best-effort
+      - Expanded edge cases list (whitespace keys, binary updates, output format changes)
+    flagged_suggestions: []
+    review_applied: true
+    discovery_context_used: true
+    finalized: true
+    assumptions_surfaced: true
+    human_review_completed: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-391-claude-dual-health-probe.md
+    approved: true
+  implement:
+    status: complete
+    commits:
+      - 747a681
+      - e1f0e31
+      - ea1def2
+      - 8e2d28c
+    assumption_outcomes:
+      - evidence: src/backend/claude.rs::probe_api() — only checks api_key.expose_secret().trim() and model.trim()
+        outcome: held
+        text: API probe is offline-only (no network calls)
+      - evidence: src/backend/claude.rs::probe_cli() and get_help_output() — timeout(Duration::from_secs(2), ...)
+        outcome: held
+        text: CLI probe uses 2s timeout for both --version and --help
+      - evidence: src/backend/claude.rs::HELP_CACHE static — OnceLock<Mutex<HashMap<String, String>>>
+        outcome: held
+        text: Help output cached per-version to avoid re-parsing on every warmup
+      - evidence: 'src/backend/claude.rs::ClaudeBackend — single mode: ClaudeMode enum'
+        outcome: held
+        text: A single ClaudeBackend is in one mode at a time
+    assumptions_revalidated: true
+    codex_report: docs/reviews/clo-391-codex-validation.md
+    codex_validated: true
+    codex_verdict: FAIL
+    gemini_validation_report: docs/reviews/clo-391-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-391-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    token_usage:
+      - recorded_at: '2026-05-24T11:50:55.243Z'
+        provider: codex
+        model: gpt-5.5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-05-24T11:50:55.243Z'
+        provider: gemini
+        model: gemini-3.1-pro-preview
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-gemini
+      - recorded_at: '2026-05-24T11:50:55.243Z'
+        provider: claude
+        model: claude-opus-4
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
+  pr:
+    status: complete
+    pr_number: 43
+    pr_url: https://github.com/maxkulish/lok/pull/43
+    ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-24T11:57:11Z'
+    reviews_addressed: true
+    pre_merge_refetch_at: '2026-05-24T14:23:45Z'
+    pre_merge_refetch_passed: true
+    merge_commit: 688f82c9884a6e2dc9f95f6fbe3507ae078b4b1c
+    merged_at: '2026-05-24T14:23:43Z'
+  complete:
+    status: pending
+    merge_commit: 688f82c9884a6e2dc9f95f6fbe3507ae078b4b1c
+    merged_at: '2026-05-24T14:23:43Z'
+history:
+  - timestamp: '2026-05-24T06:52:00.863Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-391 as development
+  - timestamp: '2026-05-24T06:53:09.580Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: Title 'FR-13a: Claude dual-mode health probe (Api vs Cli)' describes implementing two
+      distinct probe implementations with mechanical ACs (unit tests, cache integration) — no spec/ops signals.
+  - timestamp: '2026-05-24T06:53:49.544Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-391 --start. Added CLO-391 to Active Work and
+      Phase 11 (Health Checks) in Roadmap.
+  - timestamp: '2026-05-24T06:53:51.345Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-24T06:54:09.173Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-391-claude-dual-health-probe created from main with project sync docs commit
+  - timestamp: '2026-05-24T06:55:16.771Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: Inline per-variant probes. Baseline 6/10. 2 approaches considered (inline probes, extract probe
+      structs).
+  - timestamp: '2026-05-24T06:55:18.884Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-24T06:56:30.996Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Design document created at docs/design-docs/clo-391-claude-dual-health-probe.md. Approach: inline per-variant
+      probes.
+  - timestamp: '2026-05-24T06:59:19.230Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review complete. Gemini: APPROVE_WITH_SUGGESTIONS. Ollama: APPROVE_WITH_SUGGESTIONS. Synthesis at
+      docs/reviews/clo-391-review-synthesis.md
+  - timestamp: '2026-05-24T06:59:23.005Z'
+    action: review_applied
+    phase: design
+    details: Applied 9 non-contradicting suggestions from Gemini/Ollama reviews to design doc.
+  - timestamp: '2026-05-24T10:17:37.030Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design document approved and finalized. Reviews: Gemini APPROVE_WITH_SUGGESTIONS, Ollama APPROVE_WITH_SUGGESTIONS.
+      9 suggestions auto-applied.
+  - timestamp: '2026-05-24T10:18:09.100Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: >-
+      Key assumptions: (1) API probe is offline-only, (2) CLI probe uses 2s timeout, (3) help output cached per-version,
+      (4) a single ClaudeBackend is in one mode at a time.
+  - timestamp: '2026-05-24T10:18:13.481Z'
+    action: design_human_review_complete
+    phase: design
+    details: User approved design via checkpoint prompt (option 1). Design finalized and transitioned to plan phase.
+  - timestamp: '2026-05-24T10:18:16.872Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-24T10:19:39.915Z'
+    action: plan_created
+    phase: plan
+    details: Implementation plan created at docs/plans/clo-391-claude-dual-health-probe.md. 16 tasks across 5 phases.
+  - timestamp: '2026-05-24T10:40:29.083Z'
+    action: plan_approved
+    phase: plan
+    details: User approved implementation plan. 16 tasks across 5 phases. Transitioning to implement phase.
+  - timestamp: '2026-05-24T10:40:39.421Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-24T10:40:58.379Z'
+    action: phase_started
+    phase: implement
+    details: Implementation started. 16 tasks across 5 phases from plan docs/plans/clo-391-claude-dual-health-probe.md
+  - timestamp: '2026-05-24T11:02:26.239Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      Phase 2 (Tasks 2-6): API/CLI health probes, parse_semver_line, get_help_output, and health_check dispatch
+      implemented. Commit e1f0e31
+  - timestamp: '2026-05-24T11:34:26.537Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST1 landed: Add mode + diagnostic fields to HealthStatus. Commit 747a681'
+  - timestamp: '2026-05-24T11:34:51.134Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: '4 assumptions reviewed. held: 4, violated: 0, untested: 0. All design assumptions confirmed in implementation.'
+  - timestamp: '2026-05-24T11:34:53.936Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed (ST1-ST12). 12 new claude probe tests passing. 2 pre-existing flaky tests unrelated.
+      fmt+clippy+test green.
+  - timestamp: '2026-05-24T11:50:55.243Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL. Gemini: REVIEW_FAILED. Synthesis: PASS_WITH_NOTES. 1 fix iteration applied (cliplt, kill_on_drop,
+      eprintln consistency).
+  - timestamp: '2026-05-24T11:51:05.321Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      Validation fix iteration committed: ea1def2 (fixes) + 8e2d28c (synthesis re-validation). Commits: 747a681,
+      e1f0e31, ea1def2, 8e2d28c
+  - timestamp: '2026-05-24T11:51:24.518Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-24T11:51:53.936Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate: fmt + clippy green. 3 test failures are pre-existing flaky (PATH/tempfile interference in parallel
+      runner). All claude probe tests pass.
+  - timestamp: '2026-05-24T11:52:13.981Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #43 opened: https://github.com/maxkulish/lok/pull/43'
+  - timestamp: '2026-05-24T11:57:03.261Z'
+    action: ci_passed
+    phase: pr
+    details: No CI configured on this repository. No checks to wait for.
+  - timestamp: '2026-05-24T12:15:28.244Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: 'Current-head bot review observed for PR #43 at head 9418041: gemini-code-assist COMMENTED at 2026-05-24T11:57:11Z.'
+  - timestamp: '2026-05-24T14:23:01.090Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      2 threads resolved; replies posted 2/2; /gemini review trailer verified on every reply; Gemini re-reviewed and
+      approved both fixes on HEAD 40e61d0; unresolved-thread re-check clean.
+  - timestamp: '2026-05-24T14:23:22.322Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads since 2026-05-24T14:23:01.090Z.'
+  - timestamp: '2026-05-24T14:23:24.884Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-05-24T14:23:55.126Z'
+    action: pr_merged
+    phase: pr
+    details: Merge commit 688f82c
+  - timestamp: '2026-05-24T14:23:55.130Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #43 merged. Merge commit 688f82c.'
+task_title: 'FR-13a: Claude dual-mode health probe (Api vs Cli)'
+task_url: https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli
