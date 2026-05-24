@@ -25,7 +25,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-24T06:53:45.570Z'
-  updated_at: '2026-05-24T15:32:23.934Z'
+  updated_at: '2026-05-24T15:40:22.906Z'
 phases:
   discovery:
     status: complete
@@ -202,6 +202,8 @@ phases:
     bot_review_wait_completed_at: '2026-05-24T15:27:23Z'
   complete:
     status: pending
+    merge_commit: 06e0af3
+    merged_at: '2026-05-24T15:32:37Z'
 history:
   - timestamp: '2026-05-24T06:53:45.570Z'
     action: workflow_started
@@ -326,5 +328,9 @@ history:
     details: >-
       Pre-merge gate green: fmt + clippy + 635 tests all pass (608 unit + 8 codex_fixtures + 8 codex_parse_output + 5
       gemini_fixtures + 6 integration)
+  - timestamp: '2026-05-24T15:40:22.906Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #48 merged. Merge commit 06e0af3.'
 task_title: 'FR-12a: Replace Gemini CLI backend with opencode subprocess'
 task_url: https://linear.app/cloud-ai/issue/CLO-394/fr-12a-replace-gemini-cli-backend-with-opencode-subprocess
