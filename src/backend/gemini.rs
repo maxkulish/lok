@@ -2,8 +2,9 @@ use crate::config::BackendConfig;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
+use std::path::PathBuf;
 use std::process::Stdio;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::process::Command;
 
 pub struct GeminiBackend {
@@ -564,6 +565,166 @@ impl GeminiBackend {
 
         argv
     }
+
+    /// Run `opencode --version` with a 1s timeout budget.
+    /// Returns the trimmed version string (e.g., "1.15.10").
+    async fn probe_version(command: &str) -> Result<String, super::BackendError> {
+        let output = tokio::time::timeout(
+            Duration::from_secs(1),
+            Command::new(command)
+                .arg("--version")
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        .map_err(|_| super::BackendError::Unavailable {
+            message: "opencode --version timed out after 1s".to_string(),
+        })?
+        .map_err(|e| super::BackendError::Unavailable {
+            message: format!("Failed to spawn opencode --version: {}", e),
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(super::BackendError::Unavailable {
+                message: format!(
+                    "opencode --version exited {:?}: {}",
+                    output.status.code(),
+                    stderr.trim()
+                ),
+            });
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let version = stdout.lines().next().unwrap_or("").trim().to_string();
+        if version.is_empty() {
+            return Err(super::BackendError::Unavailable {
+                message: "opencode --version returned empty output".to_string(),
+            });
+        }
+        Ok(version)
+    }
+
+    /// Detect Google auth from `~/.local/share/opencode/auth.json`.
+    /// Returns the auth mode ("oauth" or "api-key") if a `google` key exists.
+    fn detect_auth_from_file() -> Option<String> {
+        let home = std::env::var("HOME").ok()?;
+        let auth_path = PathBuf::from(home).join(".local/share/opencode/auth.json");
+        Self::detect_auth_from_file_at(&auth_path)
+    }
+
+    /// Detect Google auth from a specific auth.json path. Internal testability hook.
+    fn detect_auth_from_file_at(path: &std::path::Path) -> Option<String> {
+        let content = std::fs::read_to_string(path).ok()?;
+        let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
+        let google = parsed.get("google")?;
+
+        match google.get("type").and_then(|t| t.as_str()) {
+            Some("api") => Some("api-key".to_string()),
+            _ => Some("oauth".to_string()),
+        }
+    }
+
+    /// Detect Google auth from GEMINI_API_KEY / GOOGLE_API_KEY environment variables.
+    /// Returns "api-key" if either env var is set.
+    fn detect_auth_from_env() -> Option<String> {
+        if std::env::var("GEMINI_API_KEY")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .is_some()
+            || std::env::var("GOOGLE_API_KEY")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .is_some()
+        {
+            Some("api-key".to_string())
+        } else {
+            None
+        }
+    }
+
+    /// Detect Google auth by parsing `opencode auth list` output.
+    /// Returns "oauth" if Google is found under "Credentials",
+    /// "api-key" if under "Environment", or None if not found.
+    async fn detect_auth_from_cli(command: &str) -> Result<Option<String>, super::BackendError> {
+        let output = match tokio::time::timeout(
+            Duration::from_secs(2),
+            Command::new(command)
+                .arg("auth")
+                .arg("list")
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        {
+            Ok(Ok(out)) => out,
+            // Timeout or spawn failure → can't tell, return None
+            _ => return Ok(None),
+        };
+
+        if !output.status.success() {
+            return Ok(None);
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut in_credentials = false;
+        let mut in_environment = false;
+
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if trimmed.contains("Credentials") {
+                in_credentials = true;
+                in_environment = false;
+            } else if trimmed.contains("Environment") {
+                in_credentials = false;
+                in_environment = true;
+            }
+
+            if trimmed.contains("Google") {
+                if in_credentials {
+                    return Ok(Some("oauth".to_string()));
+                }
+                if in_environment {
+                    return Ok(Some("api-key".to_string()));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Run `opencode models google` with a 3s timeout, returning model names.
+    /// Returns an empty Vec on timeout or failure (best-effort only).
+    async fn probe_models(command: &str) -> Result<Vec<super::ModelInfo>, super::BackendError> {
+        let output = match tokio::time::timeout(
+            Duration::from_secs(3),
+            Command::new(command)
+                .arg("models")
+                .arg("google")
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await
+        {
+            Ok(Ok(out)) if out.status.success() => out,
+            _ => return Ok(Vec::new()),
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let models: Vec<super::ModelInfo> = stdout
+            .lines()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .map(|name| super::ModelInfo {
+                name: name.to_string(),
+                modified_at: None,
+                size: None,
+                digest: None,
+            })
+            .collect();
+
+        Ok(models)
+    }
 }
 
 #[async_trait]
@@ -638,16 +799,60 @@ impl super::Backend for GeminiBackend {
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
-        if which::which(&self.command).is_ok() {
-            Ok(super::HealthStatus::new_available())
+        // 1. PATH check (immediate, no async overhead)
+        let cmd = which::which(&self.command).map_err(|_| super::BackendError::Unavailable {
+            message: format!(
+                "Gemini backend command '{}' not found on PATH",
+                self.command
+            ),
+        })?;
+        let cmd_str = cmd.to_string_lossy().to_string();
+
+        // 2. Version probe (1s timeout budget per FR-12b AC)
+        let version = match Self::probe_version(&cmd_str).await {
+            Ok(v) => Some(v),
+            Err(e) => {
+                return Ok(super::HealthStatus {
+                    available: false,
+                    diagnostic: Some(format!("Version probe failed: {}", e)),
+                    ..super::HealthStatus::new_unavailable()
+                });
+            }
+        };
+
+        // 3. Auth detection (priority: auth.json file → env vars → CLI)
+        let (mode, auth_method, diagnostic) = if let Some(method) = Self::detect_auth_from_file() {
+            (Some(method.clone()), Some(method), None)
+        } else if let Some(method) = Self::detect_auth_from_env() {
+            (Some(method.clone()), Some(method), None)
         } else {
-            Err(super::BackendError::Unavailable {
-                message: format!(
-                    "Gemini backend command '{}' not found on PATH",
-                    self.command
-                ),
-            })
-        }
+            match Self::detect_auth_from_cli(&cmd_str).await {
+                    Ok(Some(method)) => (Some(method.clone()), Some(method), None),
+                    Ok(None) | Err(_) => (
+                        Some("none".to_string()),
+                        Some("none".to_string()),
+                        Some(
+                            "No Google auth detected. Run `opencode auth login` to set up credentials (not `opencode login`)."
+                                .to_string(),
+                        ),
+                    ),
+                }
+        };
+
+        let available = auth_method.as_deref() != Some("none");
+
+        // 4. Model enumeration (best-effort, 3s timeout)
+        let models = Self::probe_models(&cmd_str).await.unwrap_or_default();
+
+        Ok(super::HealthStatus {
+            available,
+            version,
+            mode,
+            auth_method,
+            diagnostic,
+            models,
+            ..super::HealthStatus::new_available()
+        })
     }
 }
 
@@ -655,6 +860,7 @@ impl super::Backend for GeminiBackend {
 mod tests {
     use super::super::SandboxMode;
     use super::GeminiBackend;
+    use crate::backend::Backend;
     use std::fs;
 
     fn default_args_with_flag() -> Vec<String> {
@@ -999,5 +1205,214 @@ mod tests {
         let usage = usage.expect("usage expected");
         assert_eq!(usage.prompt_tokens, 10);
         assert_eq!(usage.completion_tokens, 1);
+    }
+
+    // ── Health probe tests ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn gemini_health_check_success() {
+        let _lock = super::super::acquire_test_lock().await;
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho '1.15.10'\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+        // Set env so auth falls through to env detection
+        std::env::set_var("GEMINI_API_KEY", "test-key");
+
+        let cfg = crate::config::BackendConfig {
+            command: Some(path.to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+        let backend = GeminiBackend::new(&cfg).unwrap();
+        let status = backend.health_check().await.unwrap();
+        assert!(status.available);
+        assert_eq!(status.version, Some("1.15.10".to_string()));
+        assert_eq!(status.mode, Some("api-key".to_string()));
+
+        std::env::remove_var("GEMINI_API_KEY");
+        drop(script);
+    }
+
+    #[tokio::test]
+    async fn gemini_health_check_missing_binary() {
+        let cfg = crate::config::BackendConfig {
+            command: Some("/nonexistent/path/to/opencode".to_string()),
+            ..Default::default()
+        };
+        let backend = GeminiBackend::new(&cfg).unwrap();
+        let err = backend.health_check().await.unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("not found on PATH"), "{}", msg);
+    }
+
+    #[tokio::test]
+    async fn gemini_health_check_version_timeout() {
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\nsleep 10\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+        let cfg = crate::config::BackendConfig {
+            command: Some(path.to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+        let backend = GeminiBackend::new(&cfg).unwrap();
+        let status = backend.health_check().await.unwrap();
+        assert!(!status.available);
+        assert!(status.diagnostic.unwrap().contains("timed out"));
+        drop(script);
+    }
+
+    #[tokio::test]
+    async fn gemini_health_check_bad_exit() {
+        let _lock = super::super::acquire_test_lock().await;
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'broken' >&2\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+        let cfg = crate::config::BackendConfig {
+            command: Some(path.to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+        let backend = GeminiBackend::new(&cfg).unwrap();
+        let status = backend.health_check().await.unwrap();
+        assert!(!status.available);
+        assert!(status.diagnostic.unwrap().contains("exited"));
+        drop(script);
+    }
+
+    #[tokio::test]
+    async fn gemini_health_check_no_auth() {
+        let _lock = super::super::acquire_test_lock().await;
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let path = script.path().to_path_buf();
+        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho '1.15.10'\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+        // Remove any env vars that would trigger auth detection
+        let had_gemini_key = std::env::var("GEMINI_API_KEY").is_ok();
+        let had_google_key = std::env::var("GOOGLE_API_KEY").is_ok();
+        let saved_home = std::env::var("HOME").ok();
+        std::env::remove_var("GEMINI_API_KEY");
+        std::env::remove_var("GOOGLE_API_KEY");
+        // Point HOME at a temp dir so detect_auth_from_file returns None
+        let temp_home = tempfile::TempDir::new().unwrap();
+        std::env::set_var("HOME", temp_home.path().to_string_lossy().as_ref());
+
+        let cfg = crate::config::BackendConfig {
+            command: Some(path.to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+        let backend = GeminiBackend::new(&cfg).unwrap();
+        let status = backend.health_check().await.unwrap();
+
+        // Restore env vars (inside lock guard)
+        if let Some(ref home) = saved_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        drop(temp_home);
+        if had_gemini_key {
+            std::env::set_var("GEMINI_API_KEY", "restored");
+        }
+        if had_google_key {
+            std::env::set_var("GOOGLE_API_KEY", "restored");
+        }
+
+        assert!(!status.available, "should be unavailable without auth");
+        assert_eq!(status.mode, Some("none".to_string()));
+        assert_eq!(status.auth_method, Some("none".to_string()));
+        let diag = status.diagnostic.unwrap();
+        assert!(
+            diag.contains("opencode auth login"),
+            "diagnostic should mention opencode auth login: {}",
+            diag
+        );
+        drop(script);
+    }
+
+    #[tokio::test]
+    async fn gemini_detect_auth_from_env_api_key() {
+        let _lock = super::super::acquire_test_lock().await;
+        std::env::set_var("GEMINI_API_KEY", "test");
+        let result = GeminiBackend::detect_auth_from_env();
+        std::env::remove_var("GEMINI_API_KEY");
+        assert_eq!(result, Some("api-key".to_string()));
+    }
+
+    #[tokio::test]
+    async fn gemini_detect_auth_from_env_google_key() {
+        let _lock = super::super::acquire_test_lock().await;
+        std::env::set_var("GOOGLE_API_KEY", "test");
+        let result = GeminiBackend::detect_auth_from_env();
+        std::env::remove_var("GOOGLE_API_KEY");
+        assert_eq!(result, Some("api-key".to_string()));
+    }
+
+    #[tokio::test]
+    async fn gemini_detect_auth_from_env_none_when_unset() {
+        let _lock = super::super::acquire_test_lock().await;
+        // This test is inherently racy with parallel tests that set env vars.
+        // The end-to-end gemini_health_check_no_auth test covers this pathway.
+        // Skip if GEMINI_API_KEY is present in the parent environment.
+        if std::env::var("GEMINI_API_KEY").is_ok() || std::env::var("GOOGLE_API_KEY").is_ok() {
+            return;
+        }
+        let result = GeminiBackend::detect_auth_from_env();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn gemini_detect_auth_from_file_oauth() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let auth_path = dir.path().join("auth.json");
+        std::fs::write(&auth_path, r#"{"google": {"type": "oauth"}}"#).unwrap();
+        let result = GeminiBackend::detect_auth_from_file_at(&auth_path);
+        assert_eq!(result, Some("oauth".to_string()));
+    }
+
+    #[test]
+    fn gemini_detect_auth_from_file_api_key() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let auth_path = dir.path().join("auth.json");
+        std::fs::write(
+            &auth_path,
+            r#"{"google": {"type": "api", "key": "test-key"}}"#,
+        )
+        .unwrap();
+        let result = GeminiBackend::detect_auth_from_file_at(&auth_path);
+        assert_eq!(result, Some("api-key".to_string()));
+    }
+
+    #[test]
+    fn gemini_detect_auth_from_file_no_google() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let auth_path = dir.path().join("auth.json");
+        std::fs::write(&auth_path, r#"{"other": {"type": "api"}}"#).unwrap();
+        let result = GeminiBackend::detect_auth_from_file_at(&auth_path);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn gemini_detect_auth_from_file_missing() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let auth_path = dir.path().join("nonexistent.json");
+        let result = GeminiBackend::detect_auth_from_file_at(&auth_path);
+        assert_eq!(result, None);
     }
 }

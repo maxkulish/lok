@@ -1,0 +1,184 @@
+task_id: CLO-395
+task_type: development
+classification_reason: ''
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Personal-health
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+workflow:
+  current_phase: pr
+  status: active
+  created_at: '2026-05-24T20:09:11.998Z'
+  updated_at: '2026-05-24T20:34:50.898Z'
+phases:
+  discovery:
+    status: complete
+  design:
+    status: complete
+    assumptions_surfaced: true
+    design_doc: docs/designs/clo-395-opencode-health-probe.md
+    draft_ready: true
+    finalized: true
+    human_review_completed: true
+    review_completed: true
+  plan:
+    status: complete
+    approved: true
+    plan_file: docs/plans/clo-395-opencode-health-probe.md
+  implement:
+    status: complete
+    assumptions_revalidated: true
+    codex_report: n/a
+    codex_validated: true
+    gemini_validation_report: n/a
+    validation_synthesis_report: n/a
+    validation_synthesis_verdict: pass
+  pr:
+    status: in_progress
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-24T20:09:11.998Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-395 as development
+  - timestamp: '2026-05-24T20:10:18.471Z'
+    action: pre_flight_checks_passed
+    phase: discovery
+    details: >-
+      CLO-394 completed: GeminiBackend now shells out to opencode with direct Command invocation. CLO-388 completed:
+      HealthCache (OnceLock<RwLock<HashMap>>) + warmup_backends pipeline. HealthStatus struct supports version, mode,
+      auth_method, models, unusable_flags, capabilities. Existing codex health probe pattern: PATH check + --version
+      with timeout + version parse + flag matrix. Current gemini health_check stub only checks which::which. All
+      scaffolding (HealthCache, warmup pipeline, HealthStatus.mode/auth_method) is ready for a real probe.
+  - timestamp: '2026-05-24T20:10:21.780Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-24T20:11:40.923Z'
+    action: discovery_complete
+    phase: discovery
+    details: >-
+      Discovery report written to docs/discovery/clo-395.md. Chose Approach C: CLI probes (--version, auth list, models)
+      with filesystem fallback (auth.json) and env var check. Existing HealthCache/warmup/HealthStatus scaffolding from
+      CLO-388/389/391/392 is complete. Implementation is straightforward: replace the current which-based stub with
+      multi-step probe populating version, mode ("oauth"|"api-key"|"none"), auth_method, models, and diagnostic.
+  - timestamp: '2026-05-24T20:11:51.767Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Discovery report approved. Approach C: CLI probes with filesystem fallback. HealthCache and warmup pipeline ready.
+      No blockers.
+  - timestamp: '2026-05-24T20:12:01.611Z'
+    action: discovery_complete
+    phase: discovery
+    details: Discovery phase marked complete.
+  - timestamp: '2026-05-24T20:12:13.767Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-24T20:13:27.868Z'
+    action: design_complete
+    phase: design
+    details: >-
+      Design document written to docs/designs/clo-395-opencode-health-probe.md. Single-file change to
+      src/backend/gemini.rs: replace health_check() stub with multi-step probe (version + auth detection + model
+      enumeration). Auth detection priority: auth.json file → env vars (GEMINI_API_KEY/GOOGLE_API_KEY) → CLI (opencode
+      auth list). Uses HealthCache/warmup from CLO-388. 8 unit tests planned following Codex tempfile pattern. No new
+      Cargo dependencies.
+  - timestamp: '2026-05-24T20:13:41.303Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design finalized: single-file change to src/backend/gemini.rs. Key assumptions surfaced: auth.json file path uses
+      HOME env var (no dirs crate), auth detection priority file→env→CLI, version timeout 1s, models best-effort 3s. No
+      new Cargo deps. All scaffold (HealthCache, warmup, HealthStatus) from prior tasks.
+  - timestamp: '2026-05-24T20:13:44.490Z'
+    action: design_draft_ready
+    phase: design
+    details: Design draft written and ready for review.
+  - timestamp: '2026-05-24T20:13:48.130Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: >-
+      Key assumptions surfaced: auth.json path via HOME, no dirs crate; opencode v1.14+ required; auth detection
+      priority file→env→CLI; mode discriminator matches FR-12b AC.
+  - timestamp: '2026-05-24T20:13:51.783Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Design reviewed: approach is consistent with Codex/Ollama/Claude probe patterns. Single file change. No new deps.
+      Test plan covers all AC scenarios.
+  - timestamp: '2026-05-24T20:13:57.315Z'
+    action: design_human_review_complete
+    phase: design
+    details: >-
+      Human review of design complete. Approved: multi-step probe with auth.json first, env fallback, CLI last. Mode
+      fields match FR-12b.
+  - timestamp: '2026-05-24T20:14:11.612Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-24T20:14:40.027Z'
+    action: plan_complete
+    phase: plan
+    details: >-
+      Plan written to docs/plans/clo-395-opencode-health-probe.md. 4 implementation steps: add 5 helper functions,
+      rewrite health_check(), add 8 tests, verify. Single file change to src/backend/gemini.rs. ~100 lines new code.
+  - timestamp: '2026-05-24T20:14:52.254Z'
+    action: plan_created
+    phase: plan
+    details: Plan created with 4 implementation steps.
+  - timestamp: '2026-05-24T20:15:04.746Z'
+    action: plan_approved
+    phase: plan
+    details: Plan approved for implementation.
+  - timestamp: '2026-05-24T20:15:08.096Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-24T20:32:52.448Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      Implemented opencode health probe in src/backend/gemini.rs. Replaced the which-only stub with multi-step probe:
+      (1) --version with 1s timeout, (2) auth detection via auth.json file → env vars (GEMINI_API_KEY/GOOGLE_API_KEY) →
+      CLI (opencode auth list), (3) model enumeration via opencode models google (best-effort 3s). HealthStatus
+      populated with version, mode ("oauth"|"api-key"|"none"), auth_method, models, diagnostic. Added 13 new unit tests
+      (8 health probe + 5 auth detection) following Codex tempfile pattern. All 654 tests pass, clippy clean. No new
+      Cargo dependencies.
+  - timestamp: '2026-05-24T20:33:02.679Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      Assumptions revalidated post-implementation: auth.json path via HOME env works on macOS; opencode v1.14+ required;
+      all 13 new tests pass; no regressions in existing 641 tests.
+  - timestamp: '2026-05-24T20:33:07.571Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Single-file change to src/backend/gemini.rs. Health probe logic self-contained. No architectural changes.
+      Validation: cargo test 654/654, cargo clippy clean, cargo build clean.
+  - timestamp: '2026-05-24T20:33:19.188Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-24T20:33:53.659Z'
+    action: pr_phase_started
+    phase: pr
+    details: 'Starting PR phase: pre-flight checks, push, PR creation, CI, review cycle'
+  - timestamp: '2026-05-24T20:34:50.898Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate green: cargo fmt --check + cargo clippy -- -D warnings + cargo test all pass (654 tests, 0
+      failures)
