@@ -18,7 +18,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-25T07:10:24.151Z'
-  updated_at: '2026-05-25T08:34:45.000Z'
+  updated_at: '2026-05-25T08:52:34.668Z'
 phases:
   discovery:
     status: complete
@@ -42,6 +42,8 @@ phases:
     validation_synthesis_verdict: PASS_WITH_NOTES
   pr:
     status: in_progress
+    pr_number: 52
+    pr_url: https://github.com/maxkulish/lok/pull/52
   complete:
     status: pending
 history:
@@ -160,3 +162,7 @@ history:
     action: pre_flight_checks_passed
     phase: pr
     details: 'Pre-merge gate green: fmt + clippy + clippy --tests + integration tests all pass.'
+  - timestamp: '2026-05-25T08:52:34.668Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #52 opened: https://github.com/maxkulish/lok/pull/52'

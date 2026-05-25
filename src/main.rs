@@ -257,7 +257,7 @@ enum Commands {
     /// Check which backends are available and ready
     Doctor {
         /// Output format: table or json
-        #[arg(long, value_name = "FORMAT", default_value = "table")]
+        #[arg(long, value_name = "FORMAT", default_value = "table", value_parser = ["table", "json"])]
         output: String,
     },
 
@@ -745,6 +745,8 @@ async fn main() -> Result<()> {
                 }
             }
             drop(lock);
+
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
 
             if output.as_str() == "json" {
                 print_doctor_json(&entries);

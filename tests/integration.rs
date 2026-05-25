@@ -191,42 +191,32 @@ fn test_doctor_json_output() {
     let (_success, output) = run_lok(&["doctor", "--output", "json"]);
 
     // Doctor should produce valid JSON output
-    let json_start = output.find('[');
-    let json_end = output.rfind(']');
-
-    if let (Some(start), Some(end)) = (json_start, json_end) {
-        let json_str = &output[start..=end];
-        let parsed: Result<serde_json::Value, _> = serde_json::from_str(json_str);
-        assert!(
-            parsed.is_ok(),
-            "Doctor JSON output should parse as valid JSON: {}",
-            output
-        );
-        let arr = parsed.unwrap();
-        assert!(
-            arr.is_array(),
-            "Doctor JSON output should be a JSON array: {}",
-            output
-        );
-        // Verify each entry has required fields
-        if let Some(entries) = arr.as_array() {
-            for entry in entries {
-                assert!(
-                    entry.get("backend").is_some(),
-                    "Each entry should have 'backend' field: {}",
-                    entry
-                );
-                assert!(
-                    entry.get("available").is_some(),
-                    "Each entry should have 'available' field: {}",
-                    entry
-                );
-            }
+    let trimmed = output.trim();
+    let parsed: Result<serde_json::Value, _> = serde_json::from_str(trimmed);
+    assert!(
+        parsed.is_ok(),
+        "Doctor JSON output should parse as valid JSON: {}",
+        output
+    );
+    let arr = parsed.unwrap();
+    assert!(
+        arr.is_array(),
+        "Doctor JSON output should be a JSON array: {}",
+        output
+    );
+    // Verify each entry has required fields
+    if let Some(entries) = arr.as_array() {
+        for entry in entries {
+            assert!(
+                entry.get("backend").is_some(),
+                "Each entry should have 'backend' field: {}",
+                entry
+            );
+            assert!(
+                entry.get("available").is_some(),
+                "Each entry should have 'available' field: {}",
+                entry
+            );
         }
-    } else {
-        panic!(
-            "Doctor --output json must produce valid JSON array. Got: {}",
-            output
-        );
     }
 }
