@@ -21,10 +21,10 @@ linear:
   priority: Medium
   branch_actual: feat/clo-396-opencode
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: active
   created_at: '2026-05-25T07:12:31.760Z'
-  updated_at: '2026-05-25T10:09:47.181Z'
+  updated_at: '2026-05-25T10:11:26.657Z'
 phases:
   discovery:
     status: complete
@@ -138,8 +138,17 @@ phases:
     reviews_addressed: true
     pre_merge_refetch_at: '2026-05-25T10:08:30Z'
     pre_merge_refetch_passed: true
+    merge_commit: 68d2344f1fa1ca354597e2c73d254e6e631a94e0
+    merged_at: '2026-05-25T10:10:22Z'
   complete:
     status: pending
+    merge_commit: 68d2344f1fa1ca354597e2c73d254e6e631a94e0
+    merged_at: '2026-05-25T10:10:22Z'
+    lessons_file: .pi/lessons/clo-396-opencode-migration-docs.md
+    lessons_learned:
+      - 'L1 - Docs-only PRs: Codex model timeouts are expected (manual assessment fallback)'
+      - L2 - Pre-merge re-fetch gate counts bot approvals as new comments (need thread-aware filtering)
+      - L3 - Markdown callouts adjacent to code blocks can nest inside fences
 history:
   - timestamp: '2026-05-25T07:12:31.760Z'
     action: workflow_started
@@ -277,5 +286,23 @@ history:
     action: bot_review_wait_completed
     phase: pr
     details: 'Current-head bot review observed for PR #53 at head c7bae04; Gemini bot re-reviewed and approved fixes.'
+  - timestamp: '2026-05-25T10:09:59.117Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-05-25T10:10:37.114Z'
+    action: pr_merged
+    phase: pr
+    details: 'PR #53 merged. Merge commit 68d2344.'
+  - timestamp: '2026-05-25T10:10:41.156Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #53 merged. Merge commit 68d2344.'
+  - timestamp: '2026-05-25T10:11:26.657Z'
+    action: lessons_extracted
+    phase: complete
+    details: >-
+      3 lessons recorded. File: .pi/lessons/clo-396-opencode-migration-docs.md. L1 covers docs-only PR model timeouts;
+      L2 covers pre-merge re-fetch false positives from bot approvals; L3 covers Markdown code-block/callout nesting.
 task_title: 'FR-12c: opencode migration docs + setup guide refresh'
 task_url: https://linear.app/cloud-ai/issue/CLO-396/fr-12c-opencode-migration-docs-setup-guide-refresh
