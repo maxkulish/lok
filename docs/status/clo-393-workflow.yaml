@@ -15,10 +15,10 @@ linear:
   blocks: []
   blocked_by: []
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-05-25T07:10:24.151Z'
-  updated_at: '2026-05-25T07:33:40.027Z'
+  updated_at: '2026-05-25T08:00:09.742Z'
 phases:
   discovery:
     status: complete
@@ -27,11 +27,19 @@ phases:
   plan:
     status: complete
   implement:
-    status: validating
+    status: complete
     commits:
       - 0929f71
+      - 5eb67cf
     assumption_outcomes: []
     assumptions_revalidated: true
+    codex_report: docs/reviews/clo-393-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/clo-393-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-393-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
   pr:
     status: pending
   complete:
@@ -137,3 +145,14 @@ history:
     details: >-
       All sub-tasks landed: Doctor command (--output table|json), print_doctor_table/print_doctor_json helpers, guide
       section, integration test. fmt+clippy green, 7 integration tests pass. 1 commit (0929f71).
+  - timestamp: '2026-05-25T07:59:40.702Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: PASS_WITH_NOTES. Gemini: PASS_WITH_NOTES. Synthesis: PASS_WITH_NOTES. 3 Must Fix items applied: (1) JSON
+      mode always emits valid JSON array, (2) tightened integration test, (3) stripped trailing whitespace. 1 fix
+      iteration. Commit 5eb67cf.
+  - timestamp: '2026-05-25T08:00:09.742Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
