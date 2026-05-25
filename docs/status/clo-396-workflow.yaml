@@ -24,7 +24,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-25T07:12:31.760Z'
-  updated_at: '2026-05-25T07:33:51.364Z'
+  updated_at: '2026-05-25T07:38:53.301Z'
 phases:
   discovery:
     status: complete
@@ -90,6 +90,8 @@ phases:
     approved: true
   implement:
     status: pending
+    commits:
+      - 1daf13a
   pr:
     status: pending
   complete:
@@ -173,5 +175,9 @@ history:
     action: phase_transition
     phase: plan
     details: Transitioned from plan to implement
+  - timestamp: '2026-05-25T07:38:53.301Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST1 landed: Update docs/guides/lok-setup-guide.md Gemini section. Commit 1daf13a'
 task_title: 'FR-12c: opencode migration docs + setup guide refresh'
 task_url: https://linear.app/cloud-ai/issue/CLO-396/fr-12c-opencode-migration-docs-setup-guide-refresh
