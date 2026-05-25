@@ -21,10 +21,10 @@ linear:
   priority: Medium
   branch_actual: feat/clo-396-opencode
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-05-25T07:12:31.760Z'
-  updated_at: '2026-05-25T07:58:09.432Z'
+  updated_at: '2026-05-25T09:59:29.574Z'
 phases:
   discovery:
     status: complete
@@ -89,7 +89,7 @@ phases:
     plan_file: docs/plans/clo-396-opencode-migration-docs.md
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
       - 1daf13a
       - 4e945f5
@@ -121,6 +121,13 @@ phases:
           opencode auth login (Google OAuth) is the primary auth flow; GOOGLE_API_KEY/GEMINI_API_KEY are optional
           fallbacks
     assumptions_revalidated: true
+    codex_report: docs/reviews/clo-396-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS
+    gemini_validation_report: docs/reviews/clo-396-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-396-validation-synthesis.md
+    validation_synthesis_verdict: PASS
   pr:
     status: pending
   complete:
@@ -222,5 +229,15 @@ history:
     action: implementation_complete
     phase: implement
     details: 'All sub-tasks landed. Pre-merge gate (grep checks) green. 3 commits. status: validating.'
+  - timestamp: '2026-05-25T09:59:26.388Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: TIMEOUT (manual assessment PASS). Gemini: PASS (after fix iteration). Synthesis: PASS. 1 fix iteration
+      applied (migration callout, claude typo, strengths update, code block nesting).
+  - timestamp: '2026-05-25T09:59:29.574Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
 task_title: 'FR-12c: opencode migration docs + setup guide refresh'
 task_url: https://linear.app/cloud-ai/issue/CLO-396/fr-12c-opencode-migration-docs-setup-guide-refresh
