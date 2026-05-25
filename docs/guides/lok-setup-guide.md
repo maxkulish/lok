@@ -562,11 +562,13 @@ curl -fsSL https://opencode.ai/install | bash
 
 ### Minimum version
 
-opencode `>= X.Y.Z` is required for the `--agent` sandbox flags. Check your version:
+opencode `>= 1.x.y` is required for the `--agent` sandbox flags. Check your version:
 
 ```bash
 opencode --version
 ```
+
+> The exact minimum version will be pinned when [CLO-394](https://linear.app/cloud-ai/issue/CLO-394/fr-12a-replace-gemini-cli-backend-with-opencode-subprocess) ships.> Use the latest release from [anomalyco/tap](https://github.com/anomalyco/homebrew-tap) until then.
 
 ### Auth
 
@@ -851,6 +853,6 @@ Successful steps additionally carry `usage` (see [Token Usage Observability](#to
 
 **Codex output is now event-driven.** The Codex backend consumes the JSONL stream (`turn.completed`, `item.completed`, `turn.failed`) and uses `--output-last-message` for the authoritative final result. If a model occasionally emits ANSI escapes or mid-turn chatter, lok still ends up with the clean final message and the token counts from `turn.completed.usage`. No workflow changes needed - just keep `backend = "codex"`.
 
-**Gemini token counts come from opencode's JSONL output.** The `backend = "gemini"` step extracts usage from opencode's NDJSON event stream (`step_finish` metadata). For shell steps wrapping `opencode` directly, use `--format json` to get usage data.
+**Gemini token counts come from opencode's JSONL output.** The `backend = "gemini"` step extracts usage from opencode's NDJSON event stream (`step_finish` metadata). Shell wrapping `opencode` directly does not get automatic usage extraction — use `--format json` if you need to capture it manually.
 
 **`health_check = true` in workflows.** This field appears in workflow TOML but is handled at the workflow execution layer - it checks backend availability before attempting the step.

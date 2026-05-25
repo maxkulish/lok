@@ -24,7 +24,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-25T07:12:31.760Z'
-  updated_at: '2026-05-25T09:59:29.574Z'
+  updated_at: '2026-05-25T10:06:29.714Z'
 phases:
   discovery:
     status: complete
@@ -129,7 +129,10 @@ phases:
     validation_synthesis_report: docs/reviews/clo-396-validation-synthesis.md
     validation_synthesis_verdict: PASS
   pr:
-    status: pending
+    status: in_progress
+    pr_number: 53
+    pr_url: https://github.com/maxkulish/lok/pull/53
+    ci_passed: true
   complete:
     status: pending
 history:
@@ -239,5 +242,19 @@ history:
     action: phase_transition
     phase: implement
     details: Transitioned from implement to pr
+  - timestamp: '2026-05-25T10:00:53.028Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + test all pass (6 passed, 0 failed)'
+  - timestamp: '2026-05-25T10:01:20.264Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #53 opened: https://github.com/maxkulish/lok/pull/53'
+  - timestamp: '2026-05-25T10:06:29.714Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      No CI checks configured/running for this branch (statusCheckRollup: []). Local pre-flight confirmed clean: fmt +
+      clippy + test all pass.
 task_title: 'FR-12c: opencode migration docs + setup guide refresh'
 task_url: https://linear.app/cloud-ai/issue/CLO-396/fr-12c-opencode-migration-docs-setup-guide-refresh
