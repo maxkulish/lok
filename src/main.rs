@@ -746,13 +746,12 @@ async fn main() -> Result<()> {
             }
             drop(lock);
 
-            if entries.is_empty() {
+            if output.as_str() == "json" {
+                print_doctor_json(&entries);
+            } else if entries.is_empty() {
                 println!("{}", "No backends configured.".yellow());
             } else {
-                match output.as_str() {
-                    "json" => print_doctor_json(&entries),
-                    _ => print_doctor_table(&entries),
-                }
+                print_doctor_table(&entries);
             }
 
             if !all_available && !entries.is_empty() {

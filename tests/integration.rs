@@ -224,13 +224,8 @@ fn test_doctor_json_output() {
             }
         }
     } else {
-        // If no JSON array found, the output might just be "No backends configured."
-        // which is fine — valid behavior when no backends are set up
-        assert!(
-            output.contains("No backends configured.")
-                || output.contains("[]")
-                || output.trim().is_empty(),
-            "Doctor should produce valid JSON or empty message: {}",
+        panic!(
+            "Doctor --output json must produce valid JSON array. Got: {}",
             output
         );
     }

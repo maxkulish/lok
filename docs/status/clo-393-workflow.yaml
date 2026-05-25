@@ -18,7 +18,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-25T07:10:24.151Z'
-  updated_at: '2026-05-25T07:15:01.065Z'
+  updated_at: '2026-05-25T07:33:40.027Z'
 phases:
   discovery:
     status: complete
@@ -27,7 +27,11 @@ phases:
   plan:
     status: complete
   implement:
-    status: pending
+    status: validating
+    commits:
+      - 0929f71
+    assumption_outcomes: []
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -69,7 +73,7 @@ history:
     action: design_approved
     phase: design
     details: >-
-      Design: Doctor renderer lives in main.rs (simple enough, no separate module needed). 
+      Design: Doctor renderer lives in main.rs (simple enough, no separate module needed).
 
       Key decisions:
 
@@ -116,3 +120,20 @@ history:
     action: phase_transition
     phase: plan
     details: Transitioned from plan to implement
+  - timestamp: '2026-05-25T07:33:14.414Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST1–ST7 landed: Doctor command variant with --output flag, print_doctor_table() and print_doctor_json() helpers,
+      Commands::Doctor handler reading BACKEND_CACHE, lok doctor guide section, integration test for --output json.
+      Fixed missing NOTES header. Commit 0929f71.
+  - timestamp: '2026-05-25T07:33:35.177Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: No design assumptions defined for CLO-393. Design was inline in workflow history.
+  - timestamp: '2026-05-25T07:33:40.027Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed: Doctor command (--output table|json), print_doctor_table/print_doctor_json helpers, guide
+      section, integration test. fmt+clippy green, 7 integration tests pass. 1 commit (0929f71).
