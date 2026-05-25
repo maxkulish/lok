@@ -45,10 +45,10 @@ enabled = true
 # To pin a specific model:
 #   model = "google/gemini-2.5-flash"
 timeout = 300
+```
 
 > **Migrating from Gemini CLI?** See the [migration guide below](#opencode-migration-guide) for the
 > install + auth + sandbox delta.
-```
 
 ### Full config reference
 
