@@ -742,6 +742,55 @@ lok context                         # Show detected codebase context
 
 ---
 
+## lok doctor
+
+`lok doctor` checks the health of all enabled backends and reports availability,
+version, auth mode, and any diagnostic issues.
+
+```bash
+# Human-readable table (default)
+lok doctor
+
+# Machine-readable JSON
+lok doctor --output json
+```
+
+### Table output
+
+| Column    | Source                                  |
+|-----------|-----------------------------------------|
+| BACKEND   | Backend name from config                |
+| MODE      | Auth mode: `oauth`, `api-key`, or `—`  |
+| VERSION   | CLI version string from `--version`     |
+| AVAILABLE | `✓ yes` or `✗ no`                      |
+| NOTES     | `HealthStatus.diagnostic` (truncated)   |
+
+Exit code is 0 when all backends are available, 1 otherwise.
+
+### JSON output
+
+Each entry is a flat object:
+
+```json
+[
+  {
+    "backend": "gemini",
+    "available": true,
+    "version": "1.15.10",
+    "mode": "api-key",
+    "auth_method": "api-key",
+    "diagnostic": null,
+    "capabilities": null,
+    "unusable_flags": [],
+    "models": [
+      { "name": "gemini-2.5-flash", "modified_at": null, "size": null, "digest": null }
+    ]
+  }
+]
+```
+
+---
+
 ## Error Handling
 
 lok classifies step failures into structured types. Understanding them helps with debugging.

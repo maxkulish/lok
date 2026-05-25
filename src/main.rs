@@ -255,7 +255,11 @@ enum Commands {
     },
 
     /// Check which backends are available and ready
-    Doctor,
+    Doctor {
+        /// Output format: table or json
+        #[arg(long, value_name = "FORMAT", default_value = "table")]
+        output: String,
+    },
 
     /// Spawn parallel agents to work on a task
     Spawn {
@@ -700,76 +704,59 @@ async fn main() -> Result<()> {
             println!("{}", "=".repeat(50).dimmed());
             println!("{}", result);
         }
-        Commands::Doctor => {
-            let _ = backend::Engine::warmup_backends(&config).await;
-            println!("{}", "Lok Doctor".cyan().bold());
-            println!("{}", "=".repeat(50).dimmed());
-            println!();
-            println!(
-                "Lok is an orchestration layer for LLM backends. It's the brain\n\
-                that coordinates the arms you already have installed.\n"
-            );
-            println!("{}", "Checking backends...".yellow());
-            println!();
-
-            let checks = vec![
-                ("codex", "codex", "npm install -g @openai/codex"),
-                (
-                    "gemini",
-                    "opencode",
-                    "Install opencode: brew install anomalyco/tap/opencode OR curl -fsSL https://opencode.ai/install | bash",
-                ),
-                (
-                    "claude",
-                    "claude",
-                    "Install Claude Code: https://claude.ai/claude-code",
-                ),
-            ];
-
-            let mut available = 0;
-            for (name, binary, install_hint) in &checks {
-                let found = which::which(binary).is_ok();
-
-                if found {
-                    println!("  {} {} - ready", "✓".green(), name);
-                    available += 1;
-                } else {
-                    println!("  {} {} - not found", "✗".red(), name);
-                    println!("    {}", install_hint.dimmed());
-                }
+        Commands::Doctor { output } => {
+            if let Err(e) = backend::Engine::warmup_backends(&config).await {
+                eprintln!("{} Warning: warmup incomplete: {}", "warning:".yellow(), e);
             }
 
-            // Check API keys
-            println!();
-            println!("{}", "Checking API keys...".yellow());
-            println!();
+            // Collect health statuses for all enabled, configured backends
+            let mut entries: Vec<(String, backend::HealthStatus)> = Vec::new();
+            let mut all_available = true;
 
-            let keys = vec![
-                ("ANTHROPIC_API_KEY", "claude backend"),
-                ("AWS_PROFILE", "bedrock backend (or AWS_ACCESS_KEY_ID)"),
-            ];
+            let cache = backend::get_backend_cache();
+            let lock = cache.read().expect("backend cache lock poisoned");
 
-            for (key, desc) in &keys {
-                if std::env::var(key).is_ok() {
-                    println!("  {} {} - set ({})", "✓".green(), key, desc);
+            for (name, backend_config) in &config.backends {
+                if !backend_config.enabled {
+                    continue;
+                }
+                if let Some(entry) = lock.get(name) {
+                    if let Some(health) = &entry.health {
+                        if !health.available {
+                            all_available = false;
+                        }
+                        entries.push((name.clone(), health.clone()));
+                    }
                 } else {
-                    println!("  {} {} - not set ({})", "○".yellow(), key, desc);
+                    // Configured but not in cache → backend construction failed during warmup
+                    all_available = false;
+                    let diagnostic = format!(
+                        "Backend '{}' is configured but not found in health cache (construction may have failed)",
+                        name
+                    );
+                    entries.push((
+                        name.clone(),
+                        backend::HealthStatus {
+                            available: false,
+                            diagnostic: Some(diagnostic),
+                            ..backend::HealthStatus::new_unavailable()
+                        },
+                    ));
                 }
             }
+            drop(lock);
 
-            println!();
-            if available > 0 {
-                println!(
-                    "{} {} backend(s) ready. Run {} to see them.",
-                    "✓".green(),
-                    available,
-                    "lok backends".cyan()
-                );
+            if entries.is_empty() {
+                println!("{}", "No backends configured.".yellow());
             } else {
-                println!(
-                    "{} No backends found. Install at least one LLM CLI to get started.",
-                    "!".red()
-                );
+                match output.as_str() {
+                    "json" => print_doctor_json(&entries),
+                    _ => print_doctor_table(&entries),
+                }
+            }
+
+            if !all_available && !entries.is_empty() {
+                std::process::exit(1);
             }
         }
         Commands::Spawn {
@@ -1456,6 +1443,116 @@ fn format_report(events: &[git_agent::AgentEvent], json_output: bool) -> String 
     }
 
     report
+}
+
+// ── Doctor helpers ────────────────────────────────────────────────────────
+
+/// Get terminal width, falling back to 80.
+fn terminal_width() -> usize {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(80)
+}
+
+/// Pad a string with trailing spaces to reach `width` visible characters.
+fn pad_right(s: &str, width: usize) -> String {
+    let visible = s.chars().count();
+    if visible >= width {
+        s.to_string()
+    } else {
+        format!("{}{}", s, " ".repeat(width - visible))
+    }
+}
+
+/// Center a string within `width` visible characters using spaces.
+fn pad_center(s: &str, width: usize) -> String {
+    let visible = s.chars().count();
+    if visible >= width {
+        s.to_string()
+    } else {
+        let left = (width - visible) / 2;
+        let right = width - visible - left;
+        format!("{}{}{}", " ".repeat(left), s, " ".repeat(right))
+    }
+}
+
+/// Print doctor results as a human-readable table.
+fn print_doctor_table(entries: &[(String, backend::HealthStatus)]) {
+    use colored::Colorize;
+
+    let width = terminal_width();
+    let bw = 10usize; // backend
+    let mw = 12usize; // mode
+    let vw = 10usize; // version
+    let aw = 9usize; // available
+    let nw = width.saturating_sub(bw + mw + vw + aw + 5); // notes (remaining, +5 for column gaps)
+
+    // Header
+    println!(
+        "{}{}{}{} {}",
+        pad_right("BACKEND", bw),
+        pad_right("MODE", mw),
+        pad_right("VERSION", vw),
+        pad_right("AVAILABLE", aw),
+        pad_right("NOTES", nw),
+    );
+    println!("{}", "-".repeat(width));
+
+    for (name, health) in entries {
+        let mode = health.mode.as_deref().unwrap_or("—");
+        let version = health.version.as_deref().unwrap_or("—");
+        let notes = health.diagnostic.as_deref().unwrap_or("—");
+
+        let notes_trunc = if notes.chars().count() > nw {
+            let truncated: String = notes.chars().take(nw.saturating_sub(3)).collect();
+            format!("{}...", truncated)
+        } else {
+            notes.to_string()
+        };
+
+        print!(
+            "{}{}{}",
+            pad_right(name, bw),
+            pad_right(mode, mw),
+            pad_right(version, vw),
+        );
+
+        let avail_raw = if health.available {
+            "✓ yes"
+        } else {
+            "✗ no"
+        };
+        let avail_padded = pad_center(avail_raw, aw);
+        if health.available {
+            print!("{}", avail_padded.green());
+        } else {
+            print!("{}", avail_padded.red());
+        }
+        println!(" {}", notes_trunc);
+    }
+}
+
+/// Print doctor results as stable JSON.
+fn print_doctor_json(entries: &[(String, backend::HealthStatus)]) {
+    let rows: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|(name, health)| {
+            let health_val = serde_json::to_value(health).expect("HealthStatus serializes");
+            let mut obj = serde_json::Map::new();
+            obj.insert(
+                "backend".to_string(),
+                serde_json::Value::String(name.clone()),
+            );
+            if let Some(health_map) = health_val.as_object() {
+                for (k, v) in health_map {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+            serde_json::Value::Object(obj)
+        })
+        .collect();
+    println!("{}", serde_json::to_string_pretty(&rows).unwrap());
 }
 
 async fn list_workflows() -> Result<()> {
