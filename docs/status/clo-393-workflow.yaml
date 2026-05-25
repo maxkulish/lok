@@ -1,0 +1,197 @@
+task_id: CLO-393
+task_type: development
+classification_reason: ''
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Personal-health
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+workflow:
+  current_phase: pr
+  status: active
+  created_at: '2026-05-25T07:10:24.151Z'
+  updated_at: '2026-05-25T09:54:38.552Z'
+phases:
+  discovery:
+    status: complete
+  design:
+    status: complete
+  plan:
+    status: complete
+  implement:
+    status: complete
+    commits:
+      - 0929f71
+      - 5eb67cf
+    assumption_outcomes: []
+    assumptions_revalidated: true
+    codex_report: docs/reviews/clo-393-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/clo-393-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-393-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+  pr:
+    status: complete
+    pr_number: 52
+    pr_url: https://github.com/maxkulish/lok/pull/52
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-25T09:52:52Z'
+    reviews_addressed: true
+    ci_passed: true
+    pre_merge_refetch_at: '2026-05-25T09:55:00Z'
+    pre_merge_refetch_passed: true
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-25T07:10:24.151Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-393 as development
+  - timestamp: '2026-05-25T07:11:03.749Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-25T07:14:05.114Z'
+    action: codebase_explored
+    phase: discovery
+    details: >-
+      Explored HealthStatus struct (context.rs), BACKEND_CACHE (mod.rs), warmup_backends infrastructure, existing Doctor
+      stub in main.rs. All Backend health_check impls reviewed (Codex, Gemini, Claude, Ollama, Bedrock). HealthStatus
+      has: available, version, mode, diagnostic, auth_method, capabilities, unusable_flags, models. Claude currently
+      probes single mode (api or CLI), stores under "claude" key. Gemini health_check returns auth method via
+      file/env/CLI detection.
+  - timestamp: '2026-05-25T07:14:20.369Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Discovery complete. Key findings: (1) HealthStatus struct in backend/context.rs has all needed fields: available,
+      version, mode, diagnostic, auth_method, capabilities, unusable_flags, models. (2) BACKEND_CACHE
+      (OnceLock<RwLock<HashMap<String, CachedBackend>>>) stores health entries keyed by backend name. (3)
+      warmup_backends already called in Doctor handler. (4) Claude health_check probes single mode only (api OR cli)
+      under "claude" cache key — dual-probe is CLO-391 scope. (5) Gemini health_check populates mode
+      (oauth/api-key/none) and diagnostic. (6) No textwrap/term_size dep needed — can use COLUMNS env var or libc ioctl
+      for terminal width. (7) Doctor subcommand needs --output json flag added.
+  - timestamp: '2026-05-25T07:14:33.740Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-25T07:14:43.833Z'
+    action: design_approved
+    phase: design
+    details: >-
+      Design: Doctor renderer lives in main.rs (simple enough, no separate module needed).
+
+      Key decisions:
+
+      1. Doctor subcommand gets `--output <FORMAT>` arg (values: "table" | "json", default "table")
+
+      2. Table columns: BACKEND, MODE, VERSION, AVAILABLE, NOTES
+
+      3. NOTES column = HealthStatus.diagnostic, truncated to terminal width minus fixed column widths
+
+      4. Terminal width: check COLUMNS env var, fallback to 80
+
+      5. JSON output: array of objects, each with { backend, available, version?, mode?, notes?, auth_method?,
+      capabilities?, unusable_flags[], models[] }
+
+      6. Exit code: 0 if all backends available, 1 if any unavailable
+
+      7. Backends in config but not cached → show as unavailable with generic diagnostic
+
+      8. Claude dual-probe not yet implemented (CLO-391 dependency) — shows single row for now
+
+      9. No new deps required — existing serde_json, colored, libc (unix) suffice
+  - timestamp: '2026-05-25T07:14:46.988Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-25T07:14:58.257Z'
+    action: plan_approved
+    phase: plan
+    details: |-
+      Plan:
+      1. Modify Doctor command variant in main.rs Commands enum to accept --output json
+      2. Write print_doctor_table() helper for human-readable output
+      3. Write print_doctor_json() helper for machine-readable output
+      4. Rewrite Commands::Doctor handler to:
+         a. Call warmup_backends (already done)
+         b. Read BACKEND_CACHE for all configured+enabled backends
+         c. Collect into rows of (backend_name, HealthStatus)
+         d. Check exit code (all available = 0)
+         e. Print table or JSON
+      5. Update guide: add ## lok doctor section to lok-setup-guide.md
+      6. Add integration test in tests/ directory for doctor --output json
+      7. Verify cargo test and cargo clippy pass
+  - timestamp: '2026-05-25T07:15:01.066Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-25T07:33:14.414Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST1–ST7 landed: Doctor command variant with --output flag, print_doctor_table() and print_doctor_json() helpers,
+      Commands::Doctor handler reading BACKEND_CACHE, lok doctor guide section, integration test for --output json.
+      Fixed missing NOTES header. Commit 0929f71.
+  - timestamp: '2026-05-25T07:33:35.177Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: No design assumptions defined for CLO-393. Design was inline in workflow history.
+  - timestamp: '2026-05-25T07:33:40.027Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed: Doctor command (--output table|json), print_doctor_table/print_doctor_json helpers, guide
+      section, integration test. fmt+clippy green, 7 integration tests pass. 1 commit (0929f71).
+  - timestamp: '2026-05-25T07:59:40.702Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: PASS_WITH_NOTES. Gemini: PASS_WITH_NOTES. Synthesis: PASS_WITH_NOTES. 3 Must Fix items applied: (1) JSON
+      mode always emits valid JSON array, (2) tightened integration test, (3) stripped trailing whitespace. 1 fix
+      iteration. Commit 5eb67cf.
+  - timestamp: '2026-05-25T08:00:09.742Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-25T08:34:45.000Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + clippy --tests + integration tests all pass.'
+  - timestamp: '2026-05-25T08:52:34.668Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #52 opened: https://github.com/maxkulish/lok/pull/52'
+  - timestamp: '2026-05-25T09:54:08.857Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: >-
+      Bot review observed from gemini-code-assist on commit e03773a (same code as HEAD); 3 inline comments, all medium
+      severity, all addressed and approved. Inline comments resolved via GraphQL.
+  - timestamp: '2026-05-25T09:54:13.449Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      3/3 threads resolved; /gemini review trailer verified on all 3 replies; all threads approved by
+      gemini-code-assist; unresolved-thread re-check clean. Fixes: value_parser for --output, entries.sort_by() for
+      deterministic order, test robustness (trim+parse entire output). Commit 92f3716.
+  - timestamp: '2026-05-25T09:54:20.812Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      Local pre-flight gate green: fmt + clippy + clippy --tests + integration tests all pass. Remote CI workflow
+      (.github/workflows/ci.yml) configured but no runs detected — likely Actions not enabled on repo. Verified locally.
+  - timestamp: '2026-05-25T09:54:38.552Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads.'

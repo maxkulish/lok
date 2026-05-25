@@ -19,6 +19,21 @@ fn run_workflow(workflow_path: &str) -> (bool, String) {
     (output.status.success(), combined)
 }
 
+fn run_lok(args: &[&str]) -> (bool, String) {
+    let output = Command::new("cargo")
+        .args(["run", "--quiet", "--bin", "lok", "--"])
+        .args(args)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("Failed to execute lok");
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let combined = format!("{}\n{}", stdout, stderr);
+
+    (output.status.success(), combined)
+}
+
 #[test]
 fn test_interpolation_workflow() {
     let (success, output) = run_workflow("tests/workflows/test_interpolation.toml");
@@ -169,4 +184,39 @@ fn test_llm_validate_workflow() {
         "Summary step should run (min_deps_success met): {}",
         output
     );
+}
+
+#[test]
+fn test_doctor_json_output() {
+    let (_success, output) = run_lok(&["doctor", "--output", "json"]);
+
+    // Doctor should produce valid JSON output
+    let trimmed = output.trim();
+    let parsed: Result<serde_json::Value, _> = serde_json::from_str(trimmed);
+    assert!(
+        parsed.is_ok(),
+        "Doctor JSON output should parse as valid JSON: {}",
+        output
+    );
+    let arr = parsed.unwrap();
+    assert!(
+        arr.is_array(),
+        "Doctor JSON output should be a JSON array: {}",
+        output
+    );
+    // Verify each entry has required fields
+    if let Some(entries) = arr.as_array() {
+        for entry in entries {
+            assert!(
+                entry.get("backend").is_some(),
+                "Each entry should have 'backend' field: {}",
+                entry
+            );
+            assert!(
+                entry.get("available").is_some(),
+                "Each entry should have 'available' field: {}",
+                entry
+            );
+        }
+    }
 }
