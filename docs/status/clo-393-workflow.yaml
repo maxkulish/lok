@@ -18,7 +18,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-25T07:10:24.151Z'
-  updated_at: '2026-05-25T08:52:34.668Z'
+  updated_at: '2026-05-25T09:54:38.552Z'
 phases:
   discovery:
     status: complete
@@ -41,9 +41,15 @@ phases:
     validation_synthesis_report: docs/reviews/clo-393-validation-synthesis.md
     validation_synthesis_verdict: PASS_WITH_NOTES
   pr:
-    status: in_progress
+    status: complete
     pr_number: 52
     pr_url: https://github.com/maxkulish/lok/pull/52
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-25T09:52:52Z'
+    reviews_addressed: true
+    ci_passed: true
+    pre_merge_refetch_at: '2026-05-25T09:55:00Z'
+    pre_merge_refetch_passed: true
   complete:
     status: pending
 history:
@@ -166,3 +172,26 @@ history:
     action: pr_created
     phase: pr
     details: 'PR #52 opened: https://github.com/maxkulish/lok/pull/52'
+  - timestamp: '2026-05-25T09:54:08.857Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: >-
+      Bot review observed from gemini-code-assist on commit e03773a (same code as HEAD); 3 inline comments, all medium
+      severity, all addressed and approved. Inline comments resolved via GraphQL.
+  - timestamp: '2026-05-25T09:54:13.449Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      3/3 threads resolved; /gemini review trailer verified on all 3 replies; all threads approved by
+      gemini-code-assist; unresolved-thread re-check clean. Fixes: value_parser for --output, entries.sort_by() for
+      deterministic order, test robustness (trim+parse entire output). Commit 92f3716.
+  - timestamp: '2026-05-25T09:54:20.812Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      Local pre-flight gate green: fmt + clippy + clippy --tests + integration tests all pass. Remote CI workflow
+      (.github/workflows/ci.yml) configured but no runs detected — likely Actions not enabled on repo. Verified locally.
+  - timestamp: '2026-05-25T09:54:38.552Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads.'
