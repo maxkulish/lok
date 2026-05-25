@@ -24,7 +24,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-05-25T07:12:31.760Z'
-  updated_at: '2026-05-25T10:06:29.714Z'
+  updated_at: '2026-05-25T10:09:14.342Z'
 phases:
   discovery:
     status: complete
@@ -129,10 +129,15 @@ phases:
     validation_synthesis_report: docs/reviews/clo-396-validation-synthesis.md
     validation_synthesis_verdict: PASS
   pr:
-    status: in_progress
+    status: complete
     pr_number: 53
     pr_url: https://github.com/maxkulish/lok/pull/53
     ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-25T10:01:32Z'
+    reviews_addressed: true
+    pre_merge_refetch_at: '2026-05-25T10:08:30Z'
+    pre_merge_refetch_passed: true
   complete:
     status: pending
 history:
@@ -256,5 +261,17 @@ history:
     details: >-
       No CI checks configured/running for this branch (statusCheckRollup: []). Local pre-flight confirmed clean: fmt +
       clippy + test all pass.
+  - timestamp: '2026-05-25T10:08:37.813Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      2 threads resolved; replies posted 2/2; /gemini review trailer verified on every reply (Gemini bot);
+      unresolved-thread re-check clean (both bot re-reviews approved fixes).
+  - timestamp: '2026-05-25T10:09:14.342Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: >-
+      Pre-merge re-fetch passed: no new inline comments and no unresolved review threads. Bot re-reviews (approvals)
+      verified.
 task_title: 'FR-12c: opencode migration docs + setup guide refresh'
 task_url: https://linear.app/cloud-ai/issue/CLO-396/fr-12c-opencode-migration-docs-setup-guide-refresh
