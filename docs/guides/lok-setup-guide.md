@@ -46,7 +46,7 @@ enabled = true
 #   model = "google/gemini-2.5-flash"
 timeout = 300
 
-> **Migrating from Gemini CLI?** See the [Gemini section below](#per-step-sandbox) for the
+> **Migrating from Gemini CLI?** See the [migration guide below](#opencode-migration-guide) for the
 > install + auth + sandbox delta.
 ```
 
@@ -126,7 +126,7 @@ Backends fall into two categories based on how lok communicates with them:
 
 | Type | Detection | Stdout/Stderr | Exit Code | Examples |
 |------|-----------|---------------|-----------|----------|
-| CLI | `command` is an executable name | Captured separately | Available | claude (opencode), gemini (opencode), codex |
+| CLI | `command` is an executable name | Captured separately | Available | claude, gemini (opencode), codex |
 | API | `command` starts with `http://` | N/A (text only) | N/A | ollama, bedrock |
 
 CLI backends capture stderr and exit codes through `QueryOutput`. API backends return text only - `stderr` and `exit_code` are `None`.
@@ -540,6 +540,62 @@ verify = "cargo test --quiet"
 For backends that do not understand a sandbox flag (Claude API, Bedrock, Ollama, plain shell steps), the `sandbox` field is ignored without error.
 
 ---
+
+## opencode Migration Guide
+
+If you previously used lok's Gemini backend with `@google/gemini-cli`, here's what changed.
+
+### Install
+
+Replace the old gemini-cli install with opencode:
+
+```bash
+# macOS
+brew install anomalyco/tap/opencode
+
+# Linux (or any platform)
+curl -fsSL https://opencode.ai/install | bash
+```
+
+> If `opencode` is not found after install, restart your terminal or run
+> `source ~/.zshrc` / `source ~/.bashrc` to refresh your `$PATH`.
+
+### Minimum version
+
+opencode `>= X.Y.Z` is required for the `--agent` sandbox flags. Check your version:
+
+```bash
+opencode --version
+```
+
+### Auth
+
+Remove any `GEMINI_API_KEY` or `GOOGLE_API_KEY` environment variables you set for the old
+CLI (they are no longer required). Authenticate via Google OAuth:
+
+```bash
+opencode auth login   # Opens browser → select Google → OAuth flow
+```
+
+> **Do not** confuse with `opencode login` (opencode-console login — unrelated).
+
+For headless environments (SSH, CI, Docker) where a browser cannot open, set
+`GEMINI_API_KEY` or `GOOGLE_API_KEY` as a fallback — opencode honors these
+environment variables.
+
+### Sandbox delta
+
+The old `--approval-mode` flags are replaced by opencode `--agent` flags:
+
+| Old flag (gemini-cli) | New flag (opencode) |
+|-----------------------|---------------------|
+| `--approval-mode default` | `--agent plan` |
+| `--approval-mode auto_edit` | `--agent build` |
+| `--approval-mode yolo` | `--agent build --dangerously-skip-permissions` |
+
+If you used a custom `command = "npx"` and `args = ["@google/gemini-cli", ...]` in your
+`lok.toml`, remove those overrides — lok now defaults to opencode. The `gemini` backend
+name and all workflow TOML files remain unchanged.
 
 ## Token Usage Observability
 

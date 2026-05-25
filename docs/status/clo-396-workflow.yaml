@@ -24,7 +24,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-05-25T07:12:31.760Z'
-  updated_at: '2026-05-25T07:39:42.856Z'
+  updated_at: '2026-05-25T07:58:09.432Z'
 phases:
   discovery:
     status: complete
@@ -89,10 +89,38 @@ phases:
     plan_file: docs/plans/clo-396-opencode-migration-docs.md
     approved: true
   implement:
-    status: pending
+    status: validating
     commits:
       - 1daf13a
       - 4e945f5
+    assumption_outcomes:
+      - evidence: README.md and docs/guides/lok-setup-guide.md use backend = "gemini" throughout — unchanged
+        outcome: held
+        text: The gemini backend name string does not change
+      - evidence: README.md quickstart doctor output example unchanged — shows gemini - ready
+        outcome: held
+        text: The README quickstart lok doctor output example still shows gemini - ready line unchanged
+      - evidence: Blocked by CLO-394 in Linear and workflow YAML — cannot verify until CLO-394 ships
+        outcome: untested
+        text: >-
+          CLO-396 must land after or simultaneously with CLO-394 to avoid docs referencing flags/behaviors that don't
+          exist yet
+      - evidence: CLO-394 not yet shipped; relying on design doc Config::default section
+        outcome: untested
+        text: >-
+          CLO-394 default config ships opencode with args=["run","--format","json"] and
+          model=Some("google/gemini-2.5-flash")
+      - evidence: Pending verification against opencode --help after CLO-394 ships
+        outcome: untested
+        text: >-
+          The sandbox mapping read-only → --agent plan, workspace-write → --agent build, danger-full-access → --agent
+          build --dangerously-skip-permissions matches opencode's release CLI
+      - evidence: Pending verification against CLO-394 implementation
+        outcome: untested
+        text: >-
+          opencode auth login (Google OAuth) is the primary auth flow; GOOGLE_API_KEY/GEMINI_API_KEY are optional
+          fallbacks
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -184,5 +212,15 @@ history:
     action: subtask_complete
     phase: implement
     details: 'ST2 landed: Update README.md Gemini prerequisites with auth instructions. Commit 4e945f5'
+  - timestamp: '2026-05-25T07:58:06.184Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      6 assumptions reviewed. Held: 2, violated: 0, untested: 4. No violations — untested items are blocked on CLO-394
+      shipping (sandbox mapping, opencode flags, default config) which is by design.
+  - timestamp: '2026-05-25T07:58:09.432Z'
+    action: implementation_complete
+    phase: implement
+    details: 'All sub-tasks landed. Pre-merge gate (grep checks) green. 3 commits. status: validating.'
 task_title: 'FR-12c: opencode migration docs + setup guide refresh'
 task_url: https://linear.app/cloud-ai/issue/CLO-396/fr-12c-opencode-migration-docs-setup-guide-refresh

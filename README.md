@@ -423,7 +423,7 @@ The `{cmd}` placeholder is replaced with the actual command.
 | Backend | Best For | Speed |
 |---------|----------|-------|
 | Codex | Code patterns, N+1, dead code | Fast |
-| Gemini | Security audits, deep analysis | Slow (thorough) |
+| Gemini | Security audits, deep analysis (opencode-driven) | Slow (thorough) |
 | Claude | Orchestration, reasoning | Medium |
 | Ollama | Local/private, no rate limits | Varies |
 
