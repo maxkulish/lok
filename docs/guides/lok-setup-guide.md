@@ -41,9 +41,13 @@ command = "claude"
 
 [backends.gemini]
 enabled = true
-command = "gemini"
-args = ["--model", "gemini-3.1-pro-preview", "-y", "--sandbox"]
+# command and args use opencode by default; no manual config needed
+# To pin a specific model:
+#   model = "google/gemini-2.5-flash"
 timeout = 300
+
+> **Migrating from Gemini CLI?** See the [Gemini section below](#per-step-sandbox) for the
+> install + auth + sandbox delta.
 ```
 
 ### Full config reference
@@ -77,8 +81,8 @@ retry_delay_ms = 2000              # Per-backend delay override
 
 [backends.gemini]
 enabled = true
-command = "gemini"
-args = ["--model", "gemini-3.1-pro-preview", "-y", "--sandbox"]
+# command and args use opencode by default; only set if you need to override
+# args = ["run", "--format", "json"]
 timeout = 300
 stderr = "separate"                # Keep stderr separate from stdout
 
@@ -122,7 +126,7 @@ Backends fall into two categories based on how lok communicates with them:
 
 | Type | Detection | Stdout/Stderr | Exit Code | Examples |
 |------|-----------|---------------|-----------|----------|
-| CLI | `command` is an executable name | Captured separately | Available | claude, gemini, codex |
+| CLI | `command` is an executable name | Captured separately | Available | claude (opencode), gemini (opencode), codex |
 | API | `command` starts with `http://` | N/A (text only) | N/A | ollama, bedrock |
 
 CLI backends capture stderr and exit codes through `QueryOutput`. API backends return text only - `stderr` and `exit_code` are `None`.
@@ -184,7 +188,7 @@ timeout = 300000                   # Step timeout: integer (ms) OR humantime str
 
 # --- Sandbox (CLI backends only: Codex, Gemini) ---
 sandbox = "read-only"              # "read-only" | "workspace-write" | "danger-full-access"
-                                   # Maps to Codex `-s` / Gemini `--approval-mode`
+                                   # Maps to Codex `-s` / Gemini `--agent` (opencode)
                                    # If omitted with apply_edits=true, defaults to "workspace-write"
 
 # --- Edit workflow ---
@@ -286,8 +290,7 @@ timeout = 300000
 continue_on_error = true
 shell = """
 PROMPT=$(sed 's|__DOC__|{{ arg.1 }}|g' .lok/prompts/review-prompt.md)
-timeout 300 gemini --model gemini-3.1-pro-preview -y --sandbox \
-  -p "$PROMPT" -o text
+opencode run --model google/gemini-3.1-pro-preview --agent plan -- "$PROMPT"
 """
 
 [steps.validate]
@@ -470,7 +473,7 @@ How this works:
 4. `fix_retries` re-queries the LLM with the error output, up to N times
 5. On final failure, the step gets `StepFailureKind::VerifyFailed`
 
-When the backend is Codex or Gemini and `apply_edits = true`, lok auto-defaults the sandbox to `workspace-write` so the subprocess can actually write to the workspace. To opt out, set `sandbox = "read-only"` explicitly - lok emits a warning but honors the choice.
+When the backend is Codex or Gemini (via opencode) and `apply_edits = true`, lok auto-defaults the sandbox to `workspace-write` so the subprocess can actually write to the workspace. To opt out, set `sandbox = "read-only"` explicitly - lok emits a warning but honors the choice.
 
 ### Pattern 4: Iterating over dynamic lists
 
@@ -504,7 +507,7 @@ The `for_each` field accepts:
 
 ## Per-Step Sandbox
 
-CLI backends that wrap a coding agent (Codex, Gemini) accept a sandbox mode that bounds what the subprocess is allowed to touch. lok routes a per-step `sandbox` field to the right CLI flag - `-s` for Codex, `--approval-mode` for Gemini.
+CLI backends that wrap a coding agent (Codex, Gemini) accept a sandbox mode that bounds what the subprocess is allowed to touch. lok routes a per-step `sandbox` field to the right CLI flag - `-s` for Codex, `--agent` for Gemini (opencode).
 
 ```toml
 [[steps]]
@@ -521,11 +524,11 @@ apply_edits = true                 # Implies workspace-write
 verify = "cargo test --quiet"
 ```
 
-| Mode | Codex (`-s`) | Gemini (`--approval-mode`) | When to use |
-|------|--------------|----------------------------|-------------|
-| `read-only` | `read-only` | `default` | Discovery, analysis, review (default) |
-| `workspace-write` | `workspace-write` | `auto_edit` | Edit-and-verify steps |
-| `danger-full-access` | `danger-full-access` | `yolo` | Sandboxed CI only; avoid on dev machines |
+| Mode | Codex (`-s`) | Gemini (`--agent`, opencode) | When to use |
+|------|--------------|------------------------------|-------------|
+| `read-only` | `read-only` | `plan` | Discovery, analysis, review (default) |
+| `workspace-write` | `workspace-write` | `build` | Edit-and-verify steps |
+| `danger-full-access` | `danger-full-access` | `build --dangerously-skip-permissions` | Sandboxed CI only; avoid on dev machines |
 
 ### Sandbox defaulting rules
 
@@ -560,7 +563,7 @@ pub struct TokenUsage {
 | Bedrock | InvokeModel response metadata | Provider-dependent |
 | Ollama | `prompt_eval_count` / `eval_count` | No cached/reasoning fields |
 | Codex | JSONL `turn.completed.usage` | `input_tokens` / `cached_input_tokens` / `output_tokens` / `reasoning_output_tokens` |
-| Gemini | `stats.promptTokenCount` / `candidatesTokenCount` | Surfaces when `--output-format json` is used |
+| Gemini | opencode JSONL `type: "text"` events + `step_finish` metadata | Extracted from opencode's `--format json` NDJSON output |
 | Shell | n/a | Always `None` |
 
 ### Reading usage from a workflow
@@ -792,6 +795,6 @@ Successful steps additionally carry `usage` (see [Token Usage Observability](#to
 
 **Codex output is now event-driven.** The Codex backend consumes the JSONL stream (`turn.completed`, `item.completed`, `turn.failed`) and uses `--output-last-message` for the authoritative final result. If a model occasionally emits ANSI escapes or mid-turn chatter, lok still ends up with the clean final message and the token counts from `turn.completed.usage`. No workflow changes needed - just keep `backend = "codex"`.
 
-**Gemini token counts require JSON output.** Gemini only surfaces `stats.promptTokenCount` / `stats.candidatesTokenCount` when invoked with `--output-format json`. lok handles that internally for `backend = "gemini"` steps; for shell steps wrapping Gemini directly, add `--output-format json` if you want usage data.
+**Gemini token counts come from opencode's JSONL output.** The `backend = "gemini"` step extracts usage from opencode's NDJSON event stream (`step_finish` metadata). For shell steps wrapping `opencode` directly, use `--format json` to get usage data.
 
 **`health_check = true` in workflows.** This field appears in workflow TOML but is handled at the workflow execution layer - it checks backend availability before attempting the step.
