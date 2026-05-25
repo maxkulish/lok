@@ -1,0 +1,281 @@
+task_id: CLO-396
+task_type: development
+classification_reason: >-
+  title does not start with Investigate/Audit/Document/Migrate/Configure nor is **Type:** Specification/Operational set.
+  Defaults to development for a documentation update task.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by:
+    - CLO-394
+  branch_suggested: kmamemo/clo-396-fr-12c-opencode-migration-docs-setup-guide-refresh
+  priority: Medium
+  branch_actual: feat/clo-396-opencode
+workflow:
+  current_phase: pr
+  status: active
+  created_at: '2026-05-25T07:12:31.760Z'
+  updated_at: '2026-05-25T10:09:47.181Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: Surgical in-place updates (Approach A)
+    approaches_identified: 3
+    approved: true
+    baseline_score: 6
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-396.md
+    prd_created: false
+    prd_exists: true
+    prd_file: ''
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-396-opencode-migration-docs.md
+    discovery_context_used: true
+    draft_ready: true
+    draft_source: manual
+    assumptions:
+      - confidence: high
+        text: >-
+          CLO-394 default config ships opencode with args=["run","--format","json"] and
+          model=Some("google/gemini-2.5-flash")
+        verification: Cross-check final CLO-394 PR before merging CLO-396
+      - confidence: medium
+        text: >-
+          The sandbox mapping read-only → --agent plan, workspace-write → --agent build, danger-full-access → --agent
+          build --dangerously-skip-permissions matches opencode's release CLI
+        verification: Verify against opencode --help; CLO-394 design flags medium confidence
+      - confidence: medium
+        text: >-
+          opencode auth login (Google OAuth) is the primary auth flow; GOOGLE_API_KEY/GEMINI_API_KEY are optional
+          fallbacks
+        verification: CLO-394 design A9 and CLO-395 design confirm; final verification against CLO-394 implementation
+      - confidence: high
+        text: The gemini backend name string does not change
+        verification: CLO-394 design states 'Preserve the backend key gemini'
+      - confidence: high
+        text: >-
+          CLO-396 must land after or simultaneously with CLO-394 to avoid docs referencing flags/behaviors that don't
+          exist yet
+        verification: Blocked-by relation in Linear and workflow YAML
+      - confidence: medium
+        text: The README quickstart lok doctor output example still shows gemini - ready line unchanged
+        verification: The backend key is preserved; doctor check changes from npx to opencode binary detection
+    applied_suggestions:
+      - Document headless/CI-CD auth as acknowledged limitation in non-goals + migration callout
+      - Add minimum opencode version pin to prerequisites spec in change table
+      - Emphasize Linux install alongside macOS in prerequisites + add PATH troubleshooting tip
+      - Add opencode version and headless auth to open questions for implementation-time resolution
+    flagged_suggestions: []
+    review_completed: true
+    review_gemini: docs/reviews/clo-396-design-gemini.md
+    review_synthesis: docs/reviews/clo-396-design-synthesis.md
+    review_verdict: approve_with_changes
+    human_review_completed: true
+    finalized: true
+    assumptions_surfaced: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-396-opencode-migration-docs.md
+    approved: true
+  implement:
+    status: complete
+    commits:
+      - 1daf13a
+      - 4e945f5
+    assumption_outcomes:
+      - evidence: README.md and docs/guides/lok-setup-guide.md use backend = "gemini" throughout — unchanged
+        outcome: held
+        text: The gemini backend name string does not change
+      - evidence: README.md quickstart doctor output example unchanged — shows gemini - ready
+        outcome: held
+        text: The README quickstart lok doctor output example still shows gemini - ready line unchanged
+      - evidence: Blocked by CLO-394 in Linear and workflow YAML — cannot verify until CLO-394 ships
+        outcome: untested
+        text: >-
+          CLO-396 must land after or simultaneously with CLO-394 to avoid docs referencing flags/behaviors that don't
+          exist yet
+      - evidence: CLO-394 not yet shipped; relying on design doc Config::default section
+        outcome: untested
+        text: >-
+          CLO-394 default config ships opencode with args=["run","--format","json"] and
+          model=Some("google/gemini-2.5-flash")
+      - evidence: Pending verification against opencode --help after CLO-394 ships
+        outcome: untested
+        text: >-
+          The sandbox mapping read-only → --agent plan, workspace-write → --agent build, danger-full-access → --agent
+          build --dangerously-skip-permissions matches opencode's release CLI
+      - evidence: Pending verification against CLO-394 implementation
+        outcome: untested
+        text: >-
+          opencode auth login (Google OAuth) is the primary auth flow; GOOGLE_API_KEY/GEMINI_API_KEY are optional
+          fallbacks
+    assumptions_revalidated: true
+    codex_report: docs/reviews/clo-396-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS
+    gemini_validation_report: docs/reviews/clo-396-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-396-validation-synthesis.md
+    validation_synthesis_verdict: PASS
+  pr:
+    status: complete
+    pr_number: 53
+    pr_url: https://github.com/maxkulish/lok/pull/53
+    ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-05-25T10:01:32Z'
+    reviews_addressed: true
+    pre_merge_refetch_at: '2026-05-25T10:08:30Z'
+    pre_merge_refetch_passed: true
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-25T07:12:31.760Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for CLO-396 as development
+  - timestamp: '2026-05-25T07:14:47.585Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: title does not start with Investigate/Audit/Document/Migrate/Configure nor is **Type:**
+      Specification/Operational set. Defaults to development for a documentation update task (FR-12c: opencode migration
+      docs + setup guide refresh).
+  - timestamp: '2026-05-25T07:16:01.084Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-25T07:18:18.697Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-396-opencode already exists and checked out
+  - timestamp: '2026-05-25T07:20:20.165Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: Surgical in-place updates (Approach A). Baseline 6/10. 3 approaches considered. Scope: Update README.md
+      and docs/guides/lok-setup-guide.md with opencode replacements, remove @google/gemini-cli/npx/GEMINI_API_KEY
+      references, add sandbox mapping and auth callout.
+  - timestamp: '2026-05-25T07:20:33.946Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-25T07:25:27.585Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Design draft manually written at docs/designs/clo-396-opencode-migration-docs.md (docs-only task — no lok
+      design-draft workflow needed)
+  - timestamp: '2026-05-25T07:26:01.132Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '6 assumptions surfaced (high: 3, medium: 3, low: 0). See design doc § Assumptions.'
+  - timestamp: '2026-05-25T07:28:25.334Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: approve_with_changes. 4 applied, 0 flagged. All suggestions were additive (new content) — none
+      contradicted the chosen approach.
+  - timestamp: '2026-05-25T07:29:29.540Z'
+    action: design_human_review_complete
+    phase: design
+    details: Plannotator annotate session closed with no annotations.
+  - timestamp: '2026-05-25T07:30:29.234Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design ready for plan phase. Verdict: approve_with_changes. 4 suggestions applied (headless auth acknowledgment,
+      min version pin, Linux install emphasis, PATH tip). 0 flagged.
+  - timestamp: '2026-05-25T07:32:13.109Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '6 assumptions surfaced (high: 3, medium: 3, low: 0). See design doc § Assumptions.'
+  - timestamp: '2026-05-25T07:32:21.157Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-05-25T07:33:42.803Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 4 sub-tasks at docs/plans/clo-396-opencode-migration-docs.md
+  - timestamp: '2026-05-25T07:33:48.167Z'
+    action: plan_approved
+    phase: plan
+    details: >-
+      Plan approved. 4 sub-tasks queued: (ST1) Update lok-setup-guide.md, (ST2) Update README.md, (ST3) Cross-reference
+      audit, (ST4) Pre-merge gate.
+  - timestamp: '2026-05-25T07:33:51.364Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-05-25T07:38:53.301Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST1 landed: Update docs/guides/lok-setup-guide.md Gemini section. Commit 1daf13a'
+  - timestamp: '2026-05-25T07:39:42.856Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST2 landed: Update README.md Gemini prerequisites with auth instructions. Commit 4e945f5'
+  - timestamp: '2026-05-25T07:58:06.184Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      6 assumptions reviewed. Held: 2, violated: 0, untested: 4. No violations — untested items are blocked on CLO-394
+      shipping (sandbox mapping, opencode flags, default config) which is by design.
+  - timestamp: '2026-05-25T07:58:09.432Z'
+    action: implementation_complete
+    phase: implement
+    details: 'All sub-tasks landed. Pre-merge gate (grep checks) green. 3 commits. status: validating.'
+  - timestamp: '2026-05-25T09:59:26.388Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: TIMEOUT (manual assessment PASS). Gemini: PASS (after fix iteration). Synthesis: PASS. 1 fix iteration
+      applied (migration callout, claude typo, strengths update, code block nesting).
+  - timestamp: '2026-05-25T09:59:29.574Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-05-25T10:00:53.028Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + test all pass (6 passed, 0 failed)'
+  - timestamp: '2026-05-25T10:01:20.264Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #53 opened: https://github.com/maxkulish/lok/pull/53'
+  - timestamp: '2026-05-25T10:06:29.714Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      No CI checks configured/running for this branch (statusCheckRollup: []). Local pre-flight confirmed clean: fmt +
+      clippy + test all pass.
+  - timestamp: '2026-05-25T10:08:37.813Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      2 threads resolved; replies posted 2/2; /gemini review trailer verified on every reply (Gemini bot);
+      unresolved-thread re-check clean (both bot re-reviews approved fixes).
+  - timestamp: '2026-05-25T10:09:14.342Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: >-
+      Pre-merge re-fetch passed: no new inline comments and no unresolved review threads. Bot re-reviews (approvals)
+      verified.
+  - timestamp: '2026-05-25T10:09:47.181Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: 'Current-head bot review observed for PR #53 at head c7bae04; Gemini bot re-reviewed and approved fixes.'
+task_title: 'FR-12c: opencode migration docs + setup guide refresh'
+task_url: https://linear.app/cloud-ai/issue/CLO-396/fr-12c-opencode-migration-docs-setup-guide-refresh
