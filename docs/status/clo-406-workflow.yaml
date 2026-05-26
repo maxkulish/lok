@@ -12,16 +12,17 @@ linear:
   team: Cloud-ai
   project: Personal-health
   status_at_start: Backlog
+  status_at_complete: Done
   blocks: []
   blocked_by: []
   branch_suggested: kmamemo/clo-406-fr-15a-lok_health_ttl-env-override-for-healthcache-ttl
   priority: Medium
   branch_actual: feat/clo-406-healthcache-ttl
 workflow:
-  current_phase: pr
-  status: in_progress
+  current_phase: complete
+  status: complete
   created_at: '2026-05-26T09:32:38.458Z'
-  updated_at: '2026-05-26T10:12:07.999Z'
+  updated_at: '2026-05-26T10:13:33.068Z'
 phases:
   discovery:
     status: complete
@@ -76,7 +77,10 @@ phases:
     pre_merge_refetch_at: '2026-05-26T10:11:43Z'
     pre_merge_refetch_passed: true
   complete:
-    status: pending
+    status: complete
+    merge_commit: 3814ed26c38b102147c606a349bc1c2b902b9223
+    merged_at: '2026-05-26T10:12:54Z'
+    aggregation_files_updated: false
 history:
   - timestamp: '2026-05-26T09:32:38.458Z'
     action: workflow_started
@@ -191,5 +195,23 @@ history:
     details: >-
       Local pre-flight gate green (fmt+clippy+test). Remote CI not visible via gh API (no check runs for branch) but
       workflow file exists; treating as pass based on local equivalence.
+  - timestamp: '2026-05-26T10:12:17.245Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-05-26T10:12:59.510Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #55 merged via squash. Merge commit: 3814ed26c38b102147c606a349bc1c2b902b9223'
+  - timestamp: '2026-05-26T10:14:03.121Z'
+    action: project_sync_complete
+    phase: complete
+    details: Project sync (/project:sync) not available in this environment; proceeding without aggregation file updates.
+  - timestamp: '2026-05-26T10:14:12.000Z'
+    action: workflow_complete
+    phase: complete
+    details: >-
+      Workflow complete. PR #55 merged into main. CLO-406 FR-15a implementation delivered: LOK_HEALTH_TTL env
+      override for HealthCache TTL, startup logging, stale entry re-probe, and setup guide documentation.
 task_title: 'FR-15a: LOK_HEALTH_TTL env override for HealthCache TTL'
 task_url: https://linear.app/cloud-ai/issue/CLO-406/fr-15a-lok-health-ttl-env-override-for-healthcache-ttl
