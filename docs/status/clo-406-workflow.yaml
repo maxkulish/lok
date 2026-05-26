@@ -18,10 +18,10 @@ linear:
   priority: Medium
   branch_actual: feat/clo-406-healthcache-ttl
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
   created_at: '2026-05-26T09:32:38.458Z'
-  updated_at: '2026-05-26T09:54:08.194Z'
+  updated_at: '2026-05-26T10:02:10.781Z'
 phases:
   discovery:
     status: complete
@@ -53,11 +53,18 @@ phases:
     plan_file: docs/plans/clo-406-healthcache-ttl.md
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
       - ff6c3d9
     assumption_outcomes: []
     assumptions_revalidated: true
+    codex_report: docs/reviews/clo-406-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/clo-406-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-406-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
   pr:
     status: pending
   complete:
@@ -133,5 +140,16 @@ history:
     details: >-
       No explicit assumptions recorded in design doc. Risks section exists but not formal assumptions list.
       Re-validation skipped with empty outcomes.
+  - timestamp: '2026-05-26T10:02:04.346Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL. Gemini: FAIL. Synthesis: PASS_WITH_NOTES. Two Must Fix items applied: (1) converted parser tests to
+      #[tokio::test] with .await on acquire_test_lock; (2) added startup info TTL log in warmup_backends via OnceLock
+      guard; (3) fixed warning formatting with humantime::format_duration. Full gate re-run passed.
+  - timestamp: '2026-05-26T10:02:10.781Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
 task_title: 'FR-15a: LOK_HEALTH_TTL env override for HealthCache TTL'
 task_url: https://linear.app/cloud-ai/issue/CLO-406/fr-15a-lok-health-ttl-env-override-for-healthcache-ttl
