@@ -7011,6 +7011,7 @@ prompt = "p"
                     unusable_flags: vec!["--ephemeral".to_string()],
                     ..crate::backend::HealthStatus::new_available()
                 }),
+                checked_at: Some(std::time::Instant::now()),
             },
         );
         drop(lock);

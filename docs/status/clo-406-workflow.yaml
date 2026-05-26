@@ -1,0 +1,119 @@
+task_id: clo-406
+task_type: development
+classification_reason: Feature request (FR-15a) - env var override for HealthCache TTL. No spec/ops markers. Standard development task.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Personal-health
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  branch_suggested: kmamemo/clo-406-fr-15a-lok_health_ttl-env-override-for-healthcache-ttl
+  priority: Medium
+  branch_actual: feat/clo-406-healthcache-ttl
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-05-26T09:32:38.458Z'
+  updated_at: '2026-05-26T09:44:40.293Z'
+phases:
+  discovery:
+    status: complete
+    approved: true
+    problem_framed: true
+    prd_exists: true
+    prd_file: docs/prds/clo-406-healthcache-ttl.md
+    prd_created: true
+    discovery_report: docs/discovery/clo-406.md
+    discovery_debt: []
+    baseline_score: 8
+    approaches_identified: 3
+    approach_chosen: 'Approach A: add checked_at timestamp to CachedBackend entries'
+  design:
+    status: complete
+    design_doc: docs/design-docs/clo-406-healthcache-ttl.md
+    draft_ready: true
+    discovery_context_used: true
+    review_gemini: null
+    review_ollama: null
+    review_verdict: null
+    review_completed: false
+    review_applied: false
+    applied_suggestions: []
+    flagged_suggestions: []
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-406-healthcache-ttl.md
+    approved: true
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-05-26T09:32:38.458Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-406 as development
+  - timestamp: '2026-05-26T09:34:05.808Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: feature request (FR-15a LOK_HEALTH_TTL env override) - no spec/ops markers, standard
+      development task
+  - timestamp: '2026-05-26T09:37:44.517Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-05-26T09:38:49.657Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-406-healthcache-ttl checked out
+  - timestamp: '2026-05-26T09:39:16.188Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach A chosen: add startup-only LOK_HEALTH_TTL parser + probe timestamp in CachedBackend entries; TTL-enforced
+      availability and startup TTL logging. Baseline 8/10; 3 approaches evaluated; no unresolved debt.
+  - timestamp: '2026-05-26T09:39:25.040Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-05-26T09:39:52.868Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Created draft design doc at docs/design-docs/clo-406-healthcache-ttl.md from discovery + PRD context; selected
+      Approach A remains unchanged
+  - timestamp: '2026-05-26T09:39:54.874Z'
+    action: design_review_skipped
+    phase: design
+    details: Automated AI design reviews unavailable in this run; proceeding with checklist-only checkpoint
+  - timestamp: '2026-05-26T09:40:03.455Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design approved in manual checkpoint review; no automated AI reviews available in this run, proceeding to plan
+      with no applied/flagged suggestions.
+  - timestamp: '2026-05-26T09:44:34.055Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 6 sub-tasks at docs/plans/clo-406-healthcache-ttl.md
+  - timestamp: '2026-05-26T09:44:37.687Z'
+    action: plan_approved
+    phase: plan
+    details: Plan approved. 6 sub-tasks queued.
+  - timestamp: '2026-05-26T09:44:40.293Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+task_title: 'FR-15a: LOK_HEALTH_TTL env override for HealthCache TTL'
+task_url: https://linear.app/cloud-ai/issue/CLO-406/fr-15a-lok-health-ttl-env-override-for-healthcache-ttl
