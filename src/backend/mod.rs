@@ -474,24 +474,36 @@ pub(super) const HEALTH_TTL_ENV: &str = "LOK_HEALTH_TTL";
 static HEALTH_CACHE_TTL: OnceLock<Duration> = OnceLock::new();
 static HEALTH_TTL_LOGGED: OnceLock<()> = OnceLock::new();
 
-pub(super) fn resolve_health_cache_ttl() -> Duration {
-    match std::env::var(HEALTH_TTL_ENV) {
-        Ok(val) if !val.trim().is_empty() => match humantime::parse_duration(val.trim()) {
-            Ok(d) => d,
-            Err(e) => {
-                eprintln!(
-                    "{} Invalid {} '{}': {}; using default TTL ({})",
-                    "warning:".yellow(),
-                    HEALTH_TTL_ENV,
-                    val,
-                    e,
-                    humantime::format_duration(DEFAULT_HEALTH_CACHE_TTL),
-                );
-                DEFAULT_HEALTH_CACHE_TTL
+pub(super) fn parse_health_cache_ttl(val: Option<&str>) -> (Duration, Option<String>) {
+    match val {
+        Some(v) if !v.trim().is_empty() => {
+            let trimmed = v.trim();
+            match humantime::parse_duration(trimmed) {
+                Ok(d) => (d, None),
+                Err(e) => {
+                    let warn = format!(
+                        "Invalid {} '{}': {}; using default TTL ({})",
+                        HEALTH_TTL_ENV,
+                        trimmed,
+                        e,
+                        humantime::format_duration(DEFAULT_HEALTH_CACHE_TTL),
+                    );
+                    (DEFAULT_HEALTH_CACHE_TTL, Some(warn))
+                }
             }
-        },
-        _ => DEFAULT_HEALTH_CACHE_TTL,
+        }
+        _ => (DEFAULT_HEALTH_CACHE_TTL, None),
     }
+}
+
+pub(super) fn resolve_health_cache_ttl() -> Duration {
+    let val = std::env::var_os(HEALTH_TTL_ENV);
+    let val_str = val.as_ref().map(|os| os.to_string_lossy());
+    let (ttl, warn) = parse_health_cache_ttl(val_str.as_deref());
+    if let Some(w) = warn {
+        eprintln!("{} {}", "warning:".yellow(), w);
+    }
+    ttl
 }
 
 pub(super) fn health_cache_ttl() -> Duration {
@@ -2290,38 +2302,41 @@ mod tests {
 
     #[tokio::test]
     async fn test_ttl_parser_valid() {
-        let _guard = acquire_test_lock().await;
-        // 10s
-        std::env::set_var(HEALTH_TTL_ENV, "10s");
-        assert_eq!(super::resolve_health_cache_ttl(), Duration::from_secs(10));
-        // 5m
-        std::env::set_var(HEALTH_TTL_ENV, "5m");
-        assert_eq!(
-            super::resolve_health_cache_ttl(),
-            Duration::from_secs(5 * 60)
-        );
-        // 1h
-        std::env::set_var(HEALTH_TTL_ENV, "1h");
-        assert_eq!(
-            super::resolve_health_cache_ttl(),
-            Duration::from_secs(60 * 60)
-        );
-        // unset
-        std::env::remove_var(HEALTH_TTL_ENV);
-        assert_eq!(super::resolve_health_cache_ttl(), DEFAULT_HEALTH_CACHE_TTL);
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("10s"));
+        assert_eq!(ttl, Duration::from_secs(10));
+        assert!(warn.is_none());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("5m"));
+        assert_eq!(ttl, Duration::from_secs(5 * 60));
+        assert!(warn.is_none());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("1h"));
+        assert_eq!(ttl, Duration::from_secs(60 * 60));
+        assert!(warn.is_none());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(None);
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_none());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some(""));
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_none());
     }
 
     #[tokio::test]
     async fn test_ttl_parser_invalid_fallback() {
-        let _guard = acquire_test_lock().await;
-        std::env::set_var(HEALTH_TTL_ENV, "banana");
-        assert_eq!(super::resolve_health_cache_ttl(), DEFAULT_HEALTH_CACHE_TTL);
-        std::env::set_var(HEALTH_TTL_ENV, "3600");
-        assert_eq!(super::resolve_health_cache_ttl(), DEFAULT_HEALTH_CACHE_TTL);
-        std::env::set_var(HEALTH_TTL_ENV, "");
-        assert_eq!(super::resolve_health_cache_ttl(), DEFAULT_HEALTH_CACHE_TTL);
-        std::env::remove_var(HEALTH_TTL_ENV);
-        assert_eq!(super::resolve_health_cache_ttl(), DEFAULT_HEALTH_CACHE_TTL);
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("banana"));
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_some());
+        assert!(warn.unwrap().contains("banana"));
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("3600"));
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_some());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some(""));
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_none());
     }
 
     #[tokio::test]
