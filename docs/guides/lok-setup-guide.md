@@ -2,6 +2,27 @@
 
 A practical guide for configuring lok in your projects. Everything here comes from patterns proven across real workflows.
 
+> ## ⚠️ Breaking change: Gemini CLI → opencode
+>
+> Google deprecated `@google/gemini-cli` (see [official migration notice](https://antigravity.google/docs/gcli-migration)).
+> The lok `gemini` backend now runs **opencode** under the hood. Existing workflows that say `backend = "gemini"` keep working **without TOML changes**, but every machine that runs lok must install `opencode` and run `opencode auth login`.
+>
+> Action required: jump to the [opencode Migration Guide](#opencode-migration-guide) and follow the three steps (install, auth, drop any custom `command/args` overrides).
+
+## What's New in Phase 2
+
+Phase 2 ("Predictable CLI Execution") shipped a set of features that affect every project using lok. Each item links to the section with full details.
+
+| Capability | Why it matters | Section |
+|------------|----------------|---------|
+| **opencode replaces Gemini CLI** | Google deprecated the npm CLI; lok now defaults to opencode. Workflow TOML stays the same. | [opencode Migration Guide](#opencode-migration-guide) |
+| **Token usage on every step** | `StepResult.usage` populated by all backends; visible in `--output json`. | [Token Usage Observability](#token-usage-observability) |
+| **Per-step sandbox routing** | Codex `-s` and opencode `--agent` set per step from `sandbox = "..."`. Auto-defaults to `workspace-write` when `apply_edits = true`. | [Per-Step Sandbox](#per-step-sandbox) |
+| **Per-step timeout layering** | `timeout = "30s"` resolves step > backend > global; humantime strings accepted everywhere. | [Tips and Gotchas](#tips-and-gotchas) |
+| **`lok doctor` health command** | Table + JSON view of backend availability, version, auth mode, diagnostics. | [lok doctor](#lok-doctor) |
+| **Health-check + warmup** | All enabled backends are probed once at startup; subsequent `is_available` reads from cache (no extra subprocess spawns). | [lok doctor](#lok-doctor) |
+| **Codex JSONL event parser** | Codex output is now event-driven (`turn.completed` / `--output-last-message`); ANSI escapes and mid-turn chatter no longer leak into results. | [Tips and Gotchas](#tips-and-gotchas) |
+
 ## Directory Structure
 
 lok discovers configuration from a `.lok/` directory at your project root:
@@ -543,61 +564,104 @@ For backends that do not understand a sandbox flag (Claude API, Bedrock, Ollama,
 
 ## opencode Migration Guide
 
-If you previously used lok's Gemini backend with `@google/gemini-cli`, here's what changed.
+> **Why this exists:** Google [deprecated `@google/gemini-cli`](https://antigravity.google/docs/gcli-migration).
+> The old `npx @google/gemini-cli --output-format json` invocation is gone. lok's `gemini` backend now wraps **[opencode](https://opencode.ai)**
+> (upstream [anomalyco/opencode](https://github.com/anomalyco/opencode)) instead.
+>
+> **What changes for you:** Workflow TOML stays the same — `backend = "gemini"` still works. But every machine that runs lok must install opencode and authenticate once.
 
-### Install
+### Step 1: Install opencode
 
 Replace the old gemini-cli install with opencode:
 
 ```bash
-# macOS
+# macOS (recommended — anomalyco tap stays current)
 brew install anomalyco/tap/opencode
 
-# Linux (or any platform)
+# Linux / any platform
 curl -fsSL https://opencode.ai/install | bash
 ```
 
+> The homebrew-core `opencode` formula lags upstream. Use the `anomalyco/tap` tap.
+>
 > If `opencode` is not found after install, restart your terminal or run
 > `source ~/.zshrc` / `source ~/.bashrc` to refresh your `$PATH`.
 
-### Minimum version
-
-opencode `>= 1.x.y` is required for the `--agent` sandbox flags. Check your version:
+Verify the install:
 
 ```bash
-opencode --version
+opencode --version   # should print 1.15.x or newer
 ```
 
-> The exact minimum version will be pinned when [CLO-394](https://linear.app/cloud-ai/issue/CLO-394/fr-12a-replace-gemini-cli-backend-with-opencode-subprocess) ships.> Use the latest release from [anomalyco/tap](https://github.com/anomalyco/homebrew-tap) until then.
-
-### Auth
+### Step 2: Authenticate
 
 Remove any `GEMINI_API_KEY` or `GOOGLE_API_KEY` environment variables you set for the old
-CLI (they are no longer required). Authenticate via Google OAuth:
+CLI (they are no longer required for the OAuth path). Authenticate via Google OAuth:
 
 ```bash
 opencode auth login   # Opens browser → select Google → OAuth flow
 ```
 
-> **Do not** confuse with `opencode login` (opencode-console login — unrelated).
+> **`opencode auth login` vs `opencode login`:** the first is **provider credentials** — what lok needs. The second is the opencode-console login (console.opencode.ai). They are unrelated; do not confuse them.
 
 For headless environments (SSH, CI, Docker) where a browser cannot open, set
 `GEMINI_API_KEY` or `GOOGLE_API_KEY` as a fallback — opencode honors these
-environment variables.
+environment variables as an API-key path.
+
+Verify auth:
+
+```bash
+opencode auth list    # should list "google" with an account
+```
+
+`lok doctor` will report `mode: oauth` (or `api-key`) when this is set up correctly.
+
+### Step 3: Remove old overrides
+
+If you previously had something like this in `.lok/lok.toml`:
+
+```toml
+[backends.gemini]
+command = "npx"
+args = ["@google/gemini-cli", "--output-format", "json"]
+```
+
+…delete those lines. lok now defaults to:
+
+```bash
+opencode run --model google/<model> --format json --agent <plan|build> -- "<prompt>"
+```
+
+A minimal modern config:
+
+```toml
+[backends.gemini]
+enabled = true
+# command/args use opencode by default
+# Optional: pin a specific model
+# model = "google/gemini-2.5-flash"
+timeout = 300
+```
 
 ### Sandbox delta
 
-The old `--approval-mode` flags are replaced by opencode `--agent` flags:
+The old gemini-cli `--approval-mode` flags are replaced by opencode `--agent` flags. lok's per-step `sandbox` field handles this for you — you do not invoke these flags yourself.
 
-| Old flag (gemini-cli) | New flag (opencode) |
-|-----------------------|---------------------|
-| `--approval-mode default` | `--agent plan` |
-| `--approval-mode auto_edit` | `--agent build` |
-| `--approval-mode yolo` | `--agent build --dangerously-skip-permissions` |
+| Old flag (gemini-cli) | New flag (opencode) | lok's `sandbox = "..."` |
+|-----------------------|---------------------|--------------------------|
+| `--approval-mode default` | `--agent plan` | `read-only` |
+| `--approval-mode auto_edit` | `--agent build` | `workspace-write` |
+| `--approval-mode yolo` | `--agent build --dangerously-skip-permissions` | `danger-full-access` |
 
-If you used a custom `command = "npx"` and `args = ["@google/gemini-cli", ...]` in your
-`lok.toml`, remove those overrides — lok now defaults to opencode. The `gemini` backend
-name and all workflow TOML files remain unchanged.
+### Shell steps invoking opencode directly
+
+If you bypass lok's backend and invoke opencode from a `shell = "..."` step, two things to know:
+
+1. **Message is positional, not `--prompt`:**
+   ```bash
+   opencode run --model google/gemini-2.5-pro --format json --agent plan -- "$PROMPT"
+   ```
+2. **Use `--format json` to get NDJSON event output** — required if you want lok to extract token counts. Without `--format json`, the step output is plain text and `StepResult.usage` will be `None` for that step.
 
 ## Token Usage Observability
 
@@ -806,7 +870,7 @@ lok context                         # Show detected codebase context
 ## lok doctor
 
 `lok doctor` checks the health of all enabled backends and reports availability,
-version, auth mode, and any diagnostic issues.
+version, auth mode, and any diagnostic issues. It is the first thing to run on a new machine.
 
 ```bash
 # Human-readable table (default)
@@ -815,6 +879,19 @@ lok doctor
 # Machine-readable JSON
 lok doctor --output json
 ```
+
+### How health checks work
+
+- **Warmup at startup:** every command that touches backends runs an async warmup pass that probes all enabled backends in parallel and stores results in a process-wide `HealthCache`.
+- **`is_available` reads the cache** (sync), so step execution never spawns an extra subprocess to ask "are you up?"
+- **Per-backend probes:**
+  - `claude` — dual-mode (`Api` vs `Cli`); reports `mode` accordingly.
+  - `codex` — `codex --version` + version-aware flag matrix (records `unusable_flags` for older builds).
+  - `gemini` (opencode) — `opencode --version` + `opencode auth list` (or `auth.json` fallback); reports `mode: oauth | api-key | none`.
+  - `ollama` — `GET /api/version` + `GET /api/tags`; populates `models[]` and validates any models referenced in workflows.
+  - `bedrock` — feature-gated; presence of AWS creds.
+
+If `lok run <workflow>` fails because a backend is unavailable, the diagnostic from `lok doctor` is the authoritative explanation.
 
 ### Table output
 
