@@ -388,6 +388,7 @@ pub fn create_backend(
             CachedBackend {
                 backend: Arc::clone(&backend),
                 health: None,
+                checked_at: None,
             },
         );
     }
@@ -414,6 +415,7 @@ pub fn get_backend_cache() -> &'static RwLock<HashMap<String, CachedBackend>> {
 pub struct CachedBackend {
     pub backend: Arc<dyn Backend>,
     pub health: Option<HealthStatus>,
+    pub checked_at: Option<Instant>,
 }
 
 /// Minimal stub backend used by test helpers when the unified cache needs
@@ -452,14 +454,67 @@ pub fn clear_health_cache() {
 pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
     let cache = get_backend_cache();
     let mut lock = cache.write().expect("backend cache lock poisoned");
+    let now = Some(Instant::now());
     lock.entry(backend_name.to_string())
-        .and_modify(|entry| entry.health = Some(status.clone()))
+        .and_modify(|entry| {
+            entry.health = Some(status.clone());
+            entry.checked_at = now;
+        })
         .or_insert(CachedBackend {
             backend: Arc::new(StubBackend {
                 name: backend_name.to_string(),
             }) as Arc<dyn Backend>,
             health: Some(status),
+            checked_at: now,
         });
+}
+pub(super) const DEFAULT_HEALTH_CACHE_TTL: Duration = Duration::from_secs(60 * 30);
+pub(super) const HEALTH_TTL_ENV: &str = "LOK_HEALTH_TTL";
+
+static HEALTH_CACHE_TTL: OnceLock<Duration> = OnceLock::new();
+static HEALTH_TTL_LOGGED: OnceLock<()> = OnceLock::new();
+
+pub(super) fn parse_health_cache_ttl(val: Option<&str>) -> (Duration, Option<String>) {
+    match val {
+        Some(v) if !v.trim().is_empty() => {
+            let trimmed = v.trim();
+            match humantime::parse_duration(trimmed) {
+                Ok(d) => (d, None),
+                Err(e) => {
+                    let warn = format!(
+                        "Invalid {} '{}': {}; using default TTL ({})",
+                        HEALTH_TTL_ENV,
+                        trimmed,
+                        e,
+                        humantime::format_duration(DEFAULT_HEALTH_CACHE_TTL),
+                    );
+                    (DEFAULT_HEALTH_CACHE_TTL, Some(warn))
+                }
+            }
+        }
+        _ => (DEFAULT_HEALTH_CACHE_TTL, None),
+    }
+}
+
+pub(super) fn resolve_health_cache_ttl() -> Duration {
+    let val = std::env::var_os(HEALTH_TTL_ENV);
+    let val_str = val.as_ref().map(|os| os.to_string_lossy());
+    let (ttl, warn) = parse_health_cache_ttl(val_str.as_deref());
+    if let Some(w) = warn {
+        eprintln!("{} {}", "warning:".yellow(), w);
+    }
+    ttl
+}
+
+pub(super) fn health_cache_ttl() -> Duration {
+    *HEALTH_CACHE_TTL.get_or_init(resolve_health_cache_ttl)
+}
+
+pub(super) fn is_cache_entry_fresh(entry: &CachedBackend, ttl: Duration) -> bool {
+    entry
+        .checked_at
+        .map(|t| t.elapsed() <= ttl)
+        .unwrap_or(false)
 }
 
 pub struct Engine;
@@ -467,6 +522,12 @@ pub struct Engine;
 impl Engine {
     /// Warm up all enabled backends in parallel, populating the health cache.
     pub async fn warmup_backends(config: &Config) -> Result<()> {
+        HEALTH_TTL_LOGGED.get_or_init(|| {
+            eprintln!(
+                "info: Health cache TTL: {}",
+                humantime::format_duration(health_cache_ttl())
+            );
+        });
         let mut futures = Vec::with_capacity(config.backends.len());
 
         for (name, backend_config) in &config.backends {
@@ -474,14 +535,15 @@ impl Engine {
                 continue;
             }
 
-            // Skip only if this backend has already been probed (health is Some).
+            // Skip only if this backend has already been probed and the entry is still fresh.
             // Entries inserted by create_backend (e.g. via display_backends_status or
             // get_backends) have health = None and still need a real probe here.
             {
                 let cache = get_backend_cache();
                 let lock = cache.read().expect("backend cache lock poisoned");
+                let ttl = health_cache_ttl();
                 if let Some(entry) = lock.get(name.as_str()) {
-                    if entry.health.is_some() {
+                    if entry.health.is_some() && is_cache_entry_fresh(entry, ttl) {
                         continue;
                     }
                 }
@@ -539,12 +601,14 @@ impl Engine {
         // here, the probed result still lands instead of being silently dropped.
         let cache = get_backend_cache();
         let mut lock = cache.write().expect("backend cache lock poisoned");
+        let now = Instant::now();
         for (name, backend, status) in updates {
             lock.insert(
                 name,
                 CachedBackend {
                     backend,
                     health: Some(status),
+                    checked_at: Some(now),
                 },
             );
         }
@@ -559,12 +623,28 @@ impl Engine {
         let Some(cache) = BACKEND_CACHE.get() else {
             return false;
         };
+        let ttl = health_cache_ttl();
         let lock = cache.read().expect("backend cache lock poisoned");
-        lock.get(name)
-            .and_then(|c| c.health.as_ref())
-            .map(|h| h.available)
-            .unwrap_or(false)
+        let Some(entry) = lock.get(name) else {
+            return false;
+        };
+        if !is_cache_entry_fresh(entry, ttl) {
+            return false;
+        }
+        entry.health.as_ref().map(|h| h.available).unwrap_or(false)
     }
+}
+
+/// Return the cached health status for a backend if it exists and is fresh.
+pub fn get_cached_health(name: &str) -> Option<HealthStatus> {
+    let cache = BACKEND_CACHE.get()?;
+    let ttl = health_cache_ttl();
+    let lock = cache.read().expect("backend cache lock poisoned");
+    let entry = lock.get(name)?;
+    if !is_cache_entry_fresh(entry, ttl) {
+        return None;
+    }
+    entry.health.clone()
 }
 
 pub fn get_backends(config: &Config, filter: Option<&str>) -> Result<Vec<Arc<dyn Backend>>> {
@@ -2218,5 +2298,109 @@ mod tests {
 
         // Verify is_available() also delegates (cache-only at this point)
         assert_eq!(wrapped.is_available(), inner.is_available());
+    }
+
+    #[tokio::test]
+    async fn test_ttl_parser_valid() {
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("10s"));
+        assert_eq!(ttl, Duration::from_secs(10));
+        assert!(warn.is_none());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("5m"));
+        assert_eq!(ttl, Duration::from_secs(5 * 60));
+        assert!(warn.is_none());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("1h"));
+        assert_eq!(ttl, Duration::from_secs(60 * 60));
+        assert!(warn.is_none());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(None);
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_none());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some(""));
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_ttl_parser_invalid_fallback() {
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("banana"));
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_some());
+        assert!(warn.unwrap().contains("banana"));
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some("3600"));
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_some());
+
+        let (ttl, warn) = super::parse_health_cache_ttl(Some(""));
+        assert_eq!(ttl, DEFAULT_HEALTH_CACHE_TTL);
+        assert!(warn.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_is_backend_available_expired() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+        set_mock_health("test", HealthStatus::new_available());
+        assert!(super::Engine::is_backend_available("test"));
+
+        // Backdate checked_at so the entry is stale
+        {
+            let cache = get_backend_cache();
+            let mut lock = cache.write().expect("lock poisoned");
+            let entry = lock.get_mut("test").unwrap();
+            entry.checked_at =
+                Some(Instant::now() - DEFAULT_HEALTH_CACHE_TTL - Duration::from_secs(1));
+        }
+        assert!(
+            !super::Engine::is_backend_available("test"),
+            "stale entry should be treated as unavailable"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_warmup_reprobes_stale() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+
+        // Insert the real OllamaBackend into cache (health & checked_at are None initially)
+        let retry_policy = crate::backend::retry::RetryPolicy::default();
+        let _ = super::create_backend("ollama", &config.backends["ollama"], retry_policy).unwrap();
+
+        // Manually mark it available but backdate checked_at so it's stale
+        {
+            let cache = get_backend_cache();
+            let mut lock = cache.write().expect("lock poisoned");
+            let entry = lock.get_mut("ollama").unwrap();
+            entry.health = Some(HealthStatus::new_available());
+            entry.checked_at =
+                Some(Instant::now() - DEFAULT_HEALTH_CACHE_TTL - Duration::from_secs(1));
+        }
+
+        assert!(
+            !super::Engine::is_backend_available("ollama"),
+            "pre-condition: ollama should appear stale"
+        );
+
+        // Warmup should re-probe the stale entry using the real backend
+        super::Engine::warmup_backends(&config).await.unwrap();
+
+        // After re-probe, checked_at should be fresh and availability restored
+        assert!(
+            super::Engine::is_backend_available("ollama"),
+            "ollama should be available after re-probe"
+        );
     }
 }

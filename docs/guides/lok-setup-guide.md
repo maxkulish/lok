@@ -893,6 +893,19 @@ lok doctor --output json
 
 If `lok run <workflow>` fails because a backend is unavailable, the diagnostic from `lok doctor` is the authoritative explanation.
 
+### HealthCache TTL
+
+By default, health cache entries expire after 30 minutes. You can override this with the `LOK_HEALTH_TTL` environment variable:
+
+```bash
+LOK_HEALTH_TTL=10s lok doctor
+```
+
+- **Raise** the TTL (e.g., `10m`, `1h`) when debugging flaky probes or on hosts where backend state changes rarely.
+- **Lower** it (e.g., `10s`, `30s`) in CI pipelines that mutate backend auth or binaries between steps.
+
+Unparseable values (including bare integers like `3600`) produce a one-line warning and fall back to the default.
+
 ### Table output
 
 | Column    | Source                                  |

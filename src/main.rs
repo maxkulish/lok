@@ -713,25 +713,20 @@ async fn main() -> Result<()> {
             let mut entries: Vec<(String, backend::HealthStatus)> = Vec::new();
             let mut all_available = true;
 
-            let cache = backend::get_backend_cache();
-            let lock = cache.read().expect("backend cache lock poisoned");
-
             for (name, backend_config) in &config.backends {
                 if !backend_config.enabled {
                     continue;
                 }
-                if let Some(entry) = lock.get(name) {
-                    if let Some(health) = &entry.health {
-                        if !health.available {
-                            all_available = false;
-                        }
-                        entries.push((name.clone(), health.clone()));
+                if let Some(health) = backend::get_cached_health(name) {
+                    if !health.available {
+                        all_available = false;
                     }
+                    entries.push((name.clone(), health.clone()));
                 } else {
-                    // Configured but not in cache → backend construction failed during warmup
+                    // Configured but not in cache or stale/expired → backend unavailable
                     all_available = false;
                     let diagnostic = format!(
-                        "Backend '{}' is configured but not found in health cache (construction may have failed)",
+                        "Backend '{}' is configured but not found in health cache (construction may have failed or TTL expired)",
                         name
                     );
                     entries.push((
@@ -744,7 +739,6 @@ async fn main() -> Result<()> {
                     ));
                 }
             }
-            drop(lock);
 
             entries.sort_by(|a, b| a.0.cmp(&b.0));
 
