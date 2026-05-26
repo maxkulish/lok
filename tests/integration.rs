@@ -19,7 +19,7 @@ fn run_workflow(workflow_path: &str) -> (bool, String) {
     (output.status.success(), combined)
 }
 
-fn run_lok(args: &[&str]) -> (bool, String) {
+fn run_lok(args: &[&str]) -> (bool, String, String) {
     let output = Command::new("cargo")
         .args(["run", "--quiet", "--bin", "lok", "--"])
         .args(args)
@@ -29,9 +29,8 @@ fn run_lok(args: &[&str]) -> (bool, String) {
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let combined = format!("{}\n{}", stdout, stderr);
 
-    (output.status.success(), combined)
+    (output.status.success(), stdout, stderr)
 }
 
 #[test]
@@ -188,9 +187,9 @@ fn test_llm_validate_workflow() {
 
 #[test]
 fn test_doctor_json_output() {
-    let (_success, output) = run_lok(&["doctor", "--output", "json"]);
+    let (_success, output, _stderr) = run_lok(&["doctor", "--output", "json"]);
 
-    // Doctor should produce valid JSON output
+    // Doctor should produce valid JSON output (from stdout, ignoring stderr diagnostics)
     let trimmed = output.trim();
     let parsed: Result<serde_json::Value, _> = serde_json::from_str(trimmed);
     assert!(
