@@ -1,23 +1,28 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-05-24 (CLO-395 complete)
+**Last Updated**: 2026-05-26 (Phase 2 §9 step 6 + opencode migration batch complete; FR-15a deferred for dogfood)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | In Progress | Phase 10 | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
-| Priority | Task | Title | Dependencies |
-|----------|------|-------|--------------|
-| - | - | - | - |
+| Priority | Task | Title | Dependencies | Target |
+|----------|------|-------|--------------|--------|
+| Review | — | **Review FR-15a / [CLO-406](https://linear.app/cloud-ai/issue/CLO-406) before implementing** — decide default TTL value and whether dogfood usage surfaced any new requirements (CLI flag, log verbosity, etc.) | Dogfood feedback from rs-wisper + other projects | **2026-06-09** |
+| Medium | [CLO-406](https://linear.app/cloud-ai/issue/CLO-406/fr-15a-lok-health-ttl-env-override-for-healthcache-ttl) | FR-15a: LOK_HEALTH_TTL env override for HealthCache TTL | CLO-388 ✓ / 389 ✓ / 391 ✓ / 392 ✓ / 395 ✓ — all probes shipped | After 2026-06-09 review |
 
 ## Recently Completed
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-396](https://linear.app/cloud-ai/issue/CLO-396) | FR-12c: Setup-guide + docs refresh (opencode install, `opencode auth login`, remove npx refs) | 2026-05-25 | Docs and setup guide updated for the opencode migration; breaking-change banner, migration guide rewrite (install/auth/overrides), sandbox-mapping table, and `lok doctor` warmup/cache details. |
+| [CLO-393](https://linear.app/cloud-ai/issue/CLO-393) | FR-14: `lok doctor` HealthStatus renderer (table + JSON) | 2026-05-25 | Wired `lok doctor` to `warmup_backends()`; renders table + `--output json`; exit 0/1 on availability; Gemini row uses `oauth\|api-key\|none` (post-opencode). |
+| [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | 2026-05-24 | Codex probe runs `codex --version` and records `unusable_flags` for older binaries so step execution skips unsupported flags rather than failing mid-run. |
+| [CLO-394](https://linear.app/cloud-ai/issue/CLO-394) | FR-12a: Replace Gemini CLI backend with opencode subprocess | 2026-05-24 | Backend rewritten to invoke `opencode run --model google/<m> --format json --agent <plan\|build> -- "<prompt>"`; envelope + usage parser rewritten against opencode NDJSON event stream; `gemini` backend name preserved. |
 | [CLO-395](https://linear.app/cloud-ai/issue/CLO-395/fr-12b-opencode-health-probe-google-auth-detection) | FR-12b: opencode health probe + Google auth detection | 2026-05-24 | Replaced which-only stub with multi-step probe: version (--version, 1s), auth (auth.json → env → CLI), models (models google). 13 unit tests. PR #50. |
 | [CLO-391](https://linear.app/cloud-ai/issue/CLO-391) | FR-13a: Claude dual-mode health probe (Api vs Cli) | 2026-05-24 | Implemented `mode` and `diagnostic` fields in `HealthStatus`; added `probe_api()` (offline key/model check) and `probe_cli()` (binary + version + `--help` + JSON support); 12 unit tests; merged in PR #43. |
 | [CLO-389](https://linear.app/cloud-ai/issue/CLO-389) | FR-11 + FR-11a: Ollama health probe (/api/version + /api/tags) + ModelInfo + workflow model validation | 2026-05-23 | Implemented active Ollama health check probing version/tags, cached HealthStatus.models, and added workflow step model validation with strict matching and helpful pull suggestions. |
