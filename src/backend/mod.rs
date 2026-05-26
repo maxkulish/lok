@@ -472,6 +472,7 @@ pub(super) const DEFAULT_HEALTH_CACHE_TTL: Duration = Duration::from_secs(60 * 3
 pub(super) const HEALTH_TTL_ENV: &str = "LOK_HEALTH_TTL";
 
 static HEALTH_CACHE_TTL: OnceLock<Duration> = OnceLock::new();
+static HEALTH_TTL_LOGGED: OnceLock<()> = OnceLock::new();
 
 pub(super) fn resolve_health_cache_ttl() -> Duration {
     match std::env::var(HEALTH_TTL_ENV) {
@@ -479,12 +480,12 @@ pub(super) fn resolve_health_cache_ttl() -> Duration {
             Ok(d) => d,
             Err(e) => {
                 eprintln!(
-                    "{} Invalid {} '{}': {}; using default TTL ({:?})",
+                    "{} Invalid {} '{}': {}; using default TTL ({})",
                     "warning:".yellow(),
                     HEALTH_TTL_ENV,
                     val,
                     e,
-                    DEFAULT_HEALTH_CACHE_TTL,
+                    humantime::format_duration(DEFAULT_HEALTH_CACHE_TTL),
                 );
                 DEFAULT_HEALTH_CACHE_TTL
             }
@@ -509,6 +510,12 @@ pub struct Engine;
 impl Engine {
     /// Warm up all enabled backends in parallel, populating the health cache.
     pub async fn warmup_backends(config: &Config) -> Result<()> {
+        HEALTH_TTL_LOGGED.get_or_init(|| {
+            eprintln!(
+                "info: Health cache TTL: {}",
+                humantime::format_duration(health_cache_ttl())
+            );
+        });
         let mut futures = Vec::with_capacity(config.backends.len());
 
         for (name, backend_config) in &config.backends {
@@ -2281,9 +2288,9 @@ mod tests {
         assert_eq!(wrapped.is_available(), inner.is_available());
     }
 
-    #[test]
-    fn test_ttl_parser_valid() {
-        let _guard = acquire_test_lock();
+    #[tokio::test]
+    async fn test_ttl_parser_valid() {
+        let _guard = acquire_test_lock().await;
         // 10s
         std::env::set_var(HEALTH_TTL_ENV, "10s");
         assert_eq!(super::resolve_health_cache_ttl(), Duration::from_secs(10));
@@ -2304,9 +2311,9 @@ mod tests {
         assert_eq!(super::resolve_health_cache_ttl(), DEFAULT_HEALTH_CACHE_TTL);
     }
 
-    #[test]
-    fn test_ttl_parser_invalid_fallback() {
-        let _guard = acquire_test_lock();
+    #[tokio::test]
+    async fn test_ttl_parser_invalid_fallback() {
+        let _guard = acquire_test_lock().await;
         std::env::set_var(HEALTH_TTL_ENV, "banana");
         assert_eq!(super::resolve_health_cache_ttl(), DEFAULT_HEALTH_CACHE_TTL);
         std::env::set_var(HEALTH_TTL_ENV, "3600");

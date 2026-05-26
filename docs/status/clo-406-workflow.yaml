@@ -21,7 +21,7 @@ workflow:
   current_phase: implement
   status: in_progress
   created_at: '2026-05-26T09:32:38.458Z'
-  updated_at: '2026-05-26T09:44:40.293Z'
+  updated_at: '2026-05-26T09:54:08.194Z'
 phases:
   discovery:
     status: complete
@@ -53,7 +53,11 @@ phases:
     plan_file: docs/plans/clo-406-healthcache-ttl.md
     approved: true
   implement:
-    status: pending
+    status: validating
+    commits:
+      - ff6c3d9
+    assumption_outcomes: []
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -115,5 +119,19 @@ history:
     action: phase_transition
     phase: plan
     details: Transitioned from plan to implement
+  - timestamp: '2026-05-26T09:54:03.857Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed (ST1-ST5). ST1: Extended CachedBackend with checked_at. ST2: Added LOK_HEALTH_TTL env parser
+      with startup logging. ST3: TTL-aware availability in is_backend_available, warmup skip logic, and doctor via
+      get_cached_health. ST4: Added unit tests for parser and cache expiry/refresh. ST5: Added setup-guide TTL tuning
+      note. Pre-merge gate (fmt + clippy + test) green. 9 files changed, 836 insertions. Commit ff6c3d9.
+  - timestamp: '2026-05-26T09:54:08.194Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      No explicit assumptions recorded in design doc. Risks section exists but not formal assumptions list.
+      Re-validation skipped with empty outcomes.
 task_title: 'FR-15a: LOK_HEALTH_TTL env override for HealthCache TTL'
 task_url: https://linear.app/cloud-ai/issue/CLO-406/fr-15a-lok-health-ttl-env-override-for-healthcache-ttl
