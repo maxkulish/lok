@@ -493,7 +493,10 @@ mod tests {
             stderr: "boom".to_string(),
             exit_code: Some(1),
         };
-        assert_eq!(err.to_string(), "Shell command failed: echo hi && exit 1\nboom");
+        assert_eq!(
+            err.to_string(),
+            "Shell command failed: echo hi && exit 1\nboom"
+        );
     }
 
     #[test]

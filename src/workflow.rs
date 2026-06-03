@@ -18,7 +18,9 @@ use crate::backend::SandboxMode;
 use crate::config::Config;
 use crate::context::{resolve_format_command, resolve_verify_command, CodebaseContext};
 use crate::git_agent;
-use crate::utils::{summarize_backend_error, summarize_shell_error, truncate_utf8, ShellCommandError};
+use crate::utils::{
+    summarize_backend_error, summarize_shell_error, truncate_utf8, ShellCommandError,
+};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use thiserror::Error;
@@ -1448,7 +1450,10 @@ fn deps_threshold_unmet_msg(succeeded: usize, total: usize, required: usize) -> 
 /// failed dependencies. See [`deps_threshold_unmet_msg`] for why this avoids
 /// "consensus" wording.
 fn deps_threshold_met_msg(succeeded: usize, total: usize) -> String {
-    format!("dependency threshold met ({}/{} succeeded)", succeeded, total)
+    format!(
+        "dependency threshold met ({}/{} succeeded)",
+        succeeded, total
+    )
 }
 
 const APPLY_ONCE_FORMAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
