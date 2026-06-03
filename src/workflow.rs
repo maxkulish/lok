@@ -18,7 +18,7 @@ use crate::backend::SandboxMode;
 use crate::config::Config;
 use crate::context::{resolve_format_command, resolve_verify_command, CodebaseContext};
 use crate::git_agent;
-use crate::utils::{summarize_backend_error, summarize_shell_error, truncate_utf8};
+use crate::utils::{summarize_backend_error, summarize_shell_error, truncate_utf8, ShellCommandError};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use thiserror::Error;
@@ -383,10 +383,11 @@ pub struct Step {
     #[serde(default)]
     pub continue_on_error: Option<bool>,
 
-    // Consensus requirement
+    // Dependency-success gate
     /// Minimum number of dependencies that must succeed (default: all)
-    /// Useful for consensus-based steps like debate/synthesize that can work with partial results
+    /// Useful for synthesis/debate steps that can work with partial results
     /// Example: min_deps_success = 2 means at least 2 of the dependencies must succeed
+    /// Note: this is a dependency threshold, unrelated to the `consensus` strategy
     #[serde(default)]
     pub min_deps_success: Option<usize>,
 
@@ -1429,6 +1430,27 @@ fn map_retry_failure(
     )
 }
 
+/// Message shown when a step's `min_deps_success` gate is not satisfied.
+///
+/// Deliberately worded in terms of *dependencies*, never "consensus": the
+/// `min_deps_success` gate is a dependency-success threshold and is unrelated to
+/// the multi-backend [`ConsensusStrategy`](crate::consensus::ConsensusStrategy)
+/// feature. The old "consensus not reached" wording misled operators into
+/// thinking ordinary parallel steps had opted into a quorum/voting group.
+fn deps_threshold_unmet_msg(succeeded: usize, total: usize, required: usize) -> String {
+    format!(
+        "dependency threshold not met: {}/{} dependencies succeeded (need {})",
+        succeeded, total, required
+    )
+}
+
+/// Message shown when a step's `min_deps_success` gate is satisfied despite some
+/// failed dependencies. See [`deps_threshold_unmet_msg`] for why this avoids
+/// "consensus" wording.
+fn deps_threshold_met_msg(succeeded: usize, total: usize) -> String {
+    format!("dependency threshold met ({}/{} succeeded)", succeeded, total)
+}
+
 const APPLY_ONCE_FORMAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 async fn apply_once(
@@ -1644,7 +1666,7 @@ impl WorkflowRunner {
                     );
                 }
 
-                // Check consensus requirement if set
+                // Check the min_deps_success dependency gate if set
                 if let Some(min_success) = step.min_deps_success {
                     let successful_deps = step
                         .depends_on
@@ -1658,11 +1680,10 @@ impl WorkflowRunner {
                         .count();
 
                     if successful_deps < min_success {
-                        let msg = format!(
-                            "Consensus not reached: {}/{} dependencies succeeded (need {})",
+                        let msg = deps_threshold_unmet_msg(
                             successful_deps,
                             step.depends_on.len(),
-                            min_success
+                            min_success,
                         );
                         if workflow.step_continue_on_error(step) {
                             println!("{} {} ({})", "[skip]".yellow(), step.name.bold(), msg);
@@ -1685,13 +1706,12 @@ impl WorkflowRunner {
                             );
                         }
                     } else {
-                        // Consensus reached, skip hard failure check since we have enough
+                        // Threshold met, skip hard failure check since we have enough
                         if !soft_failed_deps.is_empty() || !hard_failed_deps.is_empty() {
                             println!(
-                                "  {} consensus reached ({}/{} succeeded)",
+                                "  {} {}",
                                 "✓".green(),
-                                successful_deps,
-                                step.depends_on.len()
+                                deps_threshold_met_msg(successful_deps, step.depends_on.len())
                             );
                         }
                     }
@@ -2055,14 +2075,21 @@ impl WorkflowRunner {
                                     }
                                     Ok(Err(e)) => {
                                         last_error = e.to_string();
+                                        // Classify on the subprocess stderr only. The command text
+                                        // is interpolated from workflow args (e.g. a CLO-429 task
+                                        // id) and must never drive classification - see
+                                        // ShellCommandError. Spawn/wait failures lack a structured
+                                        // error, so fall back to the legacy string classifier.
+                                        let summary = e
+                                            .downcast_ref::<ShellCommandError>()
+                                            .map(|se| se.summary())
+                                            .unwrap_or_else(|| summarize_shell_error("shell", &last_error));
                                         if attempt == max_retries {
                                             let elapsed_ms = start.elapsed().as_millis() as u64;
                                             // Record step complete (failure)
-                                            let summary = summarize_shell_error("shell", &e.to_string());
                                             println!("  {} {}", "✗".red(), summary);
                                             return StepResult::error(step_name, format!("Error: {}", e), elapsed_ms, None, StepFailureKind::BackendError);
                                         }
-                                        let summary = summarize_shell_error("shell", &e.to_string());
                                         println!("  {} {} (will retry)", "⚠".yellow(), summary);
                                     }
                                     Err(_) => {
@@ -3270,7 +3297,12 @@ async fn run_shell(cmd: &str, cwd: &Path, wrapper: Option<&str>) -> Result<Shell
     let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
 
     if !output.status.success() {
-        anyhow::bail!("Shell command failed: {}\n{}", final_cmd, stderr_str);
+        return Err(ShellCommandError {
+            command: final_cmd,
+            stderr: stderr_str,
+            exit_code: output.status.code(),
+        }
+        .into());
     }
 
     Ok(ShellOutput {
@@ -6756,6 +6788,36 @@ prompt = "p"
         let (msg, kind) = map_retry_failure(&outcome, 120_000, None);
         assert!(matches!(kind, StepFailureKind::EditFailed));
         assert!(msg.contains("without any attempts"));
+    }
+
+    // -----------------------------------------------------------------------
+    // min_deps_success gate wording: must describe a dependency threshold,
+    // never "consensus" (which is the unrelated multi-backend strategy).
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_deps_threshold_unmet_msg_wording() {
+        let msg = deps_threshold_unmet_msg(1, 3, 2);
+        assert_eq!(
+            msg,
+            "dependency threshold not met: 1/3 dependencies succeeded (need 2)"
+        );
+        assert!(
+            !msg.to_lowercase().contains("consensus"),
+            "gate message must not say 'consensus': {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_deps_threshold_met_msg_wording() {
+        let msg = deps_threshold_met_msg(2, 3);
+        assert_eq!(msg, "dependency threshold met (2/3 succeeded)");
+        assert!(
+            !msg.to_lowercase().contains("consensus"),
+            "gate message must not say 'consensus': {}",
+            msg
+        );
     }
 
     // -----------------------------------------------------------------------

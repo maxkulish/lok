@@ -223,10 +223,11 @@ min_deps_success = 2        # Need at least 2/3 backends to succeed
 prompt = "Synthesize the proposals: {{ steps.propose_claude.output }}..."
 ```
 
-When `min_deps_success` is set:
+When `min_deps_success` is set (a dependency threshold, distinct from the
+multi-backend `consensus` strategy above):
 - Step runs if at least N dependencies succeeded
 - Failed dependencies with `continue_on_error` pass their error output to the prompt
-- Logs "consensus reached (2/3 succeeded)" when threshold is met
+- Logs "dependency threshold met (2/3 succeeded)" when the threshold is met
 
 This prevents wasted tokens when one backend times out or hits rate limits.
 
