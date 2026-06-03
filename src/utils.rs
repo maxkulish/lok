@@ -158,6 +158,54 @@ pub fn classify_backend_error(error: &str) -> BackendErrorKind {
     BackendErrorKind::Unknown
 }
 
+/// A failed shell command, keeping the command text separate from the
+/// subprocess's error output.
+///
+/// Classification (see [`ShellCommandError::summary`]) must consider only
+/// `stderr`, never `command`: the command string is interpolated from workflow
+/// args and frequently contains things like a task id (`CLO-429`) or a path
+/// (`docs/clo-429-design.md`). Feeding that text to `classify_backend_error`
+/// caused a `429`/`quota`/`rate limit` substring to be read as a provider rate
+/// limit even when the failure had nothing to do with one.
+#[derive(Debug)]
+pub struct ShellCommandError {
+    pub command: String,
+    pub stderr: String,
+    pub exit_code: Option<i32>,
+}
+
+impl std::fmt::Display for ShellCommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Shell command failed: {}\n{}", self.command, self.stderr)
+    }
+}
+
+impl std::error::Error for ShellCommandError {}
+
+impl ShellCommandError {
+    /// One-line summary for display, classifying on the subprocess's stderr
+    /// only. Falls back to the exit code when stderr is empty (e.g. the
+    /// workflow redirected the inner CLI's stderr to a file).
+    pub fn summary(&self) -> String {
+        let kind = classify_backend_error(&self.stderr);
+        match kind {
+            BackendErrorKind::Unknown => {
+                match self.stderr.lines().map(str::trim).find(|l| !l.is_empty()) {
+                    Some(line) => truncate(line, 80),
+                    None => match self.exit_code {
+                        Some(code) => format!("shell command failed (exit {})", code),
+                        None => "shell command failed".to_string(),
+                    },
+                }
+            }
+            _ => match kind.hint() {
+                Some(hint) => format!("{} ({})", kind.description(), hint),
+                None => kind.description().to_string(),
+            },
+        }
+    }
+}
+
 /// Attempts to canonicalize a path, logging a warning and returning the original path on failure.
 pub async fn canonicalize_async(path: &Path) -> PathBuf {
     tokio::fs::canonicalize(path).await.unwrap_or_else(|e| {
@@ -390,6 +438,62 @@ mod tests {
             }),
             BackendErrorKind::Unknown
         );
+    }
+
+    #[test]
+    fn test_shell_command_error_task_id_not_rate_limited() {
+        // Regression: a shell command whose *text* contains a task id like
+        // CLO-429 must not be reported as rate limited. Only stderr is
+        // classified; here stderr is empty (inner CLI stderr was redirected
+        // to a file), so we fall back to the exit code.
+        let err = ShellCommandError {
+            command: "sed 's|__DOC__|docs/clo-429-design.md|g' prompt.md && exit 1".to_string(),
+            stderr: String::new(),
+            exit_code: Some(1),
+        };
+        let summary = err.summary();
+        assert!(
+            !summary.contains("rate limited"),
+            "task id in command text must not be classified as rate limited, got: {summary}"
+        );
+        assert_eq!(summary, "shell command failed (exit 1)");
+    }
+
+    #[test]
+    fn test_shell_command_error_real_rate_limit_from_stderr() {
+        // A genuine provider rate limit on stderr is still detected, even when
+        // the command text contains an unrelated number like 500.
+        let err = ShellCommandError {
+            command: "curl https://api.example.com/v1/clo-500".to_string(),
+            stderr: "HTTP 429: Too Many Requests".to_string(),
+            exit_code: Some(1),
+        };
+        assert_eq!(
+            err.summary(),
+            "rate limited (try again later or use fewer backends)"
+        );
+    }
+
+    #[test]
+    fn test_shell_command_error_unknown_shows_stderr_first_line() {
+        let err = ShellCommandError {
+            command: "do_thing".to_string(),
+            stderr: "\n  boom: something broke\nstack trace...".to_string(),
+            exit_code: Some(2),
+        };
+        assert_eq!(err.summary(), "boom: something broke");
+    }
+
+    #[test]
+    fn test_shell_command_error_display_preserves_command_and_stderr() {
+        // Other run_shell callers print the error directly; the Display format
+        // must stay byte-for-byte the same as the previous bail!() message.
+        let err = ShellCommandError {
+            command: "echo hi && exit 1".to_string(),
+            stderr: "boom".to_string(),
+            exit_code: Some(1),
+        };
+        assert_eq!(err.to_string(), "Shell command failed: echo hi && exit 1\nboom");
     }
 
     #[test]
