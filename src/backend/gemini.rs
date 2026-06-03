@@ -11,6 +11,11 @@ pub struct GeminiBackend {
     command: String,
     args: Vec<String>,
     default_model: Option<String>,
+    /// Timeout budget for the `opencode --version` probe in `health_check`.
+    /// Defaults to 1s (FR-12b AC). Configurable so timing-sensitive tests can
+    /// use a generous budget and stay deterministic under parallel CPU load,
+    /// rather than racing the 1s boundary when the suite saturates the machine.
+    version_probe_timeout: Duration,
 }
 
 /// Private representation of the legacy Gemini CLI JSON envelope emitted when
@@ -43,6 +48,7 @@ impl GeminiBackend {
             command,
             args,
             default_model: config.model.clone(),
+            version_probe_timeout: Duration::from_secs(1),
         })
     }
 
@@ -566,11 +572,15 @@ impl GeminiBackend {
         argv
     }
 
-    /// Run `opencode --version` with a 1s timeout budget.
-    /// Returns the trimmed version string (e.g., "1.15.10").
-    async fn probe_version(command: &str) -> Result<String, super::BackendError> {
+    /// Run `opencode --version` with the given timeout budget (1s in production
+    /// per FR-12b AC; tests pass a generous value to avoid racing the boundary
+    /// under load). Returns the trimmed version string (e.g., "1.15.10").
+    async fn probe_version(
+        command: &str,
+        timeout: Duration,
+    ) -> Result<String, super::BackendError> {
         let output = tokio::time::timeout(
-            Duration::from_secs(1),
+            timeout,
             Command::new(command)
                 .arg("--version")
                 .kill_on_drop(true)
@@ -578,7 +588,7 @@ impl GeminiBackend {
         )
         .await
         .map_err(|_| super::BackendError::Unavailable {
-            message: "opencode --version timed out after 1s".to_string(),
+            message: format!("opencode --version timed out after {:?}", timeout),
         })?
         .map_err(|e| super::BackendError::Unavailable {
             message: format!("Failed to spawn opencode --version: {}", e),
@@ -809,7 +819,7 @@ impl super::Backend for GeminiBackend {
         let cmd_str = cmd.to_string_lossy().to_string();
 
         // 2. Version probe (1s timeout budget per FR-12b AC)
-        let version = match Self::probe_version(&cmd_str).await {
+        let version = match Self::probe_version(&cmd_str, self.version_probe_timeout).await {
             Ok(v) => Some(v),
             Err(e) => {
                 return Ok(super::HealthStatus {
@@ -862,6 +872,7 @@ mod tests {
     use super::GeminiBackend;
     use crate::backend::Backend;
     use std::fs;
+    use std::time::Duration;
 
     fn default_args_with_flag() -> Vec<String> {
         vec![
@@ -1227,7 +1238,10 @@ mod tests {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
-        let backend = GeminiBackend::new(&cfg).unwrap();
+        let mut backend = GeminiBackend::new(&cfg).unwrap();
+        // Generous probe budget: this test needs the fast `echo` script to be
+        // observed as success, not raced against the 1s boundary under load.
+        backend.version_probe_timeout = Duration::from_secs(30);
         let status = backend.health_check().await.unwrap();
         assert!(status.available);
         assert_eq!(status.version, Some("1.15.10".to_string()));
@@ -1263,7 +1277,10 @@ mod tests {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
-        let backend = GeminiBackend::new(&cfg).unwrap();
+        let mut backend = GeminiBackend::new(&cfg).unwrap();
+        // Tight budget: the script sleeps 10s, so a short timeout trips the
+        // timeout path reliably and fast, regardless of machine load.
+        backend.version_probe_timeout = Duration::from_millis(200);
         let status = backend.health_check().await.unwrap();
         assert!(!status.available);
         assert!(status.diagnostic.unwrap().contains("timed out"));
@@ -1285,10 +1302,14 @@ mod tests {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
-        let backend = GeminiBackend::new(&cfg).unwrap();
+        let mut backend = GeminiBackend::new(&cfg).unwrap();
+        // Generous budget: this test asserts the probe observes the script's
+        // non-zero exit ("exited"), not that it races the 1s boundary under load.
+        backend.version_probe_timeout = Duration::from_secs(30);
         let status = backend.health_check().await.unwrap();
         assert!(!status.available);
-        assert!(status.diagnostic.unwrap().contains("exited"));
+        let diag = status.diagnostic.unwrap();
+        assert!(diag.contains("exited"), "diagnostic was: {diag:?}");
         drop(script);
     }
 
@@ -1317,7 +1338,10 @@ mod tests {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
-        let backend = GeminiBackend::new(&cfg).unwrap();
+        let mut backend = GeminiBackend::new(&cfg).unwrap();
+        // Generous budget: this test needs the fast `echo` probe to succeed so
+        // health_check proceeds to auth detection, not race the 1s boundary.
+        backend.version_probe_timeout = Duration::from_secs(30);
         let status = backend.health_check().await.unwrap();
 
         // Restore env vars (inside lock guard)
