@@ -8,9 +8,10 @@
 pub mod backend;
 
 pub use backend::{
-    create_backend, Backend, BackendError, BackendConfig, CodexBackend, GeminiBackend,
+    create_backend, Backend, BackendConfig, BackendError, CodexBackend, GeminiBackend,
     HealthStatus, Message, ModelInfo, OllamaBackend, QueryOutput, RetryDefaults, RetryExecutor,
-    RetryPolicy, Role, SandboxMode, StepContext, StepOptions, TokenUsage, DEFAULT_TIMEOUT, NO_TIMEOUT,
+    RetryPolicy, Role, SandboxMode, StepContext, StepOptions, TokenUsage, DEFAULT_TIMEOUT,
+    NO_TIMEOUT,
 };
 
 #[cfg(feature = "bedrock")]

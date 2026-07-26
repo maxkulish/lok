@@ -72,7 +72,6 @@ pub fn step_context_for_backend<'a>(
     }
 }
 
-
 pub struct Engine;
 
 impl Engine {
@@ -175,6 +174,7 @@ impl Engine {
     /// Check if a backend is available in the cache.
     /// Returns `false` immediately if the cache hasn't been initialized yet,
     /// avoiding unnecessary RwLock+HashMap allocation.
+    #[cfg(test)]
     pub fn is_backend_available(name: &str) -> bool {
         let Some(cache) = BACKEND_CACHE.get() else {
             return false;
@@ -1449,9 +1449,7 @@ mod tests {
         assert!(Engine::is_backend_available("ollama"));
 
         // Unknown backend should not be in the cache
-        assert!(!Engine::is_backend_available(
-            "nonexistent-backend-name"
-        ));
+        assert!(!Engine::is_backend_available("nonexistent-backend-name"));
 
         // Verify the cache only has ollama
         let cache = get_backend_cache();
@@ -1587,10 +1585,8 @@ mod tests {
                 ..Default::default()
             },
         );
-        let retry_policy = get_retry_policy(
-            config.backends.get("ollama").unwrap(),
-            &config.defaults,
-        );
+        let retry_policy =
+            get_retry_policy(config.backends.get("ollama").unwrap(), &config.defaults);
         let _backend = create_backend(
             "ollama",
             config.backends.get("ollama").unwrap(),

@@ -85,7 +85,7 @@ async fn ollama_query_round_trip() {
     let cfg = BackendConfig {
         enabled: true,
         command: Some("http://localhost:11434".to_string()),
-        model: Some("llama3.2".to_string()),
+        model: Some("gemma4:12b".to_string()),
         ..Default::default()
     };
     let backend = OllamaBackend::new(&cfg).expect("construct ollama backend");

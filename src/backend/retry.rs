@@ -46,10 +46,15 @@ impl RetryPolicy {
     }
 
     /// Build a policy from a backend configuration plus caller-supplied defaults.
-    pub fn from_backend_config(config: &super::config::BackendConfig, defaults: super::RetryDefaults) -> Self {
+    pub fn from_backend_config(
+        config: &super::config::BackendConfig,
+        defaults: super::RetryDefaults,
+    ) -> Self {
         Self {
             max_retries: config.max_retries.unwrap_or(defaults.max_retries),
-            base_delay: Duration::from_millis(config.retry_delay_ms.unwrap_or(defaults.retry_delay_ms)),
+            base_delay: Duration::from_millis(
+                config.retry_delay_ms.unwrap_or(defaults.retry_delay_ms),
+            ),
             max_delay: Duration::from_secs(30),
         }
     }

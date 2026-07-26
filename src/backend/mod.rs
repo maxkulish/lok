@@ -17,10 +17,10 @@ pub use config::{BackendConfig, RetryDefaults};
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
 pub use codex::{CodexBackend, FLAG_MATRIX};
-pub use gemini::GeminiBackend;
-pub use ollama::OllamaBackend;
 #[allow(unused_imports)]
 pub use context::{HealthStatus, Message, ModelInfo, Role, SandboxMode, StepContext, StepOptions};
+pub use gemini::GeminiBackend;
+pub use ollama::OllamaBackend;
 pub use retry::{RetryExecutor, RetryPolicy};
 
 use anyhow::Result;
@@ -473,8 +473,9 @@ pub fn is_backend_available(name: &str) -> bool {
 /// 1. Step-level timeout (highest priority)
 /// 2. Backend-level timeout (medium priority)
 /// 3. Global timeout (lowest priority)
-/// Falls back to `DEFAULT_TIMEOUT` (300s) if all three are `None`.
-/// A zero duration is mapped to `NO_TIMEOUT` to preserve the existing "no timeout" sentinel.
+///
+///    Falls back to `DEFAULT_TIMEOUT` (300s) if all three are `None`.
+///    A zero duration is mapped to `NO_TIMEOUT` to preserve the existing "no timeout" sentinel.
 pub fn resolve_timeout(
     step_timeout: Option<Duration>,
     backend_timeout: Option<Duration>,
@@ -505,7 +506,6 @@ pub static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(()
 pub async fn acquire_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
     TEST_MUTEX.lock().await
 }
-
 
 #[cfg(test)]
 mod library_tests {
@@ -542,7 +542,10 @@ mod library_tests {
 
     #[test]
     fn test_resolve_timeout_zero_is_no_timeout_sentinel() {
-        assert_eq!(resolve_timeout(None, Some(Duration::from_secs(0)), None), NO_TIMEOUT);
+        assert_eq!(
+            resolve_timeout(None, Some(Duration::from_secs(0)), None),
+            NO_TIMEOUT
+        );
     }
 
     #[test]
@@ -554,7 +557,10 @@ mod library_tests {
         };
         let policy = RetryPolicy::from_backend_config(
             &cfg,
-            RetryDefaults { max_retries: 1, retry_delay_ms: 1000 },
+            RetryDefaults {
+                max_retries: 1,
+                retry_delay_ms: 1000,
+            },
         );
         assert_eq!(policy.max_retries, 5);
         assert_eq!(policy.base_delay, Duration::from_millis(2500));
@@ -565,7 +571,10 @@ mod library_tests {
         let cfg = config::BackendConfig::default();
         let policy = RetryPolicy::from_backend_config(
             &cfg,
-            RetryDefaults { max_retries: 3, retry_delay_ms: 2000 },
+            RetryDefaults {
+                max_retries: 3,
+                retry_delay_ms: 2000,
+            },
         );
         assert_eq!(policy.max_retries, 3);
         assert_eq!(policy.base_delay, Duration::from_millis(2000));
