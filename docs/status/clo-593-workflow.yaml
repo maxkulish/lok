@@ -1,0 +1,361 @@
+task_id: clo-593
+task_type: development
+classification_reason: >-
+  Title does not match specification or operational heuristics and no Type marker/label is present; defaulting to
+  development.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks:
+    - CLO-594
+  blocked_by: []
+  branch_suggested: kmamemo/clo-593-extract-loks-backend-abstraction-into-a-consumable-library
+  priority: High
+  branch_actual: feat/clo-593-extract
+workflow:
+  current_phase: pr
+  status: active
+  created_at: '2026-07-26T20:37:20.826Z'
+  updated_at: '2026-07-26T21:35:05.150Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: '[lib] target in existing lokomotiv package'
+    approaches_identified: 2
+    approved: true
+    baseline_score: 7
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-593.md
+    prd_created: true
+    prd_exists: true
+    prd_file: docs/prds/clo-593-extract-lok-backend-lib.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-593-extract-lok-backend-lib.md
+    discovery_context_used: true
+    draft_ready: true
+    assumptions:
+      - confidence: high
+        text: Cargo accepts [lib] name = "lokomotiv" alongside existing [[bin]] name = "lokomotiv".
+        verification: Verify with cargo build --all-targets as the first commit.
+      - confidence: high
+        text: >-
+          No doc comment in src/backend/ contains a fenced code example that will break doctests once the lib target
+          exists.
+        verification: Re-verify with cargo test --doc after the [lib] commit.
+      - confidence: medium
+        text: The discovery baseline of 1,356 tests across 6 suites reproduces locally.
+        verification: Capture pre-change cargo test summary; local difference becomes the actual baseline.
+      - confidence: medium
+        text: >-
+          A dev-dependency of the package on itself with features = ["test-support"] unifies to a single library build,
+          keeping BACKEND_CACHE shared.
+        verification: Run workflow.rs health-cache tests after the D5 commit; fallback is making helpers unconditionally pub.
+      - confidence: medium
+        text: src/backend/ on lok main does not change under us mid-extraction.
+        verification: Check git log --oneline -5 src/backend before starting and rebase before PR.
+      - confidence: medium
+        text: BedrockBackend::new async + block_in_place keeps working from a library context.
+        verification: Run cargo test --features bedrock.
+      - confidence: medium
+        text: >-
+          gcm and remem will consume lokomotiv as a path or git dependency first; crates.io publishing is not on this
+          ticket's critical path.
+        verification: Verify against CLO-594 before PR.
+    assumptions_surfaced: true
+    applied_suggestions:
+      - Add A9/A10 for BACKEND_CACHE and retry-logging concerns from Gemini review
+      - 'ADR path: create lok/docs/adrs/ mirroring gcm convention'
+      - Wrap acquire_test_lock return in opaque TestLockGuard before CLO-594 boundary lock
+      - Evaluate replacing retry.rs eprintln! with logging facade or document limitation
+      - State workspace-split trigger threshold in ADR
+      - Verify MSRV and downstream dependency alignment before lok PR
+      - Add per-step cargo clippy --all-targets gate
+    flagged_suggestions: []
+    review_completed: true
+    review_gemini: docs/reviews/clo-593-extract-lok-backend-lib-review-gemini.md
+    review_synthesis: docs/reviews/clo-593-extract-lok-backend-lib-review-synthesis.md
+    review_verdict: approve_with_changes
+    token_usage:
+      - recorded_at: '2026-07-26T20:55:09.611Z'
+        provider: gemini
+        model: gemini-3.5-flash
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-gemini
+    human_review_completed: true
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-593-extract-lok-backend-lib.md
+    approved: true
+  implement:
+    status: complete
+    baseline: 1,356 tests across 6 suites on main @ 796154d
+    commits:
+      - b0e8c5c
+      - 0ed5665
+      - 88a2a5d
+      - 8f9802f
+      - e14957e
+    baseline_recorded: true
+    assumption_outcomes:
+      - evidence: cargo build --all-targets green on commit b0e8c5c
+        outcome: held
+        text: Cargo accepts [lib] name = "lokomotiv" alongside existing [[bin]] name = "lokomotiv".
+      - evidence: cargo test --doc reports 0 doctests passed, 0 failed
+        outcome: held
+        text: No doc comment in src/backend/ contains a fenced code example that breaks doctests once the lib target exists.
+      - evidence: >-
+          Local baseline captured as 1,356; final count 1,232 across 9 suites due to tests moving between lib/bin
+          targets, documented in PR
+        outcome: held
+        text: The discovery baseline of 1,356 tests across 6 suites reproduces locally.
+      - evidence: workflow.rs health-cache tests pass after ST6
+        outcome: held
+        text: >-
+          A dev-dependency of the package on itself with features = ["test-support"] unifies to a single library build,
+          keeping BACKEND_CACHE shared.
+      - evidence: git log --oneline -5 src/backend checked before extraction; no rebase needed
+        outcome: held
+        text: src/backend/ on lok main does not change under us mid-extraction.
+      - evidence: cargo build --all-targets --features bedrock green
+        outcome: held
+        text: BedrockBackend::new async + block_in_place keeps working from a library context.
+      - evidence: No consumer integration in this ticket; verify against CLO-594 before PR
+        outcome: untested
+        text: >-
+          gcm and remem will consume lokomotiv as a path or git dependency first; crates.io publishing is not on this
+          ticket's critical path.
+      - evidence: src/config.rs serde tests pass; tests/backend_public_api.rs parses BackendConfig from TOML
+        outcome: held
+        text: BackendConfig's deny_unknown_fields and duration serde helpers behave identically after moving modules.
+      - evidence: Documented in ADR 001 as follow-up; no API change in this ticket
+        outcome: held
+        text: >-
+          Global BACKEND_CACHE and test-support helpers are acceptable for extraction, addressed before CLO-594 locks
+          boundary.
+      - evidence: Documented in ADR 001 as follow-up; no behaviour change in this ticket
+        outcome: held
+        text: >-
+          retry.rs direct stderr output is acceptable for behaviour-preserving extraction, follow-up before downstream
+          consumers depend on it.
+    assumptions_revalidated: true
+    codex_report: docs/reviews/clo-593-codex-validation.md
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    gemini_validation_report: docs/reviews/clo-593-gemini-validation.md
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-593-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    token_usage:
+      - recorded_at: '2026-07-26T21:33:52.012Z'
+        provider: codex
+        model: codex
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-07-26T21:33:52.012Z'
+        provider: gemini
+        model: gemini-3.5-flash
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-gemini
+      - recorded_at: '2026-07-26T21:33:52.012Z'
+        provider: claude
+        model: claude-opus-4
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
+      - recorded_at: '2026-07-26T21:33:52.012Z'
+        provider: claude
+        model: claude-opus-4
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-fix-iteration
+  pr:
+    status: in_progress
+    pr_number: 61
+    pr_url: https://github.com/maxkulish/lok/pull/61
+    ci_passed: false
+    ci_note: >-
+      lok has never executed a GitHub Actions run: ci.yml (active, triggers on pull_request to main) reports 0 runs for
+      all time and head b6bf2eb has 0 check-runs. Only the `claude` app check-suite exists and it is stuck queued. gcm's
+      Actions run normally (186 runs), so this is lok-specific, not account-wide. No remote gate on this PR.
+    docs_home: lok
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-07-26T20:37:20.826Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-593 as development
+  - timestamp: '2026-07-26T20:37:48.914Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: title 'Extract lok's Backend abstraction into a consumable library target' does not
+      match specification or operational heuristics and no [spec]/[ops] label or Type marker is present; defaulting to
+      development.
+  - timestamp: '2026-07-26T20:37:50.122Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-07-26T20:38:28.001Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-593-extract already exists and is checked out from main
+  - timestamp: '2026-07-26T20:40:55.626Z'
+    action: discovery_approved
+    phase: discovery
+    details: 'Approach: [lib] target in existing lokomotiv package. Baseline 7/10. 2 approaches considered.'
+  - timestamp: '2026-07-26T20:41:01.383Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-07-26T20:48:35.836Z'
+    action: design_draft_ready
+    phase: design
+    details: Draft generated by lok design-draft workflow at docs/designs/clo-593-extract-lok-backend-lib.md (392 lines)
+  - timestamp: '2026-07-26T20:48:41.600Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: >-
+      7 assumptions surfaced (high: 3, medium: 4). See design doc § Assumptions and prior lessons § timeout-layering,
+      pr-review-failures.
+  - timestamp: '2026-07-26T20:55:09.611Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: approve_with_suggestions. 5 applied, 0 flagged. Applied: global cache follow-up, opaque
+      TestLockGuard, logging facade review, ADR path in lok/docs/adrs/, workspace trigger threshold, MSRV/dep
+      verification, per-step clippy.
+  - timestamp: '2026-07-26T20:55:41.716Z'
+    action: design_human_review_complete
+    phase: design
+    details: Plannotator annotate session closed with no annotations.
+  - timestamp: '2026-07-26T20:56:33.508Z'
+    action: design_finalized
+    phase: design
+    details: Design ready for plan phase. All sections verified, review feedback applied, human review gate passed.
+  - timestamp: '2026-07-26T20:56:40.878Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-07-26T20:56:49.693Z'
+    action: plan_checkpoint
+    phase: plan
+    details: Plan checkpoint reached. Plan file ready for review.
+  - timestamp: '2026-07-26T21:04:00.251Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 11 sub-tasks at docs/plans/clo-593-extract-lok-backend-lib.md
+  - timestamp: '2026-07-26T21:04:22.678Z'
+    action: plan_approved
+    phase: plan
+    details: Plan approved. 11 sub-tasks queued.
+  - timestamp: '2026-07-26T21:04:23.871Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-07-26T21:04:35.566Z'
+    action: implementation_started
+    phase: implement
+    details: >-
+      Step 0: consulted lessons. Relevant: timeout-layering (L1 backend timeout must not preempt StepContext.timeout, L2
+      grep gate), pr-review-failures (pr phase only), clo-493 (automation JSON stdout), clo-535 (defensive splice/line
+      endings, not directly relevant). No additional implementation lessons required beyond timeout audit in ST4/ST9.
+  - timestamp: '2026-07-26T21:04:40.671Z'
+    action: st1_st2_baseline_captured
+    phase: implement
+    details: >-
+      Recorded baseline: 1,356 tests across 6 suites on main @ 796154d. Verified src/backend/ history is stable (5
+      commits, no upstream drift). Implementation proceeds in lok repo.
+  - timestamp: '2026-07-26T21:05:09.151Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST1 landed: add [lib] target to lokomotiv package. Commit b0e8c5c. A1 held, A2 held (0 doctests).'
+  - timestamp: '2026-07-26T21:05:33.180Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST2 landed: captured pre-change test baseline. Local baseline is 1,356 tests across 6 suites, same as discovery.
+      No commit because no code changes.
+  - timestamp: '2026-07-26T21:10:41.230Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST3 landed: extracted BackendConfig and duration helpers into src/backend/config.rs; src/config.rs re-exports.
+      Tests pass (668 in one suite, full suite green). Commit 0ed5665. A8 held.
+  - timestamp: '2026-07-26T21:22:22.953Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST4/ST5/ST6/ST7 landed combined: engine.rs contains binary orchestration, backend/ is under library, test-support
+      feature active, provider exports widened. Tests pass (1,227 across 8 suites). Commit 88a2a5d.
+  - timestamp: '2026-07-26T21:22:51.522Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST8 landed: tests/backend_public_api.rs with 5 passing public-API tests and 1 ignored live Ollama round-trip.
+      Commit 8f9802f.
+  - timestamp: '2026-07-26T21:25:48.236Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed. fmt + clippy + test green. 1,232 tests across 9 suites. Bedrock builds. lok doctor works.
+      Live Ollama round-trip passes. ADR written. Commits: b0e8c5c, 0ed5665, 88a2a5d, 8f9802f, e14957e.
+  - timestamp: '2026-07-26T21:25:58.223Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      10 assumptions reviewed. held: 8, untested: 1 (A7 consumer dependency path), follow-up-held: 2 (A9, A10 documented
+      in ADR). No violations.
+  - timestamp: '2026-07-26T21:33:52.012Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: wrong-repo artifact (FAIL on gcm, expected). Gemini: PASS. Synthesis: PASS_WITH_NOTES -> after fix
+      iteration 1, re-verdict PASS. All Must Fix items applied: branch shape corrected, gcm docs committed, live Ollama
+      test executed and passed.
+  - timestamp: '2026-07-26T21:34:20.777Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-07-26T21:34:39.800Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate green on lok feat/clo-593-extract: cargo fmt --check, cargo clippy --all-targets -- -D warnings,
+      cargo test --quiet --no-fail-fast all pass.
+  - timestamp: '2026-07-26T21:35:05.150Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #61 opened: https://github.com/maxkulish/lok/pull/61'
+  - timestamp: '2026-07-26T21:55:00.000Z'
+    action: workflow_docs_relocated
+    phase: pr
+    details: >-
+      Wrong-repo artifact corrected. Discovery, PRD, design, plan, 5 review reports and this workflow state were written
+      into the gcm repo for a Lok-project ticket; all 10 moved to lok/docs/ where the code lives. ADR 001 References
+      repointed from gcm/docs/... to lok-relative paths; design and plan lines asserting a gcm home corrected. The two
+      unpushed gcm commits (3853e86, 4251b62) are dropped.
+  - timestamp: '2026-07-26T21:55:30.000Z'
+    action: ci_gate_absent
+    phase: pr
+    details: >-
+      Investigated missing CI. lok's ci.yml is active and targets pull_request on main, but the workflow has 0 runs for
+      all time and PR head b6bf2eb has 0 check-runs; the only check-suite is the `claude` app, stuck queued. Repo is
+      public, not a fork, not archived, Actions enabled with allowed_actions=all. gcm (same owner) has 186 runs, so the
+      fault is lok-specific. PR #61 currently has no remote validation gate.
+task_title: Extract lok's Backend abstraction into a consumable library target
+task_url: https://linear.app/cloud-ai/issue/CLO-593/extract-loks-backend-abstraction-into-a-consumable-library-target

@@ -55,5 +55,8 @@ Until then, the single-package library target remains the approved shape.
 
 ## References
 
-- Design: `gcm/docs/designs/clo-593-extract-lok-backend-lib.md`
-- Plan: `gcm/docs/plans/clo-593-extract-lok-backend-lib.md`
+- Design: `docs/designs/clo-593-extract-lok-backend-lib.md`
+- Plan: `docs/plans/clo-593-extract-lok-backend-lib.md`
+- Discovery: `docs/discovery/clo-593.md`
+- PRD: `docs/prds/clo-593-extract-lok-backend-lib.md`
+- Prior ADR on the same decision: `docs/adrs/clo-589-backend-library-shape.md`
