@@ -1,4 +1,4 @@
-use crate::config::BackendConfig;
+use super::config::BackendConfig;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;

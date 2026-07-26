@@ -1,7 +1,7 @@
 //! Ollama backend - HTTP API for local LLMs
 
 use super::{Backend, TokenUsage};
-use crate::config::BackendConfig;
+use super::config::BackendConfig;
 use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;

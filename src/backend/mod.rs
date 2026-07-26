@@ -1,3 +1,5 @@
+pub mod config;
+
 #[cfg(feature = "bedrock")]
 mod bedrock;
 mod claude;
@@ -8,6 +10,8 @@ mod gemini;
 mod ollama;
 mod retry;
 
+pub use config::BackendConfig;
+
 #[cfg(feature = "bedrock")]
 #[allow(unused_imports)]
 pub use bedrock::BedrockBackend;
@@ -17,7 +21,7 @@ pub use codex::FLAG_MATRIX;
 pub use context::{HealthStatus, Message, ModelInfo, Role, SandboxMode, StepContext, StepOptions};
 pub use retry::{RetryExecutor, RetryPolicy};
 
-use crate::config::{BackendConfig, Config};
+use crate::config::Config;
 use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
