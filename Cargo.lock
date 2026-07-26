@@ -1507,6 +1507,7 @@ dependencies = [
  "humantime",
  "indicatif",
  "libc",
+ "lokomotiv",
  "minijinja",
  "rand",
  "regex",
