@@ -1230,14 +1230,7 @@ mod tests {
     #[tokio::test]
     async fn gemini_health_check_success() {
         let _lock = super::super::acquire_test_lock().await;
-        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
-        let path = script.path().to_path_buf();
-        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho '1.15.10'\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-        }
+        let path = super::super::write_exec_script(b"#!/bin/sh\necho '1.15.10'\n");
         // Set env so auth falls through to env detection
         std::env::set_var("GEMINI_API_KEY", "test-key");
 
@@ -1255,7 +1248,6 @@ mod tests {
         assert_eq!(status.mode, Some("api-key".to_string()));
 
         std::env::remove_var("GEMINI_API_KEY");
-        drop(script);
     }
 
     #[tokio::test]
@@ -1272,14 +1264,7 @@ mod tests {
 
     #[tokio::test]
     async fn gemini_health_check_version_timeout() {
-        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
-        let path = script.path().to_path_buf();
-        std::io::Write::write_all(&mut script, b"#!/bin/sh\nsleep 10\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-        }
+        let path = super::super::write_exec_script(b"#!/bin/sh\nsleep 10\n");
         let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
@@ -1291,20 +1276,12 @@ mod tests {
         let status = backend.health_check().await.unwrap();
         assert!(!status.available);
         assert!(status.diagnostic.unwrap().contains("timed out"));
-        drop(script);
     }
 
     #[tokio::test]
     async fn gemini_health_check_bad_exit() {
         let _lock = super::super::acquire_test_lock().await;
-        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
-        let path = script.path().to_path_buf();
-        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'broken' >&2\nexit 1\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-        }
+        let path = super::super::write_exec_script(b"#!/bin/sh\necho 'broken' >&2\nexit 1\n");
         let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
@@ -1317,20 +1294,12 @@ mod tests {
         assert!(!status.available);
         let diag = status.diagnostic.unwrap();
         assert!(diag.contains("exited"), "diagnostic was: {diag:?}");
-        drop(script);
     }
 
     #[tokio::test]
     async fn gemini_health_check_no_auth() {
         let _lock = super::super::acquire_test_lock().await;
-        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
-        let path = script.path().to_path_buf();
-        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho '1.15.10'\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-        }
+        let path = super::super::write_exec_script(b"#!/bin/sh\necho '1.15.10'\n");
         // Remove any env vars that would trigger auth detection
         let had_gemini_key = std::env::var("GEMINI_API_KEY").is_ok();
         let had_google_key = std::env::var("GOOGLE_API_KEY").is_ok();
@@ -1374,7 +1343,6 @@ mod tests {
             "diagnostic should mention opencode auth login: {}",
             diag
         );
-        drop(script);
     }
 
     #[tokio::test]

@@ -448,6 +448,28 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
 
+    /// Assert that warmup left a fresh, probed cache entry for `name`.
+    ///
+    /// Whether a provider reports available depends on what is installed and
+    /// running on the machine executing the suite, so warmup's contract is that
+    /// every enabled backend ends up probed and fresh in the cache - not that
+    /// any particular provider is reachable.
+    fn assert_probed(name: &str) {
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        let entry = lock
+            .get(name)
+            .unwrap_or_else(|| panic!("warmup left no cache entry for {name}"));
+        assert!(
+            is_cache_entry_fresh(entry, health_cache_ttl()),
+            "cache entry for {name} is stale"
+        );
+        assert!(
+            entry.health.is_some(),
+            "warmup left {name} unprobed (health is None)"
+        );
+    }
+
     // ── effective_timeout tests (FR-23) ──
 
     #[test]
@@ -1132,8 +1154,8 @@ mod tests {
 
         Engine::warmup_backends(&config).await.unwrap();
 
-        // Assert that ollama is now available in cache
-        assert!(Engine::is_backend_available("ollama"));
+        // Assert that warmup probed ollama and recorded the result
+        assert_probed("ollama");
     }
 
     #[tokio::test]
@@ -1150,9 +1172,9 @@ mod tests {
             },
         );
 
-        // Run warmup first time — ollama is probed and recorded as available.
+        // Run warmup first time — ollama is probed and the result recorded.
         Engine::warmup_backends(&config).await.unwrap();
-        assert!(Engine::is_backend_available("ollama"));
+        assert_probed("ollama");
 
         // Overwrite with Some(unavailable) — simulating a probed-but-unhealthy entry.
         set_mock_health("ollama", HealthStatus::new_unavailable());
@@ -1176,10 +1198,8 @@ mod tests {
         }
         assert!(!Engine::is_backend_available("ollama"));
         Engine::warmup_backends(&config).await.unwrap();
-        assert!(
-            Engine::is_backend_available("ollama"),
-            "warmup must re-probe entries whose health is None"
-        );
+        // warmup must re-probe entries whose health is None
+        assert_probed("ollama");
     }
 
     #[tokio::test]
@@ -1211,9 +1231,9 @@ mod tests {
             },
         );
 
-        // Step 1: warmup → ollama should be available
+        // Step 1: warmup → ollama is probed and recorded
         Engine::warmup_backends(&config).await.unwrap();
-        assert!(Engine::is_backend_available("ollama"));
+        assert_probed("ollama");
 
         // Step 2: clear health cache only → ollama should NOT be available
         // (constructed backends remain intact, but health status is gone)
@@ -1223,11 +1243,14 @@ mod tests {
         }
         assert!(!Engine::is_backend_available("ollama"));
 
-        // Step 3: warmup again → ollama should become available again
+        // Step 3: warmup again → ollama is probed and recorded again
         Engine::warmup_backends(&config).await.unwrap();
-        assert!(Engine::is_backend_available("ollama"));
+        assert_probed("ollama");
 
-        // Step 4: get_backends should include ollama
+        // Step 4: get_backends should include ollama. It filters on availability,
+        // which depends on whether ollama is actually running here, so pin the
+        // health status to exercise the selection logic itself.
+        set_mock_health("ollama", HealthStatus::new_available());
         let backends = super::get_backends(&config, None).unwrap();
         let names: Vec<&str> = backends.iter().map(|b| b.name()).collect();
         assert!(
@@ -1304,11 +1327,8 @@ mod tests {
 
         Engine::warmup_backends(&config).await.unwrap();
 
-        // ollama should be available (it was enabled and health-checked)
-        assert!(
-            Engine::is_backend_available("ollama"),
-            "ollama should be available after warmup"
-        );
+        // ollama should be probed (it was enabled and health-checked)
+        assert_probed("ollama");
 
         // claude should NOT be in the health cache (it was disabled)
         // Note: is_backend_available returns false for any backend not in the cache
@@ -1374,14 +1394,7 @@ mod tests {
         let _guard = acquire_test_lock().await;
         clear_health_cache();
 
-        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
-        let path = script.path().to_path_buf();
-        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'codex-cli 0.118.0'\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-        }
+        let path = write_exec_script(b"#!/bin/sh\necho 'codex-cli 0.118.0'\n");
 
         let mut config = Config::default();
         config.backends.clear();
@@ -1445,8 +1458,8 @@ mod tests {
         // (print warning, skip it) and still warm up ollama
         Engine::warmup_backends(&config).await.unwrap();
 
-        // ollama should be available
-        assert!(Engine::is_backend_available("ollama"));
+        // ollama should be probed
+        assert_probed("ollama");
 
         // Unknown backend should not be in the cache
         assert!(!Engine::is_backend_available("nonexistent-backend-name"));
@@ -1507,6 +1520,14 @@ mod tests {
         );
 
         Engine::warmup_backends(&config).await.unwrap();
+        assert_probed("ollama");
+        assert_probed("gemini");
+
+        // get_backends drops anything the health cache reports as unavailable,
+        // which depends on what is installed here. Pin both so the assertions
+        // below measure the filter, not the machine.
+        set_mock_health("ollama", HealthStatus::new_available());
+        set_mock_health("gemini", HealthStatus::new_available());
 
         // Filter for ollama only
         let backends = super::get_backends(&config, Some("ollama")).unwrap();
@@ -1633,8 +1654,12 @@ mod tests {
         // Warmup with the full default config
         Engine::warmup_backends(&config).await.unwrap();
 
-        // At minimum, ollama should be available (it's always enabled and present)
-        assert!(Engine::is_backend_available("ollama"));
+        // At minimum, ollama is probed (it's always enabled and present)
+        assert_probed("ollama");
+
+        // get_backends only returns backends the cache reports as available, so
+        // pin ollama to keep this independent of what is running here.
+        set_mock_health("ollama", HealthStatus::new_available());
 
         // get_backends should return at least 1 backend
         let backends = super::get_backends(&config, None).unwrap();
@@ -1694,11 +1719,8 @@ mod tests {
         // Warmup should skip gemini (already cached) and health-check ollama
         Engine::warmup_backends(&config).await.unwrap();
 
-        // After warmup: both should be available
-        assert!(
-            Engine::is_backend_available("ollama"),
-            "ollama should be available after warmup health check"
-        );
+        // After warmup: ollama has been probed, gemini is untouched
+        assert_probed("ollama");
         assert!(
             Engine::is_backend_available("gemini"),
             "gemini should still be available (was pre-cached)"
@@ -1766,13 +1788,12 @@ mod tests {
         let lock = cache.read().expect("locked");
         assert_eq!(lock.len(), 2, "Both backends should be cached after warmup");
 
-        // ollama should be available
+        // ollama should be probed and recorded, whatever the verdict
         assert!(
             lock.get("ollama")
-                .and_then(|s| s.health.as_ref())
-                .map(|h| h.available)
+                .map(|s| s.health.is_some())
                 .unwrap_or(false),
-            "ollama should be available"
+            "ollama should have been probed and recorded"
         );
 
         // gemini should be probed and unavailable (health check failed).
@@ -1942,10 +1963,7 @@ mod tests {
         // Warmup should re-probe the stale entry using the real backend
         Engine::warmup_backends(&config).await.unwrap();
 
-        // After re-probe, checked_at should be fresh and availability restored
-        assert!(
-            Engine::is_backend_available("ollama"),
-            "ollama should be available after re-probe"
-        );
+        // After re-probe, the entry is fresh again and carries a recorded result
+        assert_probed("ollama");
     }
 }
