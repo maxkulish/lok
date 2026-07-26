@@ -77,15 +77,58 @@ fn retry_defaults_match_lok_config_defaults() {
     assert_eq!(defaults.retry_delay_ms, 1000);
 }
 
+/// Ask the Ollama server which models it has locally.
+///
+/// One request doubles as the liveness probe: `None` means nothing answered,
+/// so the round-trip test skips instead of failing on a machine without Ollama.
+async fn ollama_models(endpoint: &str) -> Option<Vec<String>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .ok()?;
+    let response = client
+        .get(format!("{endpoint}/api/tags"))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let body: serde_json::Value = response.json().await.ok()?;
+    Some(
+        body.get("models")?
+            .as_array()?
+            .iter()
+            .filter_map(|model| Some(model.get("name")?.as_str()?.to_string()))
+            .collect(),
+    )
+}
+
 #[tokio::test]
-#[ignore = "requires a running local ollama instance"]
 async fn ollama_query_round_trip() {
     use lokomotiv::OllamaBackend;
 
+    let endpoint = std::env::var("LOK_TEST_OLLAMA_ENDPOINT")
+        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let model =
+        std::env::var("LOK_TEST_OLLAMA_MODEL").unwrap_or_else(|_| "gemma4:12b".to_string());
+
+    let Some(models) = ollama_models(&endpoint).await else {
+        eprintln!("skipping ollama_query_round_trip: no Ollama server answering at {endpoint}");
+        return;
+    };
+    if !models.iter().any(|available| available == &model) {
+        eprintln!(
+            "skipping ollama_query_round_trip: {model} is not pulled on {endpoint} (available: {})",
+            models.join(", ")
+        );
+        return;
+    }
+
     let cfg = BackendConfig {
         enabled: true,
-        command: Some("http://localhost:11434".to_string()),
-        model: Some("gemma4:12b".to_string()),
+        command: Some(endpoint),
+        model: Some(model),
         ..Default::default()
     };
     let backend = OllamaBackend::new(&cfg).expect("construct ollama backend");
