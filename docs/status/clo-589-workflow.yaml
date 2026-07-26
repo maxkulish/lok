@@ -24,7 +24,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-07-26T20:39:19.374Z'
-  updated_at: '2026-07-26T21:03:59.869Z'
+  updated_at: '2026-07-26T21:04:58.501Z'
 phases:
   discovery:
     status: complete
@@ -184,6 +184,9 @@ phases:
         task_label: pre-pr-validation-synthesis-counts-unavailable
   pr:
     status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/57
+    pr_number: 57
+    ci_passed: true
   complete:
     status: pending
 history:
@@ -323,5 +326,15 @@ history:
     details: >-
       PR pre-flight green: cargo fmt --check, cargo clippy -- -D warnings, cargo clippy --tests, and cargo test all
       passed.
+  - timestamp: '2026-07-26T21:04:38.541Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #57 opened: https://github.com/maxkulish/lok/pull/57'
+  - timestamp: '2026-07-26T21:04:58.501Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      GitHub reports zero configured checks and mergeStateStatus CLEAN for PR #57; mandatory local PR pre-flight passed.
+      CI status is independent of the bot-review wait that follows.
 task_title: Record the crate-shape ADR for extracting the backend abstraction as a library
 task_url: https://linear.app/cloud-ai/issue/CLO-589/record-the-crate-shape-adr-for-extracting-the-backend-abstraction-as-a
