@@ -21,10 +21,10 @@ linear:
   priority: High
   branch_actual: feat/clo-593-extract
 workflow:
-  current_phase: pr
-  status: active
+  current_phase: complete
+  status: complete
   created_at: '2026-07-26T20:37:20.826Z'
-  updated_at: '2026-07-26T21:35:05.150Z'
+  updated_at: '2026-07-26T22:06:49.407Z'
 phases:
   discovery:
     status: complete
@@ -183,8 +183,13 @@ phases:
         completion_tokens: 0
         task_label: pre-pr-validation-fix-iteration
   pr:
-    status: in_progress
+    status: complete
     pr_number: 61
+    merged: true
+    merge_method: merge_commit
+    merge_commit: ee28f3c87bb95185e4af8fe3cd851bf4f5786c35
+    merged_at: '2026-07-26T22:05:33Z'
+    branch_deleted: true
     pr_url: https://github.com/maxkulish/lok/pull/61
     ci_passed: false
     ci_note: >-
@@ -193,7 +198,19 @@ phases:
       Actions run normally (186 runs), so this is lok-specific, not account-wide. No remote gate on this PR.
     docs_home: lok
   complete:
-    status: pending
+    status: complete
+    linear_status: Done
+    merge_verified: true
+    verification: >-
+      On merged main ee28f3c: cargo fmt --check clean, cargo clippy --all-targets -- -D warnings clean, cargo test
+      --workspace --no-fail-fast at 1,233 passing / 0 failed / 0 ignored across 9 suites.
+    follow_ups:
+      - >-
+        Six divergences between the implementation and the CLO-589 ADR boundary contract are recorded as a table in
+        docs/adrs/clo-589-backend-library-shape.md, not reconciled.
+      - >-
+        lok has no working GitHub Actions gate; every repo-owned workflow still shows 0 runs for all time. Needs the
+        Actions tab in a browser to see the banner the API does not expose.
 history:
   - timestamp: '2026-07-26T20:37:20.826Z'
     action: workflow_started
@@ -357,5 +374,19 @@ history:
       all time and PR head b6bf2eb has 0 check-runs; the only check-suite is the `claude` app, stuck queued. Repo is
       public, not a fork, not archived, Actions enabled with allowed_actions=all. gcm (same owner) has 186 runs, so the
       fault is lok-specific. PR #61 currently has no remote validation gate.
+  - timestamp: '2026-07-26T22:05:33.000Z'
+    action: pr_merged
+    phase: pr
+    details: >-
+      PR #61 merged into main as merge commit ee28f3c; branch feat/clo-593-extract deleted on origin and locally. A
+      rustfmt violation in tests/backend_public_api.rs (from the round-trip test rewrite) was caught by cargo fmt --check
+      and fixed in 55040d2 before the merge. PR body corrected: it still described the Ollama test as #[ignored] and
+      referenced the removed ADR 001 path.
+  - timestamp: '2026-07-26T22:06:49.000Z'
+    action: workflow_completed
+    phase: complete
+    details: >-
+      CLO-593 set to Done with a merge comment recording the delivered surface, the local verification, and the two
+      open follow-ups (ADR boundary drift, absent CI gate). No remote gate ran on this merge.
 task_title: Extract lok's Backend abstraction into a consumable library target
 task_url: https://linear.app/cloud-ai/issue/CLO-593/extract-loks-backend-abstraction-into-a-consumable-library-target
