@@ -1,7 +1,7 @@
 //! Ollama backend - HTTP API for local LLMs
 
+use super::config::BackendConfig;
 use super::{Backend, TokenUsage};
-use crate::config::BackendConfig;
 use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -171,7 +171,7 @@ impl Backend for OllamaBackend {
     }
 
     fn is_available(&self) -> bool {
-        super::Engine::is_backend_available(self.name())
+        super::is_backend_available(self.name())
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {

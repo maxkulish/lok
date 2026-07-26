@@ -1,5 +1,4 @@
 mod apply_verify;
-mod backend;
 mod cache;
 mod conductor;
 mod config;
@@ -7,6 +6,7 @@ mod consensus;
 mod context;
 mod debate;
 mod delegation;
+mod engine;
 mod git_agent;
 mod output;
 mod role;
@@ -17,6 +17,11 @@ mod template;
 mod utils;
 mod workflow;
 mod workflows;
+
+// Preserve the old `backend::` namespace for binary modules. The orchestration
+// helpers that used to live in `mod backend` now live in `mod engine`, which
+// re-exports the library backend types, so `backend::Engine` still resolves.
+pub(crate) use crate::engine as backend;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};

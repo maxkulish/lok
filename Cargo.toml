@@ -30,9 +30,14 @@ path = "src/main.rs"
 name = "lokomotiv"
 path = "src/main.rs"
 
+[lib]
+name = "lokomotiv"
+path = "src/lib.rs"
+
 [features]
 default = []
 bedrock = ["aws-config", "aws-sdk-bedrockruntime"]
+test-support = []
 
 [dependencies]
 tokio = { version = "1", features = ["full", "process"] }
@@ -64,6 +69,7 @@ tempfile = "3"
 libc = "0.2"
 
 [dev-dependencies]
+lokomotiv = { path = ".", features = ["test-support"] }
 
 [package.metadata.docs.rs]
 all-features = true

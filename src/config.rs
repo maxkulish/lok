@@ -1,3 +1,6 @@
+// Re-exported from the library so `Config.backends: HashMap<String, BackendConfig>`
+// keeps compiling while the canonical definition lives in `crate::backend::config`.
+pub use crate::backend::config::BackendConfig;
 use anyhow::{Context, Result};
 use serde::de::{self, Visitor};
 use serde::ser;
@@ -337,35 +340,9 @@ mod serde_duration_tests {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-#[serde(deny_unknown_fields)]
-pub struct BackendConfig {
-    #[serde(default = "default_enabled")]
-    pub enabled: bool,
-    pub command: Option<String>,
-    #[serde(default)]
-    pub args: Vec<String>,
-    #[serde(default)]
-    pub skip_lines: usize,
-    pub api_key_env: Option<String>,
-    pub model: Option<String>,
-    /// Per-backend timeout duration (overrides defaults.timeout). Accepts
-    /// human-readable strings like "30s" or raw integers (seconds).
-    #[serde(
-        default,
-        deserialize_with = "deser_duration_seconds",
-        serialize_with = "serialize_duration_seconds"
-    )]
-    pub timeout: Option<Duration>,
-    /// Per-backend retry limit (overrides defaults.max_retries)
-    pub max_retries: Option<usize>,
-    /// Per-backend retry delay in milliseconds (overrides defaults.retry_delay_ms)
-    pub retry_delay_ms: Option<u64>,
-}
-
-fn default_enabled() -> bool {
-    true
-}
+// `BackendConfig`, `RetryDefaults`, and the seconds-level duration helpers are now
+// defined in `crate::backend::config` and re-exported at the top of this file.
+// The local definition below is removed to avoid the duplicate-type error.
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]

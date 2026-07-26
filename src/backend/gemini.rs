@@ -1,4 +1,4 @@
-use crate::config::BackendConfig;
+use super::config::BackendConfig;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
@@ -805,7 +805,7 @@ impl super::Backend for GeminiBackend {
     }
 
     fn is_available(&self) -> bool {
-        super::Engine::is_backend_available(self.name())
+        super::is_backend_available(self.name())
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
@@ -888,12 +888,18 @@ mod tests {
 
     #[test]
     fn gemini_default_config_uses_opencode_command_and_run_json_args() {
-        let cfg = crate::config::Config::default();
-        let gemini_cfg = cfg
-            .backends
-            .get("gemini")
-            .expect("default gemini backend exists");
-        let backend = GeminiBackend::new(gemini_cfg).expect("backend constructs");
+        let gemini_cfg = super::super::config::BackendConfig {
+            enabled: true,
+            command: Some("opencode".to_string()),
+            args: vec![
+                "run".to_string(),
+                "--format".to_string(),
+                "json".to_string(),
+            ],
+            model: Some("google/gemini-2.5-flash".to_string()),
+            ..Default::default()
+        };
+        let backend = GeminiBackend::new(&gemini_cfg).expect("backend constructs");
         assert_eq!(backend.command, "opencode");
         assert_eq!(backend.args, vec!["run", "--format", "json"]);
         assert_eq!(
@@ -905,13 +911,14 @@ mod tests {
 
     #[test]
     fn gemini_custom_args_without_flag_preserved() {
-        let mut cfg = crate::config::Config::default();
-        let gemini_cfg = cfg
-            .backends
-            .get_mut("gemini")
-            .expect("default gemini backend exists");
-        gemini_cfg.args = custom_args_without_flags();
-        let backend = GeminiBackend::new(gemini_cfg).expect("backend constructs");
+        let gemini_cfg = super::super::config::BackendConfig {
+            enabled: true,
+            command: Some("opencode".to_string()),
+            args: custom_args_without_flags(),
+            model: Some("google/gemini-2.5-flash".to_string()),
+            ..Default::default()
+        };
+        let backend = GeminiBackend::new(&gemini_cfg).expect("backend constructs");
         assert_eq!(backend.args, vec!["--skip-trust"]);
     }
 
@@ -1234,7 +1241,7 @@ mod tests {
         // Set env so auth falls through to env detection
         std::env::set_var("GEMINI_API_KEY", "test-key");
 
-        let cfg = crate::config::BackendConfig {
+        let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
@@ -1253,7 +1260,7 @@ mod tests {
 
     #[tokio::test]
     async fn gemini_health_check_missing_binary() {
-        let cfg = crate::config::BackendConfig {
+        let cfg = super::super::config::BackendConfig {
             command: Some("/nonexistent/path/to/opencode".to_string()),
             ..Default::default()
         };
@@ -1273,7 +1280,7 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
         }
-        let cfg = crate::config::BackendConfig {
+        let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
@@ -1298,7 +1305,7 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
         }
-        let cfg = crate::config::BackendConfig {
+        let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
@@ -1334,7 +1341,7 @@ mod tests {
         let temp_home = tempfile::TempDir::new().unwrap();
         std::env::set_var("HOME", temp_home.path().to_string_lossy().as_ref());
 
-        let cfg = crate::config::BackendConfig {
+        let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };

@@ -33,7 +33,7 @@ We will expose `src/backend` as part of a **[lib] target inside the existing `lo
 
 ## Boundary allocation
 
-The table below is the durable item-by-item contract for CLO-590. "Library" means public from the future `[lib]` target; "Binary" means retained behind the CLI module tree; "Deferred" means CLO-590 must resolve the named seam before exposing it.
+The table below is the durable item-by-item contract for the extraction, carried out under CLO-593. "Library" means public from the future `[lib]` target; "Binary" means retained behind the CLI module tree; "Deferred" means the extraction must resolve the named seam before exposing it.
 
 | Public item | Current source | Owner | Rationale |
 | --- | --- | --- | --- |
@@ -88,8 +88,8 @@ The table below is the durable item-by-item contract for CLO-590. "Library" mean
 | `CachedBackend` | `src/backend/mod.rs` | Binary | Storage record for the process-global cache. |
 | `get_cached_health` | `src/backend/mod.rs` | Binary | Reads process-global health state. |
 | `Config` | `src/config.rs` | Binary | Owns conductor, tasks, roles, teams, and cache configuration. |
-| `effective_timeout` | `src/backend/mod.rs` | Deferred to CLO-590 | Backend-runtime concern currently coupled to binary-owned `Config`; keep binary-side or re-type around leaf config. |
-| `step_context_for_backend` | `src/backend/mod.rs` | Deferred to CLO-590 | Backend-runtime concern currently coupled to binary-owned `Config`; keep binary-side or re-type around leaf config. |
+| `effective_timeout` | `src/backend/mod.rs` | Deferred to the extraction | Backend-runtime concern currently coupled to binary-owned `Config`; keep binary-side or re-type around leaf config. Resolved binary-side in `src/engine.rs`. |
+| `step_context_for_backend` | `src/backend/mod.rs` | Deferred to the extraction | Backend-runtime concern currently coupled to binary-owned `Config`; keep binary-side or re-type around leaf config. Resolved binary-side in `src/engine.rs`. |
 
 The `#[cfg(test)]` public helpers are not downstream API: `StubBackend`, `clear_health_cache`, `set_mock_health`, `TEST_MUTEX`, and `acquire_test_lock` remain test-only implementation support.
 
@@ -116,3 +116,60 @@ This preserves current behavior while allowing binary or library consumers to op
 - Introduces publish/build coordination overhead before the extraction’s primary value is demonstrated.
 
 Given CLO-589 is a recording/entry-point decision, these are deferred to future work if/when version decoupling is explicitly required.
+
+## Consequences
+
+Recorded during the CLO-593 implementation, which carried out this decision.
+
+### Positive
+
+- **Least disruption.** One package, one version, one `Cargo.toml`, one publish step. Existing CI, `shell.nix` and docs.rs setup keep working.
+- **Preserves git history.** The backend files were not relocated on disk, so `git blame` remains useful.
+- **Unblocks consumers immediately.** gcm and remem can depend on `lokomotiv` as a path or git dependency today.
+- **Keeps the workspace split as a future option.** The backend module tree is self-contained, so moving it to a separate crate later is a mechanical refactor once the public API is stable.
+
+### Negative
+
+- **Dependency bloat for consumers.** Library users compile the full `lokomotiv` dependency set (`clap`, `indicatif`, `colored`, `minijinja`, `chrono`, `dirs`, `humantime` and the rest) even though the backend code does not need most of them after the orchestration split.
+- **Global backend cache.** `BACKEND_CACHE` remains a process-global `OnceLock` keyed by backend name. Two consumers in the same process using the same name with different configs silently share a cached instance. Acceptable for a CLI, questionable for a library.
+- **Library stderr output.** `retry.rs` still writes retry warnings straight to stderr through `colored`. Consumers may want a logging facade or a callback instead.
+- **Test surface leaks Tokio.** The `test-support` feature exposes `acquire_test_lock`, which returns `tokio::sync::MutexGuard<'static, ()>`, tying consumers to lok's Tokio version.
+
+## Follow-up work before the boundary is locked
+
+Tracked by CLO-591, to be resolved before the public API is treated as stable:
+
+1. **Global cache semantics.** Either key the cache by config hash, introduce an instance-scoped `BackendRegistry`, or document the process-global constraint.
+2. **Retry logging.** Replace the direct `eprintln!` with `log::warn!` / `tracing::warn!`, or an optional callback.
+3. **Test lock guard.** Wrap `acquire_test_lock` in an opaque `TestLockGuard` so no Tokio type crosses the boundary.
+
+## Trigger for revisiting the workspace split
+
+Reopen the `[lib]`-versus-workspace question when any of the following is measured:
+
+- A downstream cold-build delta exceeds 15% attributable to lokomotiv's non-backend dependencies.
+- `lokomotiv` is published to crates.io and consumer feedback asks for a lighter dependency tree.
+- The global cache or the stderr-output constraint becomes blocking for a consumer.
+
+Until then the single-package library target remains the approved shape.
+
+## Divergences between this contract and the CLO-593 implementation
+
+Recorded at `b6bf2eb` so the drift is reviewable rather than silent. None of these is obviously wrong, but each departs from the table above and none was renegotiated here first.
+
+| Item | This ADR says | Implementation does |
+| --- | --- | --- |
+| `create_backend` | Binary, because it mixes dispatch with process-global cache behavior | Library, re-typed as `create_backend(name, &BackendConfig, RetryPolicy)` and re-exported at the crate root |
+| `QueryResult` | Library | Binary: moved to `src/engine.rs` |
+| `get_retry_policy` | Library | Removed, replaced by `RetryPolicy::from_backend_config` (`src/backend/retry.rs:49`) |
+| `Defaults` | Library | Replaced by a new `RetryDefaults` type in `src/backend/config.rs` |
+| `#[cfg(test)]` helpers | Not downstream API | Reachable through a new `test-support` cargo feature, enabled by a self path dev-dependency on `lokomotiv` |
+| `ClaudeBackend`, `FLAG_MATRIX` | Library | Library, but only under `lokomotiv::backend::`; unlike their siblings they are not re-exported at the crate root |
+
+## References
+
+- Discovery: `docs/discovery/clo-593.md`
+- PRD: `docs/prds/clo-593-extract-lok-backend-lib.md`
+- Design: `docs/designs/clo-593-extract-lok-backend-lib.md`
+- Plan: `docs/plans/clo-593-extract-lok-backend-lib.md`
+- Lessons: `.pi/lessons/clo-589-backend-shape-lessons.md`

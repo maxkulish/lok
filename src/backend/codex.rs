@@ -1,4 +1,4 @@
-use crate::config::BackendConfig;
+use super::config::BackendConfig;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
@@ -327,7 +327,7 @@ impl super::Backend for CodexBackend {
     }
 
     fn is_available(&self) -> bool {
-        super::Engine::is_backend_available(self.name())
+        super::is_backend_available(self.name())
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
@@ -475,11 +475,19 @@ mod tests {
 
     #[test]
     fn codex_default_config_yields_ephemeral_and_one_sandbox_flag() {
-        // Regression: Config::default() previously hardcoded `-s read-only` in args,
+        // Regression: default codex config previously hardcoded `-s read-only` in args,
         // which (a) dropped `--ephemeral` and (b) emitted a duplicate `-s` at query time.
-        let cfg = crate::config::Config::default();
-        let codex_cfg = cfg.backends.get("codex").expect("default codex backend");
-        let backend = CodexBackend::new(codex_cfg).expect("backend constructs");
+        let codex_cfg = super::super::config::BackendConfig {
+            enabled: true,
+            command: Some("codex".to_string()),
+            args: vec![
+                "exec".to_string(),
+                "--json".to_string(),
+                "--ephemeral".to_string(),
+            ],
+            ..Default::default()
+        };
+        let backend = CodexBackend::new(&codex_cfg).expect("backend constructs");
         let argv = CodexBackend::build_argv_prefix(
             &backend.args,
             Some(SandboxMode::WorkspaceWrite),
@@ -834,7 +842,7 @@ mod tests {
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
         }
 
-        let cfg = crate::config::BackendConfig {
+        let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             args: vec![" exec".to_string(), "--json".to_string()],
             ..Default::default()
@@ -860,7 +868,7 @@ mod tests {
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
         }
 
-        let cfg = crate::config::BackendConfig {
+        let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
@@ -881,7 +889,7 @@ mod tests {
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
         }
 
-        let cfg = crate::config::BackendConfig {
+        let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
@@ -906,7 +914,7 @@ mod tests {
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
         }
 
-        let cfg = crate::config::BackendConfig {
+        let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
             ..Default::default()
         };
