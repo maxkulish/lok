@@ -306,7 +306,7 @@ impl super::Backend for ClaudeBackend {
     }
 
     fn is_available(&self) -> bool {
-        super::Engine::is_backend_available(self.name())
+        super::is_backend_available(self.name())
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
