@@ -110,8 +110,7 @@ async fn ollama_query_round_trip() {
 
     let endpoint = std::env::var("LOK_TEST_OLLAMA_ENDPOINT")
         .unwrap_or_else(|_| "http://localhost:11434".to_string());
-    let model =
-        std::env::var("LOK_TEST_OLLAMA_MODEL").unwrap_or_else(|_| "gemma4:12b".to_string());
+    let model = std::env::var("LOK_TEST_OLLAMA_MODEL").unwrap_or_else(|_| "gemma4:12b".to_string());
 
     let Some(models) = ollama_models(&endpoint).await else {
         eprintln!("skipping ollama_query_round_trip: no Ollama server answering at {endpoint}");
