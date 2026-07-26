@@ -24,7 +24,7 @@ workflow:
   current_phase: complete
   status: complete
   created_at: '2026-07-26T20:39:19.374Z'
-  updated_at: '2026-07-26T21:23:40.923Z'
+  updated_at: '2026-07-26T21:24:12.746Z'
 phases:
   discovery:
     status: complete
@@ -203,6 +203,9 @@ phases:
       - L2 - keep untested feasibility assumptions formalized for follow-up implementation
     lessons_file: .pi/lessons/clo-589-backend-shape-lessons.md
     aggregation_files_updated: true
+    docs_pr_url: https://github.com/maxkulish/lok/pull/58
+    docs_pr_number: 58
+    docs_pr_merge_commit: d4b0fcc01068fb80e273ef4d0eb31eae39b1eff5
 history:
   - timestamp: '2026-07-26T20:39:19.374Z'
     action: workflow_started
@@ -422,5 +425,11 @@ history:
     details: >-
       Updated docs/PROJECT.md, docs/ROADMAP.md, and docs/DEPENDENCIES.md in feature sync for CLO-589 completion and
       unblocking CLO-590. ROADMAP phase 11 marked Complete with CLO-589 added as Done.
+  - timestamp: '2026-07-26T21:24:12.746Z'
+    action: docs_pr_merged
+    phase: complete
+    details: >-
+      Merged post-merge docs PR #58 for workflow completion artifacts, lessons file, and project aggregation updates. PR
+      URL: https://github.com/maxkulish/lok/pull/58
 task_title: Record the crate-shape ADR for extracting the backend abstraction as a library
 task_url: https://linear.app/cloud-ai/issue/CLO-589/record-the-crate-shape-adr-for-extracting-the-backend-abstraction-as-a
