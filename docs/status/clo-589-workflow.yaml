@@ -24,7 +24,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-07-26T20:39:19.374Z'
-  updated_at: '2026-07-26T21:04:58.501Z'
+  updated_at: '2026-07-26T21:14:55.354Z'
 phases:
   discovery:
     status: complete
@@ -183,7 +183,7 @@ phases:
         completion_tokens: 0
         task_label: pre-pr-validation-synthesis-counts-unavailable
   pr:
-    status: in_progress
+    status: blocked
     pr_url: https://github.com/maxkulish/lok/pull/57
     pr_number: 57
     ci_passed: true
@@ -336,5 +336,12 @@ history:
     details: >-
       GitHub reports zero configured checks and mergeStateStatus CLEAN for PR #57; mandatory local PR pre-flight passed.
       CI status is independent of the bot-review wait that follows.
+  - timestamp: '2026-07-26T21:14:55.354Z'
+    action: bot_review_wait_failed
+    phase: pr
+    details: >-
+      Failed Step 3.5.1: no current-head review from bot users gemini-code-assist/copilot-pull-request-reviewer within
+      10-minute deadline for PR #57. Recent closed PR scan confirms gemini-code-assist[bot] installed. Per workflow
+      rules, waiting for user guidance before proceeding.
 task_title: Record the crate-shape ADR for extracting the backend abstraction as a library
 task_url: https://linear.app/cloud-ai/issue/CLO-589/record-the-crate-shape-adr-for-extracting-the-backend-abstraction-as-a
