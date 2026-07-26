@@ -833,14 +833,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_health_check_success() {
-        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
-        let path = script.path().to_path_buf();
-        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'codex-cli 0.119.0'\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-        }
+        let path = super::super::write_exec_script(b"#!/bin/sh\necho 'codex-cli 0.119.0'\n");
 
         let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
@@ -859,14 +852,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_health_check_unparseable() {
-        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
-        let path = script.path().to_path_buf();
-        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'nightly'\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-        }
+        let path = super::super::write_exec_script(b"#!/bin/sh\necho 'nightly'\n");
 
         let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
@@ -880,14 +866,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_health_check_bad_exit() {
-        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
-        let path = script.path().to_path_buf();
-        std::io::Write::write_all(&mut script, b"#!/bin/sh\necho 'broken' >&2\nexit 1\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-        }
+        let path = super::super::write_exec_script(b"#!/bin/sh\necho 'broken' >&2\nexit 1\n");
 
         let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),
@@ -905,14 +884,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_health_check_timeout() {
-        let mut script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
-        let path = script.path().to_path_buf();
-        std::io::Write::write_all(&mut script, b"#!/bin/sh\nsleep 10\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-        }
+        let path = super::super::write_exec_script(b"#!/bin/sh\nsleep 10\n");
 
         let cfg = super::super::config::BackendConfig {
             command: Some(path.to_string_lossy().into_owned()),

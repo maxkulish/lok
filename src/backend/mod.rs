@@ -507,9 +507,48 @@ pub async fn acquire_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
     TEST_MUTEX.lock().await
 }
 
+/// Write `body` to an executable temporary script and close the write handle.
+///
+/// Linux refuses to `execve` a file that any process still holds open for
+/// writing and fails the spawn with `ETXTBSY` ("Text file busy"); macOS does
+/// not enforce that, so a still-open `NamedTempFile` only breaks on Linux. The
+/// returned `TempPath` deletes the file when dropped, so callers keep it alive
+/// for as long as the script must exist.
+#[cfg(any(test, feature = "test-support"))]
+pub fn write_exec_script(body: &[u8]) -> tempfile::TempPath {
+    use std::io::Write;
+
+    let mut script = tempfile::NamedTempFile::with_suffix(".sh").expect("create temp script");
+    script.write_all(body).expect("write temp script");
+    script.flush().expect("flush temp script");
+    let path = script.into_temp_path();
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("mark temp script executable");
+    }
+
+    path
+}
+
 #[cfg(test)]
 mod library_tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn write_exec_script_yields_a_spawnable_script() {
+        let path = write_exec_script(b"#!/bin/sh\necho ready\n");
+
+        let output = std::process::Command::new(path.as_os_str())
+            .output()
+            .expect("temp script spawns");
+
+        assert!(output.status.success(), "status was {:?}", output.status);
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "ready");
+    }
 
     #[test]
     fn test_resolve_timeout_step_wins() {
