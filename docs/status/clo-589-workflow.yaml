@@ -1,0 +1,355 @@
+task_id: clo-589
+task_type: development
+classification_reason: >-
+  No explicit Type/label markers in issue body and title does not match operational/specification prefixes; default
+  fallback to development.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks:
+    - CLO-590
+  blocked_by: []
+  priority: High
+  branch_suggested: kmamemo/clo-589-record-the-crate-shape-adr-for-extracting-the-backend
+  branch_actual: feat/clo-589-record
+workflow:
+  current_phase: pr
+  status: active
+  created_at: '2026-07-26T20:39:19.374Z'
+  updated_at: '2026-07-26T21:16:19.596Z'
+phases:
+  discovery:
+    status: complete
+    approved: true
+    problem_framed: true
+    prd_exists: true
+    prd_file: docs/prds/clo-589-backend-library-shape.md
+    prd_created: true
+    discovery_report: docs/discovery/clo-589.md
+    discovery_debt: []
+    baseline_score: 8
+    approaches_identified: 3
+    approach_chosen: A - decision-only ADR boundary freeze
+  design:
+    status: complete
+    design_doc: docs/designs/clo-589-backend-library-shape.md
+    draft_ready: true
+    discovery_context_used: true
+    assumptions_surfaced: true
+    assumptions:
+      - text: >-
+          The ADR and index drafts currently untracked on `feat/clo-589-record`
+          (`docs/adrs/clo-589-backend-library-shape.md`, `docs/adrs/README.md`) are the intended deliverables of this
+          ticket and are to be finalized rather than rewritten.
+        confidence: high
+        verification: >-
+          `git status --porcelain docs/adrs/` shows both as untracked additions on this branch, and the workflow phase
+          state has `approach_chosen: A - decision-only ADR boundary freeze`.
+      - text: >-
+          `Config` remains binary-owned because it currently imports `cache::CacheConfig` and role/task orchestration
+          types, which would leak CLI-only concerns into a reusable library surface.
+        confidence: high
+        verification: Verified by source scan in `src/config.rs` and `Config` ownership documented in the ADR.
+      - text: >-
+          Library-facing items in `src/backend/*` are not coupled at compile time to binary-only modules today, so this
+          boundary is achievable without preparatory refactor.
+        confidence: high
+        verification: >-
+          `rg -n 'crate::cache::|crate::role::|crate::tasks::|crate::workflow::|crate::conductor::' src/backend/*.rs`
+          returns no binary-module references beyond orchestration helpers.
+      - text: >-
+          `BackendConfig` and `Defaults` can be exposed to library consumers without dragging in
+          `cache`/`role`/`conductor` types.
+        confidence: high
+        verification: >-
+          Source check in `src/config.rs:31-50` and `:340-364` plus targeted review that `Config` is the only struct
+          importing binary-only types at `src/config.rs:12-27`.
+      - text: >-
+          Keeping ADR-only scope means no Rust source changes are required now, so the pre-merge gate remains unchanged
+          functionally.
+        confidence: high
+        verification: >-
+          `git diff --stat` is limited to `docs/` in this branch, and formatting/check/test commands should be rerun on
+          finalization.
+      - text: >-
+          Adding a `[lib]` target later is mechanically feasible because both current binaries share a single
+          `src/main.rs` module tree that can be split once extraction begins.
+        confidence: medium
+        verification: >-
+          `src/config.rs` and `src/backend/*` are already structurally separable, with `CLO-590` scheduled to verify
+          `cargo build --bins --lib` and `cargo build --features bedrock` after refactor.
+    review_completed: true
+    review_gemini: docs/reviews/clo-589-design-gemini.md
+    review_synthesis: docs/reviews/clo-589-design-synthesis.md
+    review_verdict: approve
+    applied_suggestions: []
+    flagged_suggestions: []
+    token_usage:
+      - recorded_at: '2026-07-26T20:48:11.525Z'
+        provider: manual
+        model: manual-fallback
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-manual
+    human_review_completed: true
+    plannotator_annotations: ''
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-589-backend-library-shape.md
+    approved: true
+  implement:
+    status: complete
+    commits:
+      - f3ccbe8
+      - 2c4050b
+      - c442fcd
+      - 7971b1d
+    assumptions_revalidated: true
+    assumption_outcomes:
+      - text: >-
+          The ADR and index drafts currently untracked on `feat/clo-589-record`
+          (`docs/adrs/clo-589-backend-library-shape.md`, `docs/adrs/README.md`) are the intended deliverables of this
+          ticket and are to be finalized rather than rewritten.
+        outcome: held
+        evidence: ADR finalized in commit f3ccbe8 and index finalized in commit 2c4050b; both ST1/ST2 acceptance checks passed.
+      - text: >-
+          `Config` remains binary-owned because it currently imports `cache::CacheConfig` and role/task orchestration
+          types, which would leak CLI-only concerns into a reusable library surface.
+        outcome: held
+        evidence: >-
+          src/config.rs:12-26 retains Config with cache and role/team fields; docs/adrs/clo-589-backend-library-shape.md
+          records the non-negotiable Config-cycle rule.
+      - text: >-
+          Library-facing items in `src/backend/*` are not coupled at compile time to binary-only modules today, so this
+          boundary is achievable without preparatory refactor.
+        outcome: held
+        evidence: >-
+          ST3 acceptance scan found no crate::{cache,role,tasks,workflow,conductor} references in src/backend/*.rs;
+          cargo clippy --all-targets and cargo test passed.
+      - text: >-
+          `BackendConfig` and `Defaults` can be exposed to library consumers without dragging in
+          `cache`/`role`/`conductor` types.
+        outcome: held
+        evidence: >-
+          src/config.rs:31 and src/config.rs:342 define Defaults and BackendConfig separately from Config at
+          src/config.rs:12; ST3 source inventory check passed.
+      - text: >-
+          Keeping ADR-only scope means no Rust source changes are required now, so the pre-merge gate remains unchanged
+          functionally.
+        outcome: held
+        evidence: >-
+          git diff --name-only main...HEAD lists only docs/ paths; cargo fmt --check, cargo clippy --all-targets -- -D
+          warnings, and cargo test passed (664 unit tests plus integration/doc suites).
+      - text: >-
+          Adding a `[lib]` target later is mechanically feasible because both current binaries share a single
+          `src/main.rs` module tree that can be split once extraction begins.
+        outcome: untested
+        evidence: >-
+          CLO-589 intentionally adds no [lib] target and does not exercise extraction; CLO-590 owns cargo build --bins
+          --lib and Bedrock feature validation.
+    validation_fix_iteration_count: 1
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-589-codex-validation.md
+    gemini_validation_report: docs/reviews/clo-589-gemini-validation.md
+    validation_synthesis_report: docs/reviews/clo-589-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    token_usage:
+      - recorded_at: '2026-07-26T21:02:08.504Z'
+        provider: codex
+        model: gpt-5.5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex-counts-unavailable
+      - recorded_at: '2026-07-26T21:02:08.504Z'
+        provider: gemini
+        model: gemini-3.5-flash
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-gemini-counts-unavailable
+      - recorded_at: '2026-07-26T21:02:08.504Z'
+        provider: claude
+        model: unknown
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis-counts-unavailable
+  pr:
+    status: blocked
+    pr_url: https://github.com/maxkulish/lok/pull/57
+    pr_number: 57
+    ci_passed: true
+    bot_review_wait_completed: false
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-07-26T20:39:19.374Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-589 as development
+  - timestamp: '2026-07-26T20:40:38.768Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: issue body has no explicit Type marker and title does not match
+      operational/specification prefixes, so defaulting to development.
+  - timestamp: '2026-07-26T20:40:43.736Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-07-26T20:40:53.636Z'
+    action: linear_status_updated
+    phase: discovery
+    details: Linear issue status moved from Backlog to Todo for kickoff.
+  - timestamp: '2026-07-26T20:41:30.019Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-589-record already present; proceeded on existing feature branch for discovery work.
+  - timestamp: '2026-07-26T20:41:39.875Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: A - decision-only ADR boundary freeze. Baseline 8/10. 3 approaches considered (A selected, B+B1
+      alternatives rejected).
+  - timestamp: '2026-07-26T20:41:43.725Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-07-26T20:47:02.073Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated at docs/designs/clo-589-backend-library-shape.md via lok design-draft workflow (approach A
+      preserved).
+  - timestamp: '2026-07-26T20:48:10.029Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '6 assumptions surfaced (high: 5, medium: 1). See design doc § Assumptions and keep in sync with review context.'
+  - timestamp: '2026-07-26T20:48:11.525Z'
+    action: design_review_complete
+    phase: design
+    details: 'Review verdict: approve. Manual review of docs completed, no suggestions applied or flagged.'
+  - timestamp: '2026-07-26T20:48:13.343Z'
+    action: design_human_review_complete
+    phase: design
+    details: >-
+      Plannotator annotate opened `docs/designs/clo-589-backend-library-shape.md` and returned no annotations before
+      session completion.
+  - timestamp: '2026-07-26T20:48:14.902Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design finalized for plan handoff. Documents are complete, assumptions/review gates are captured, and no
+      additional ADR scope changes are pending in this ticket.
+  - timestamp: '2026-07-26T20:48:16.320Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-07-26T20:48:35.142Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Standardized review artifact paths to design-phase naming convention (`docs/reviews/clo-589-design-*.md`) without
+      changing verdict.
+  - timestamp: '2026-07-26T20:50:59.325Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 3 ordered, independently testable sub-tasks created at docs/plans/clo-589-backend-library-shape.md.
+  - timestamp: '2026-07-26T20:51:07.791Z'
+    action: plan_approved
+    phase: plan
+    details: >-
+      Plan approved in Auto Mode. All 3 sub-tasks reference real files, have passing concrete acceptance commands, and
+      retain the required full pre-merge gate.
+  - timestamp: '2026-07-26T20:51:10.595Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-07-26T20:52:07.795Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST1 landed: finalized the accepted backend library-shape ADR with package shape, boundary, Config-cycle,
+      versioning, Bedrock, and rejected-alternative decisions. Acceptance passed. Commit f3ccbe8.
+  - timestamp: '2026-07-26T20:52:15.065Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST2 landed: registered CLO-589 exactly once in the ADR index with Accepted status and a relative link. Acceptance
+      passed. Commit 2c4050b.
+  - timestamp: '2026-07-26T20:52:27.311Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST3 landed: verified the ADR's principal boundary symbols against current source, confirmed Cargo.toml has no
+      [lib] target, and confirmed documentation-only scope. Acceptance passed. Commit c442fcd.
+  - timestamp: '2026-07-26T20:53:18.281Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      6 design assumptions reviewed. held: 5, violated: 0, untested: 1. Documentation-only scope held; future `[lib]`
+      extraction feasibility remains intentionally unexercised until CLO-590.
+  - timestamp: '2026-07-26T20:53:22.071Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All 3 plan sub-tasks landed in commits f3ccbe8, 2c4050b, and c442fcd. Sub-task checks passed; cargo fmt --check,
+      cargo clippy --all-targets -- -D warnings, and cargo test are green.
+  - timestamp: '2026-07-26T21:01:42.279Z'
+    action: validation_fix_iteration_complete
+    phase: implement
+    details: >-
+      Applied the single synthesis-approved fix iteration: converted the ADR boundary to an item-by-item
+      source/owner/rationale table and explicitly deferred the two Config-coupled seam helpers. Coverage check and
+      post-fix pre-merge gate passed. Commit 7971b1d.
+  - timestamp: '2026-07-26T21:02:08.504Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL (boundary inventory incomplete). Gemini: PASS. Synthesis: PASS_WITH_NOTES. The single approved fix
+      iteration expanded the ADR to an item-by-item contract and explicitly deferred seam helpers; post-fix coverage and
+      cargo gates passed.
+  - timestamp: '2026-07-26T21:03:07.927Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-07-26T21:03:59.869Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      PR pre-flight green: cargo fmt --check, cargo clippy -- -D warnings, cargo clippy --tests, and cargo test all
+      passed.
+  - timestamp: '2026-07-26T21:04:38.541Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #57 opened: https://github.com/maxkulish/lok/pull/57'
+  - timestamp: '2026-07-26T21:04:58.501Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      GitHub reports zero configured checks and mergeStateStatus CLEAN for PR #57; mandatory local PR pre-flight passed.
+      CI status is independent of the bot-review wait that follows.
+  - timestamp: '2026-07-26T21:14:55.354Z'
+    action: bot_review_wait_failed
+    phase: pr
+    details: >-
+      Failed Step 3.5.1: no current-head review from bot users gemini-code-assist/copilot-pull-request-reviewer within
+      10-minute deadline for PR #57. Recent closed PR scan confirms gemini-code-assist[bot] installed. Per workflow
+      rules, waiting for user guidance before proceeding.
+  - timestamp: '2026-07-26T21:16:19.596Z'
+    action: bot_review_wait_failed
+    phase: pr
+    details: >-
+      Retried bot-review wait for PR #57: no current-head reviews from gemini-code-assist/copilot-pull-request-reviewer
+      by now; step 1 timeout path reached (created 21:04:20Z, 10m deadline passed). Closed PR scan confirms
+      gemini-code-assist[bot] still installed; cannot complete review waiting gate without explicit human guidance.
+task_title: Record the crate-shape ADR for extracting the backend abstraction as a library
+task_url: https://linear.app/cloud-ai/issue/CLO-589/record-the-crate-shape-adr-for-extracting-the-backend-abstraction-as-a
