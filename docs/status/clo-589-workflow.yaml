@@ -24,7 +24,7 @@ workflow:
   current_phase: complete
   status: complete
   created_at: '2026-07-26T20:39:19.374Z'
-  updated_at: '2026-07-26T21:24:12.746Z'
+  updated_at: '2026-07-26T21:25:00.366Z'
 phases:
   discovery:
     status: complete
@@ -431,5 +431,11 @@ history:
     details: >-
       Merged post-merge docs PR #58 for workflow completion artifacts, lessons file, and project aggregation updates. PR
       URL: https://github.com/maxkulish/lok/pull/58
+  - timestamp: '2026-07-26T21:25:00.366Z'
+    action: workflow_complete
+    phase: complete
+    details: >-
+      Task CLO-589 completed end-to-end: PR #57 merged and docs/aggregation follow-up PR #59 merged. CLO-590 unblocked
+      in dependencies.
 task_title: Record the crate-shape ADR for extracting the backend abstraction as a library
 task_url: https://linear.app/cloud-ai/issue/CLO-589/record-the-crate-shape-adr-for-extracting-the-backend-abstraction-as-a
