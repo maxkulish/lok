@@ -72,3 +72,71 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+
+  # CLO-591. The library/binary boundary is a convention, not a compiler rule:
+  # both live in one package, so `cli` being a default feature means a stray
+  # `colored` import on a library path would compile green under the jobs
+  # above. These gates are what actually hold the boundary.
+  library-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Library builds without CLI features
+        run: cargo build --lib --no-default-features
+
+      - name: No CLI dependency reaches a library consumer
+        # Exact package names, anchored. A substring match on `futures` would
+        # false-positive: futures-core and futures-util legitimately remain via
+        # reqwest -> hyper-tls -> hyper-util, and reqwest is a library dependency.
+        run: |
+          set -euo pipefail
+          leaked=$(cargo tree --no-default-features -e normal --format '{p}' \
+            | grep -E '^(indicatif|colored|clap|chrono|dirs|futures|minijinja|sha2) v' || true)
+          if [ -n "$leaked" ]; then
+            echo "CLI dependencies reachable by a library consumer:"
+            echo "$leaked"
+            exit 1
+          fi
+
+      - name: Library writes nothing to the terminal
+        # Backs the spawned-process assertions in tests/backend_public_api.rs
+        # with a source-level rule, so a new direct write is caught even if no
+        # test happens to exercise that path.
+        run: |
+          set -euo pipefail
+          if grep -rnE '\b(println!|eprintln!|print!|eprint!)' src/backend/; then
+            echo "src/backend/ must not write to the terminal; use log::warn!/debug!"
+            exit 1
+          fi
+
+      - name: Tests, no default features
+        # --lib, not --all-targets: tests/integration.rs shells out to
+        # `cargo run --bin lok`, which re-enters Cargo with default features
+        # and so proves nothing about the lean build.
+        run: cargo test --lib --no-default-features
+
+      - name: Clippy, no default features
+        run: cargo clippy --lib --no-default-features -- -D warnings
+
+      - name: Bedrock feature still compiles
+        run: cargo check --no-default-features --features bedrock
+
+      - name: Public API is fully documented
+        run: RUSTDOCFLAGS='-D missing_docs' cargo doc --no-deps --lib --all-features

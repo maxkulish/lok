@@ -32,6 +32,14 @@ name = "lokomotiv"
 path = "src/main.rs"
 required-features = ["cli"]
 
+# Spawned by tests/backend_public_api.rs. Rust tests share one process's
+# stdout/stderr across parallel threads, so proving the library is silent needs
+# a separate process whose streams the test can capture in isolation.
+[[bin]]
+name = "silence_probe"
+path = "src/bin/silence_probe.rs"
+required-features = ["test-support"]
+
 [lib]
 name = "lokomotiv"
 path = "src/lib.rs"

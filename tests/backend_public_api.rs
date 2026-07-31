@@ -140,3 +140,88 @@ async fn ollama_query_round_trip() {
     assert!(!output.stdout.is_empty());
     assert_eq!(output.backend, "ollama");
 }
+
+// ---------------------------------------------------------------------------
+// CLO-591: the library must not write to a consumer's terminal.
+//
+// These spawn `silence_probe` rather than redirecting file descriptors here.
+// Rust runs tests as parallel threads of one process and stdout/stderr are
+// process-wide, so an in-process redirect would capture whatever other tests
+// happen to be writing at the same moment. Note that the two skip messages in
+// `ollama_query_round_trip` above are exactly such writes.
+// ---------------------------------------------------------------------------
+
+/// Run the probe and return its `(stdout, stderr)`.
+fn run_silence_probe(scenario: &str, logging: &str) -> (String, String) {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_silence_probe"))
+        .args([scenario, logging])
+        .output()
+        .expect("spawn silence_probe");
+
+    assert!(
+        output.status.success(),
+        "silence_probe {scenario} {logging} exited with {:?}",
+        output.status.code()
+    );
+
+    (
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn retry_path_writes_nothing_without_a_logger() {
+    let (stdout, stderr) = run_silence_probe("retry", "no-logger");
+    assert_eq!(stdout, "", "library wrote to stdout on the retry path");
+    assert_eq!(stderr, "", "library wrote to stderr on the retry path");
+}
+
+#[test]
+fn read_only_sandbox_writes_nothing_without_a_logger() {
+    let (stdout, stderr) = run_silence_probe("sandbox", "no-logger");
+    // Previously a `println!`, so stdout is the regression that matters here:
+    // a library writing to stdout corrupts a consumer's piped output.
+    assert_eq!(stdout, "", "library wrote to stdout on the sandbox path");
+    assert_eq!(stderr, "", "library wrote to stderr on the sandbox path");
+}
+
+#[test]
+fn retry_warnings_reach_a_consumer_that_installs_a_logger() {
+    let (stdout, stderr) = run_silence_probe("retry", "logger");
+    assert_eq!(stderr, "", "records should go to the logger, not stderr");
+    let records: Vec<_> = stdout
+        .lines()
+        .filter(|l| l.starts_with("RECORD:"))
+        .collect();
+    assert_eq!(
+        records.len(),
+        2,
+        "expected one record per retry attempt, got: {stdout:?}"
+    );
+    assert!(
+        records.iter().all(|r| r.starts_with("RECORD:WARN:")),
+        "retry notices should be warnings: {records:?}"
+    );
+    assert!(
+        records[0].contains("always-retryable") && records[0].contains("attempt 1/2"),
+        "record should name the backend and attempt: {:?}",
+        records[0]
+    );
+    // The message carries facts, not terminal chrome: a consumer's structured
+    // logger should never receive ANSI escapes or a leading glyph.
+    assert!(
+        !stdout.contains('\u{1b}') && !stdout.contains('↻'),
+        "log records must not contain terminal presentation: {stdout:?}"
+    );
+}
+
+#[test]
+fn sandbox_warning_reaches_a_consumer_that_installs_a_logger() {
+    let (stdout, stderr) = run_silence_probe("sandbox", "logger");
+    assert_eq!(stderr, "", "records should go to the logger, not stderr");
+    assert!(
+        stdout.contains("RECORD:WARN:") && stdout.contains("sandbox is read-only"),
+        "expected the sandbox downgrade warning, got: {stdout:?}"
+    );
+}
