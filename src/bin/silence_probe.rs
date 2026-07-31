@@ -6,7 +6,7 @@
 //! in-process would race with every other test. The test spawns this binary and
 //! captures only its streams.
 //!
-//! Usage: `silence_probe <retry|sandbox> <logger|no-logger>`
+//! Usage: `silence_probe <success|retry|sandbox> <logger|no-logger>`
 //!
 //! In `no-logger` mode nothing installs a `log` implementation, which is the
 //! situation an embedding consumer is in by default; both streams must stay
@@ -55,6 +55,46 @@ impl Backend for AlwaysRetryable {
     fn is_available(&self) -> bool {
         true
     }
+}
+
+/// Succeeds immediately, for the successful-query leg of the silence contract.
+#[derive(Debug)]
+struct AlwaysSucceeds;
+
+#[async_trait::async_trait]
+impl Backend for AlwaysSucceeds {
+    fn name(&self) -> &str {
+        "always-succeeds"
+    }
+    async fn query(&self, _ctx: StepContext<'_>) -> Result<QueryOutput, BackendError> {
+        Ok(QueryOutput::from_text(
+            "ok".to_string(),
+            "always-succeeds",
+            Duration::ZERO,
+        ))
+    }
+    fn is_available(&self) -> bool {
+        true
+    }
+}
+
+/// Drive a successful query end to end, through the retry decorator so the
+/// wrapper is on the path even though it never fires.
+async fn exercise_success() {
+    let executor = RetryExecutor::new(
+        Arc::new(AlwaysSucceeds) as Arc<dyn Backend>,
+        RetryPolicy {
+            max_retries: 2,
+            base_delay: Duration::ZERO,
+            max_delay: Duration::ZERO,
+        },
+    );
+    let cwd = std::env::current_dir().expect("cwd");
+    let out = executor
+        .query(StepContext::from_prompt("probe", &cwd, None))
+        .await
+        .expect("successful query");
+    debug_assert_eq!(out.stdout, "ok");
 }
 
 /// Drive the retry path. Zero delay keeps the probe instant.
@@ -106,6 +146,7 @@ async fn main() {
     }
 
     match scenario.as_str() {
+        "success" => exercise_success().await,
         "retry" => exercise_retry().await,
         "sandbox" => exercise_sandbox().await,
         other => {

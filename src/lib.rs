@@ -5,7 +5,7 @@
 //! downstream tools can run LLM queries without pulling in lok's full
 //! orchestration layer.
 
-#![warn(missing_docs)]
+#![deny(missing_docs)]
 
 /// The [`Backend`] trait, the concrete providers, and the types a call needs.
 pub mod backend;

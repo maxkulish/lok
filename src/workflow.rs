@@ -125,7 +125,7 @@ fn codex_unusable_flag_warnings(step: &Step) -> Vec<String> {
 
         for flag in &status.unusable_flags {
             if flags_used[..flags_len].contains(&flag.as_str()) {
-                if let Some(req) = crate::backend::FLAG_MATRIX
+                if let Some(req) = crate::backend::codex::FLAG_MATRIX
                     .iter()
                     .find(|r| r.flag == flag.as_str())
                 {

@@ -23,7 +23,7 @@ pub use config::{BackendConfig, RetryDefaults};
 #[allow(unused_imports)]
 pub use bedrock::BedrockBackend;
 pub use claude::ClaudeBackend;
-pub use codex::{CodexBackend, FLAG_MATRIX};
+pub use codex::CodexBackend;
 #[allow(unused_imports)]
 pub use context::{HealthStatus, Message, ModelInfo, Role, SandboxMode, StepContext, StepOptions};
 pub use gemini::GeminiBackend;

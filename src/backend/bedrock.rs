@@ -8,8 +8,10 @@ use std::time::Instant;
 
 use super::TokenUsage;
 
+/// AWS Bedrock backend, reached through the AWS SDK.
 pub struct BedrockBackend {
     client: Client,
+    /// Bedrock model identifier this instance invokes.
     pub model_id: String,
 }
 
@@ -87,6 +89,12 @@ pub(crate) enum ResponseBlock {
 }
 
 impl BedrockBackend {
+    /// Build the backend, loading AWS configuration from the ambient
+    /// environment (profile, region, credentials).
+    ///
+    /// # Errors
+    /// Returns an error when AWS configuration cannot be loaded or the config
+    /// names no model.
     pub async fn new(config: &BackendConfig) -> Result<Self> {
         let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
         let client = Client::new(&aws_config);

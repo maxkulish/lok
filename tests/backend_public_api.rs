@@ -171,6 +171,26 @@ fn run_silence_probe(scenario: &str, logging: &str) -> (String, String) {
 }
 
 #[test]
+fn successful_query_writes_nothing_without_a_logger() {
+    let (stdout, stderr) = run_silence_probe("success", "no-logger");
+    assert_eq!(stdout, "", "library wrote to stdout on a successful query");
+    assert_eq!(stderr, "", "library wrote to stderr on a successful query");
+}
+
+#[test]
+fn successful_query_emits_no_records_even_with_a_logger() {
+    // A clean query should be quiet at warn level regardless: the silence on
+    // the success path is the absence of anything to say, not a suppressed
+    // logger.
+    let (stdout, stderr) = run_silence_probe("success", "logger");
+    assert_eq!(stderr, "");
+    assert!(
+        !stdout.contains("RECORD:WARN:"),
+        "a successful query should log no warnings: {stdout:?}"
+    );
+}
+
+#[test]
 fn retry_path_writes_nothing_without_a_logger() {
     let (stdout, stderr) = run_silence_probe("retry", "no-logger");
     assert_eq!(stdout, "", "library wrote to stdout on the retry path");
