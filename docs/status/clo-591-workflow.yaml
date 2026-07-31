@@ -1,0 +1,285 @@
+task_id: clo-591
+task_type: specification
+classification_reason: >-
+  User-selected at classification checkpoint. The Linear issue already carries discovery-grade detail (six enumerated
+  ADR divergences, three named follow-ups, explicit acceptance criteria) and the CLO-589 ADR is in place, so the
+  discovery and design phases would re-derive existing material. The two open decisions (Cargo feature layout for
+  binary-only deps, BACKEND_CACHE global semantics) are recorded in the spec instead.
+task_profile:
+  has_backend: true
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks:
+    - CLO-592
+  blocked_by:
+    - CLO-593
+  branch_suggested: kmamemo/clo-591-strip-cli-presentation-from-the-library-surface-so-consumers
+  branch_actual: feat/clo-591-strip-cli
+  priority: Medium
+  labels:
+    - AFK
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-07-31T20:11:26.000Z'
+  updated_at: '2026-07-31T21:17:03.000Z'
+phases:
+  discovery:
+    status: skipped
+    skip_reason: >-
+      Specification task. The Linear issue body is itself a discovery report and docs/adrs/clo-589-backend-library-shape.md
+      records the contract plus its drift.
+    approved: true
+  design:
+    status: skipped
+    reason: Specification task - using /spec instead of a full design document.
+  spec:
+    status: complete
+    spec_file: docs/specs/2026-07-31-clo-591-strip-cli.md
+    approved: true
+    approved_at: '2026-07-31T20:11:26.000Z'
+    scope: L
+    sub_tasks: 10
+    files_touched: 18
+    acceptance_criteria: 13
+    revision: 2
+    scope_change_reason: >-
+      Raised from M/7/11 after external review. The public-API and rustdoc work alone is 101 missing-doc items, and the
+      proof obligations (CI gates for the lean build, a real install check, a spawned test harness, the rustdoc gate)
+      were absent from rev 1. The additions are proof obligations, not new product behaviour.
+    review_gemini: docs/reviews/clo-591-spec-review-gemini.md
+    review_ollama: docs/reviews/clo-591-spec-review-ollama.md
+    review_synthesis: docs/reviews/clo-591-spec-review-synthesis.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_single_source: true
+    review_applied: true
+    applied_suggestions:
+      - Custom env_logger formatter required as a Must constraint; a bare init() would prepend timestamps, targets and
+        level headers and silently regress every CLI warning line.
+      - AC9 tightened from "parity not required" to forbid logger chrome and require byte-identical warning text; test
+        16 added to check it.
+      - AC1 and test 1 extended from three gated crates to all eight (added chrono, dirs, futures, minijinja, sha2).
+      - Sub-task 7 now mandates subprocess stream capture; Rust shares one process's stdout/stderr across parallel test
+        threads, so an ambient redirect would race.
+      - AC11 plus tests 14 and 15 added for clippy under both feature sets, matching the convention from e37d2c8.
+      - Sub-task 5 extended with a demotion table (applied in corrected form, see below).
+    flagged_suggestions:
+      - suggestion: >-
+          Demote is_cache_entry_fresh, parse_health_cache_ttl, resolve_health_cache_ttl, HEALTH_TTL_LOGGED and the cache
+          structs to pub(crate).
+        resolution: applied_in_corrected_form
+        reason: >-
+          Would break the build. The binary is a separate crate target, so pub(crate) on the library side hides an item
+          from it, and src/engine.rs and src/workflow.rs consume six of the seven. Only resolve_health_cache_ttl has no
+          consumer outside src/backend/ and is demoted. The rest are recorded as a third classification category,
+          binary-support, with their pinning call sites.
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+pre_spec_verification:
+  performed_at: '2026-07-31T20:11:26.000Z'
+  note: >-
+    The issue asks to verify what is left rather than assume the CLO-593 split caught everything. It did not. Findings
+    below are the corrected baseline the spec must work from.
+  findings:
+    - id: V1
+      claim_in_issue: colored reaches the library only through retry.rs
+      actual: >-
+        Two library call sites. src/backend/retry.rs:102 writes the retry warning, and src/backend/mod.rs:440 in
+        resolve_health_cache_ttl writes a TTL parse warning. Both use colored::Colorize and eprintln!.
+      evidence:
+        - src/backend/retry.rs:3
+        - src/backend/retry.rs:102
+        - src/backend/mod.rs:28
+        - src/backend/mod.rs:440
+    - id: V2
+      claim_in_issue: not mentioned
+      actual: >-
+        src/backend/codex.rs:147 and src/backend/gemini.rs:505 emit an identical sandbox downgrade warning through
+        println! to stdout on a consumer-reachable path (resolve_effective_sandbox, called during query setup). stdout
+        is a worse target for a library than the stderr the acceptance criteria call out.
+      evidence:
+        - src/backend/codex.rs:147
+        - src/backend/gemini.rs:505
+    - id: V3
+      claim_in_issue: not mentioned
+      actual: >-
+        indicatif code is already confined to the binary side (src/engine.rs:14, :270, :282 are the only uses), but
+        Cargo.toml declares indicatif and colored as unconditional dependencies. Acceptance criterion 1 (cargo tree with
+        default features shows no indicatif) therefore cannot be satisfied by moving code alone; the binary-only
+        dependencies need feature gating with default = [], which changes how the lok/lokomotiv binaries are built.
+      evidence:
+        - Cargo.toml:37-39
+        - Cargo.toml:48-49
+        - src/engine.rs:14
+    - id: V4
+      claim_in_issue: not mentioned
+      actual: >-
+        src/backend/claude.rs:445, :449 and :464 emit unconditional diagnostic eprintln! from the health probe path.
+        Not colored, but still library bytes on a consumer stderr.
+      evidence:
+        - src/backend/claude.rs:445
+        - src/backend/claude.rs:449
+        - src/backend/claude.rs:464
+open_decisions:
+  - id: D1
+    topic: Cargo feature layout for binary-only dependencies
+    resolution: >-
+      Single package with feature gating. default = ["cli"], consumers opt out with default-features = false, both
+      [[bin]] targets get required-features = ["cli"]. The workspace split (lokomotiv-core lib plus lokomotiv bins) was
+      recommended and declined by the user in favour of keeping CLO-591 tight.
+    consequences: >-
+      The Linear acceptance criterion "cargo tree ... with default features shows no indicatif" cannot hold literally;
+      amended to default-features = false and to be called out in the PR body. The boundary stays convention-based
+      rather than compiler-enforced, which is the same condition that produced the six divergences; flagged for
+      CLO-592.
+    status: resolved
+  - id: D2
+    topic: BACKEND_CACHE global semantics
+    resolution: >-
+      Deferred with reason. Verification showed both fixes the issue proposes are blocked. CachedBackend
+      (src/backend/mod.rs:346) deliberately unifies the backend instance with its health status, and
+      is_backend_available (src/backend/mod.rs:457) looks entries up by name alone from inside the providers' own
+      is_available() impls. Keying by name+config-hash breaks that lookup because it has no config to hash; moving the
+      cache to the binary breaks the library's own is_available(). Either fix needs is_available rearchitected, which
+      is larger than stripping presentation. Document the constraint in rustdoc, record in the ADR, raise a follow-up
+      against CLO-592.
+    status: deferred
+  - id: D3
+    topic: Retry and warning logging mechanism
+    resolution: >-
+      log facade. log::warn! for retry.rs:102, mod.rs:440, codex.rs:147 and gemini.rs:505; log::debug! for the
+      claude.rs probe diagnostics. Silent unless a consumer installs a logger, so the no-bytes-on-stderr criterion
+      holds structurally. Binary adds env_logger under the cli feature to keep warnings visible. tracing rejected as
+      more machinery than four sites justify; structured-return rejected as signature churn the facade already covers.
+    status: resolved
+history:
+  - timestamp: '2026-07-31T20:11:26.000Z'
+    action: workflow_started
+    phase: spec
+    details: >-
+      Workflow created for CLO-591. No prior state file existed; branch feat/clo-591-strip-cli was already checked out
+      with zero commits ahead of main.
+  - timestamp: '2026-07-31T20:11:26.000Z'
+    action: task_classified
+    phase: spec
+    details: >-
+      Classified as specification at the user checkpoint, over development-skip-discovery and full development. Blocker
+      CLO-593 confirmed merged as ee28f3c.
+  - timestamp: '2026-07-31T20:11:26.000Z'
+    action: pre_spec_verification_complete
+    phase: spec
+    details: >-
+      Verified the residual CLI surface rather than trusting the issue body. Four findings recorded (V1-V4); the issue
+      understated the scope in three of them. Three open decisions recorded (D1-D3).
+  - timestamp: '2026-07-31T20:11:26.000Z'
+    action: project_sync_start
+    phase: spec
+    details: >-
+      WIP 0/3 before start, 1/3 after. CLO-591 added to PROJECT.md Active Work. Aggregation drift reconciled in the
+      same pass: CLO-593 backfilled into Recently Completed (PR #61, ee28f3c) where it was missing entirely; a new
+      ROADMAP Phase 12 (Backend Library Extraction) created and CLO-589 moved into it from the unrelated Phase 11
+      Health Checks; CLO-589's stale CLO-590 dependency repointed; CLO-392 corrected from In Progress to Done;
+      canceled CLO-590 and completed CLO-374 cleared from DEPENDENCIES Unblocked & Ready; CLO-592 recorded as blocked
+      by CLO-591.
+  - timestamp: '2026-07-31T20:11:26.000Z'
+    action: spec_created
+    phase: spec
+    details: >-
+      docs/specs/2026-07-31-clo-591-strip-cli.md written. Scope M, 11 files, 7 sub-tasks. D1 settled as the narrow
+      single-package option at the user's direction; D2 deferred with a blocking-constraint reason; D3 settled on the
+      log facade. Two further verification findings recorded: ADR divergence rows 3 and 4 are factually wrong
+      (get_retry_policy still exists at src/engine.rs:35 rather than being removed, and both Defaults and RetryDefaults
+      exist rather than one replacing the other). StepContext confirmed call-shaped against src/backend/context.rs.
+  - timestamp: '2026-07-31T20:11:26.000Z'
+    action: spec_review_complete
+    phase: spec
+    details: >-
+      lok spec-review run. Gemini returned APPROVE_WITH_SUGGESTIONS with six findings. Ollama (Codex via glm-5:cloud)
+      returned REVIEW_FAILED with empty output, so the verdict rests on a single source.
+  - timestamp: '2026-07-31T20:11:26.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      All six findings applied, one in corrected form. The reviewer's demotion suggestion was checked against the call
+      sites and would have broken the binary build, since pub(crate) does not cross the lib/bin target boundary; only
+      resolve_health_cache_ttl is genuinely demotable.
+  - timestamp: '2026-07-31T20:11:26.000Z'
+    action: spec_external_review_applied
+    phase: spec
+    details: >-
+      External review returned "revise before implementation" with seven findings. All seven validated against the code
+      and accepted; none was rejected. Confirmed by measurement: 101 missing-doc errors on the lib, TEST_MUTEX is a pub
+      tokio::sync::Mutex so wrapping only the guard leaves the leak open, resolve_effective_sandbox is private in both
+      providers so the proposed test could not call it, backend_public_api.rs:116,120 already eprintln skip messages,
+      ci.yml:33-37 gates default features only, and get_delay applies jitter so a retry-line diff is nondeterministic.
+      Two refinements added on top of the review: futures-util survives a lean build via reqwest -> hyper-tls ->
+      hyper-util (so only the futures facade is removable, while sha2 and dirs gate cleanly), and integration.rs shells
+      out to cargo run --bin lok, which makes --all-targets --no-default-features the wrong lean gate. Spec rewritten
+      as rev 2.
+  - timestamp: '2026-07-31T21:17:03.000Z'
+    action: spec_approved
+    phase: spec
+    details: >-
+      User approved spec rev 2. Scope L, 10 sub-tasks, 13 acceptance criteria. Skipping the plan phase; the spec
+      decomposition is the plan.
+  - timestamp: '2026-07-31T21:17:03.000Z'
+    action: linear_ac_amended
+    phase: implement
+    details: >-
+      AC13 satisfied before implementation. CLO-591 acceptance criterion 1 amended in Linear from "with default
+      features shows no indicatif" to "with default-features = false shows none of the eight exact packages", with an
+      inline note recording why (default = [] would break cargo install lokomotiv), the tradeoff accepted (an ordinary
+      consumer still inherits every CLI dependency), the declined workspace-split alternative to revisit before
+      CLO-592, and the exact-name matching requirement. Issue moved to In Progress.
+implement:
+  sub_tasks:
+    - id: 1
+      title: Route library warnings through log
+      status: pending
+      blocks: [3, 4, 8]
+    - id: 2
+      title: Add the no-terminal-writes grep gate
+      status: pending
+    - id: 3
+      title: Feature-gate binary-only dependencies
+      status: pending
+      blocked_by: [1]
+    - id: 4
+      title: Install a binary-side logger with a custom formatter
+      status: pending
+      blocked_by: [1]
+    - id: 5
+      title: Close the Tokio leak in test-support (guard and TEST_MUTEX)
+      status: pending
+    - id: 6
+      title: Shrink the public surface
+      status: pending
+      blocks: [7]
+    - id: 7
+      title: Document the remainder and add the rustdoc gate
+      status: pending
+      blocked_by: [6]
+    - id: 8
+      title: Build the silence test harness
+      status: pending
+      blocked_by: [1]
+    - id: 9
+      title: Add the CI gates
+      status: pending
+      note: Land last so the gates guard finished work.
+    - id: 10
+      title: Reconcile the ADR
+      status: pending
+      note: Linear half of this sub-task already done; see linear_ac_amended.

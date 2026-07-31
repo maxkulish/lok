@@ -1,15 +1,14 @@
 # Dependencies - Lok
-**Last Updated**: 2026-05-24 (CLO-391 complete)
+**Last Updated**: 2026-07-31 (CLO-591 started; canceled CLO-590 and completed CLO-374 cleared)
 
 ## Current Blockers
 
 | Blocked Task | Blocked By | Blocker Status | Notes |
 |--------------|------------|----------------|-------|
-| - | - | - | - |
+| [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | CLO-591 | In Progress | Publish prep waits on a settled public surface; CLO-591 decides the feature layout that `cargo publish` will advertise. |
 
 ## Unblocked & Ready
 
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
-| [CLO-374](https://linear.app/cloud-ai/issue/CLO-374) | CLO-371 merged | 2026-05-18 |
-| [CLO-590](https://linear.app/cloud-ai/issue/CLO-590) | CLO-589 complete | 2026-07-26 |
+| - | - | - |

@@ -25,51 +25,76 @@ exclude = [
 [[bin]]
 name = "lok"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [[bin]]
 name = "lokomotiv"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [lib]
 name = "lokomotiv"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["cli"]
+# Everything the `lok` binaries need and the library does not. Enabled by
+# default so `cargo install lokomotiv` keeps working; library consumers opt out
+# with `default-features = false` to get a tree with no CLI dependencies.
+cli = [
+    "dep:indicatif",
+    "dep:colored",
+    "dep:clap",
+    "dep:chrono",
+    "dep:dirs",
+    "dep:futures",
+    "dep:minijinja",
+    "dep:sha2",
+    "dep:env_logger",
+]
 bedrock = ["aws-config", "aws-sdk-bedrockruntime"]
 test-support = []
 
 [dependencies]
 tokio = { version = "1", features = ["full", "process"] }
-clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 async-trait = "0.1"
-indicatif = "0.17"
-colored = "2"
 anyhow = "1"
 humantime = "2.1"
 thiserror = "2"
-dirs = "5"
-futures = "0.3"
+log = "0.4"
 reqwest = { version = "0.12", features = ["json"] }
-sha2 = "0.10"
 secrecy = "0.10"
 regex = "1"
 which = "7"
 aws-config = { version = "1", optional = true }
 aws-sdk-bedrockruntime = { version = "1", optional = true }
-chrono = { version = "0.4.43", features = ["serde"] }
-minijinja = "2"
 rand = "0.8"
 tempfile = "3"
+
+# Binary-only. Gated behind the `cli` feature so a library consumer using
+# `default-features = false` does not compile them. Verified unused in
+# `src/backend/`; see docs/specs/2026-07-31-clo-591-strip-cli.md.
+clap = { version = "4", features = ["derive"], optional = true }
+indicatif = { version = "0.17", optional = true }
+colored = { version = "2", optional = true }
+dirs = { version = "5", optional = true }
+futures = { version = "0.3", optional = true }
+sha2 = { version = "0.10", optional = true }
+chrono = { version = "0.4.43", features = ["serde"], optional = true }
+minijinja = { version = "2", optional = true }
+env_logger = { version = "0.11", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]
-lokomotiv = { path = ".", features = ["test-support"] }
+# `default-features = false` matters: Cargo unifies features across the graph,
+# so a dev-dependency carrying the default `cli` feature would re-enable it
+# during `cargo test --no-default-features` and quietly test the wrong build.
+lokomotiv = { path = ".", default-features = false, features = ["test-support"] }
 
 [package.metadata.docs.rs]
 all-features = true

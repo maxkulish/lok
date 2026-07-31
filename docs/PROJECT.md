@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-05-26 (Phase 2 §9 step 6 + opencode migration batch complete; FR-15a deferred for dogfood)
+**Last Updated**: 2026-07-31 (CLO-591 started; CLO-593 backfilled into Recently Completed)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | In Progress | Phase 12 | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -19,7 +19,8 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
-| [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | 2026-07-26 | Boundary contract for backend library extraction recorded; extraction implementation deferred to CLO-590. |
+| [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | 2026-07-26 | `[lib] lokomotiv` target alongside the existing binaries; `Backend` trait and concrete backends re-exported at the crate root; `test-support` feature for downstream test helpers. PR #61, merged `ee28f3c`. Six divergences from the CLO-589 ADR recorded rather than silently absorbed; CLO-591 closes them. |
+| [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | 2026-07-26 | Boundary contract for backend library extraction recorded; extraction implementation landed in CLO-593 (CLO-590 was canceled as superseded). |
 | [CLO-396](https://linear.app/cloud-ai/issue/CLO-396) | FR-12c: Setup-guide + docs refresh (opencode install, `opencode auth login`, remove npx refs) | 2026-05-25 | Docs and setup guide updated for the opencode migration; breaking-change banner, migration guide rewrite (install/auth/overrides), sandbox-mapping table, and `lok doctor` warmup/cache details. |
 | [CLO-393](https://linear.app/cloud-ai/issue/CLO-393) | FR-14: `lok doctor` HealthStatus renderer (table + JSON) | 2026-05-25 | Wired `lok doctor` to `warmup_backends()`; renders table + `--output json`; exit 0/1 on availability; Gemini row uses `oauth\|api-key\|none` (post-opencode). |
 | [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | 2026-05-24 | Codex probe runs `codex --version` and records `unusable_flags` for older binaries so step execution skips unsupported flags rather than failing mid-run. |

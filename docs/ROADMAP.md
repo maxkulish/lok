@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-05-24 (CLO-395 complete)
+**Last Updated**: 2026-07-31 (Phase 12 opened; CLO-591 in progress)
 
 ## Summary
 
@@ -16,7 +16,8 @@
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
-| Phase 11: Health Checks | 2 | 2 | Complete |
+| Phase 11: Health Checks | 1 | 1 | Complete |
+| Phase 12: Backend Library Extraction | 4 | 2 | In Progress |
 
 ## Phase 11: Health Checks
 
@@ -25,7 +26,19 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 step 6 (Heal
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-391](https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli) | FR-13a: Claude dual-mode health probe (Api vs Cli) | Done | CLO-388 |
-| [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | Done | CLO-590 |
+
+## Phase 12: Backend Library Extraction
+
+Source: `docs/adrs/clo-589-backend-library-shape.md`
+
+Makes the `Backend` abstraction consumable by an external crate. CLO-589 fixed the contract, CLO-593 built the target, CLO-591 cleans the surface, CLO-592 ships it.
+
+| Task | Title | Status | Dependencies |
+|------|-------|--------|--------------|
+| [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | Done | - |
+| [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | Done | CLO-589 |
+| [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | In Progress | CLO-593 |
+| [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | Backlog | CLO-591 |
 
 ## Phase 2: Validation Pipeline
 
@@ -112,6 +125,6 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 release plan
 | [CLO-384](https://linear.app/cloud-ai/issue/CLO-384/fr-23-per-step-timeout-layered-override-step-backend-global) | FR-23: per-step `timeout` layered override (step > backend > global) | Done | CLO-371 |
 | [CLO-388](https://linear.app/cloud-ai/issue/CLO-388) | FR-9a + FR-10 + FR-15: Engine warmup + HealthCache + sync is_available cache-only | Done | CLO-371 |
 | [CLO-389](https://linear.app/cloud-ai/issue/CLO-389) | FR-11 + FR-11a: Ollama health probe (/api/version + /api/tags) + ModelInfo + workflow model validation | Done | CLO-388 |
-| [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | In Progress | CLO-388, CLO-371 |
+| [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | Done | CLO-388, CLO-371 |
 | [CLO-394](https://linear.app/cloud-ai/issue/CLO-394/fr-12a-replace-gemini-cli-backend-with-opencode-subprocess) | FR-12a: Replace Gemini CLI backend with opencode subprocess | Done | CLO-371 |
 | [CLO-395](https://linear.app/cloud-ai/issue/CLO-395/fr-12b-opencode-health-probe-google-auth-detection) | FR-12b: opencode health probe + Google auth detection | Done | CLO-394, CLO-388 |

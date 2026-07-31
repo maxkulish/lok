@@ -25,7 +25,6 @@ pub use retry::{RetryExecutor, RetryPolicy};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use colored::Colorize;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
@@ -437,7 +436,7 @@ pub fn resolve_health_cache_ttl() -> Duration {
     let val_str = val.as_ref().map(|os| os.to_string_lossy());
     let (ttl, warn) = parse_health_cache_ttl(val_str.as_deref());
     if let Some(w) = warn {
-        eprintln!("{} {}", "warning:".yellow(), w);
+        log::warn!("{}", w);
     }
     ttl
 }

@@ -422,9 +422,40 @@ enum WorkflowCommands {
     },
 }
 
+/// Render library `log` records the way the CLI used to print them directly.
+///
+/// The library no longer writes to the terminal; it emits `log` records and
+/// leaves presentation here. The formatter deliberately drops env_logger's
+/// default timestamp, target and level prefixes, which would otherwise appear
+/// on every warning line the CLI has always shown bare.
+///
+/// Filtering is scoped to this crate so `--verbose` surfaces our own debug
+/// records without dumping reqwest, hyper and tokio internals on the user.
+fn init_logger(verbose: bool) {
+    use std::io::Write;
+
+    let default_filter = if verbose {
+        "lokomotiv=debug,lok=debug"
+    } else {
+        "lokomotiv=warn,lok=warn"
+    };
+
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or(default_filter),
+    )
+    .format(|buf, record| match record.level() {
+        log::Level::Error => writeln!(buf, "{} {}", "error:".red(), record.args()),
+        log::Level::Warn => writeln!(buf, "{} {}", "warning:".yellow(), record.args()),
+        _ => writeln!(buf, "{}", record.args()),
+    })
+    .init();
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    // Before any library call, so no record is emitted while no logger exists.
+    init_logger(cli.verbose);
     let config = config::load_config(cli.config.as_deref())?;
 
     match cli.command {
