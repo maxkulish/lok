@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-05-24 (CLO-391 complete)
+**Last Updated**: 2026-07-31 (CLO-590 canceled as superseded by CLO-593; CLO-591 unblocked)
 
 ## Current Blockers
 
@@ -12,4 +12,4 @@
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
 | [CLO-374](https://linear.app/cloud-ai/issue/CLO-374) | CLO-371 merged | 2026-05-18 |
-| [CLO-590](https://linear.app/cloud-ai/issue/CLO-590) | CLO-589 complete | 2026-07-26 |
+| [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | CLO-593 merged as `ee28f3c` | 2026-07-26 |

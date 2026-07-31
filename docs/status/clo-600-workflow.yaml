@@ -1,0 +1,213 @@
+task_id: clo-600
+task_type: specification
+classification_reason: >-
+  Scope is confined to CI configuration plus one Linux-only test failure. No architecture decisions
+  are open: the root cause named in the Linear description (Actions never dispatching) was already
+  resolved on 2026-07-27 when Actions was activated in the repo's Actions tab, and gcm's workflows
+  supply the target shape. Well-scoped, single-area, M size -> specification workflow.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: true
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  related_to:
+    - CLO-593
+  branch_suggested: kmamemo/clo-600-lok-has-never-run-a-github-actions-workflow-no-ci-gate-on
+  branch_actual: feat/clo-600-github-action
+  priority: High
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-07-31T20:17:35.000Z'
+  updated_at: '2026-07-31T21:00:00.000Z'
+entry_findings:
+  root_cause_status: >-
+    Already resolved before this workflow started. Actions dispatched for the first time on
+    2026-07-27 after activation in the GitHub Actions tab; the repo now has 6 repo-owned runs
+    (ids 30222596040 .. 30223254125). Acceptance criteria 1, 2 and 4 are therefore already met
+    by history: pushes to main and pull_request events both produce CI runs.
+  remaining_gaps:
+    - >-
+      main is red: run 30223254125 failed on backend::gemini::tests::gemini_health_check_version_timeout
+      (src/backend/gemini.rs:1278) - diagnostic did not contain "timed out" on the Linux runner.
+    - >-
+      No required check: `gh api repos/maxkulish/lok/branches/main/protection` returns 404 and
+      `gh api repos/maxkulish/lok/rulesets` returns []. Acceptance criterion 3 is unmet.
+    - >-
+      Workflows are thinner than gcm's reference: single-OS, no --locked, no bedrock-feature build,
+      linux-gnu-only release target, softprops/action-gh-release@v1, no checksums, no tag-vs-version
+      assertion, publish.yml has no dry-run gate.
+scope_decisions:
+  workflows_in_scope: [ci.yml, release.yml, publish.yml]
+  workflow_reference: ~/Code/gcm/.github/workflows/
+  red_main: fix in this task
+  branch_protection: configure via gh once CI is green
+phases:
+  discovery:
+    status: skipped
+    skip_reason: Specification task
+    approved: true
+  design:
+    status: skipped
+    reason: Specification task - using /spec instead
+  spec:
+    status: complete
+    spec_file: specs/2026-07-31-clo-600-ci-gate.md
+    spec_revision: 2
+    approved: true
+    review_gemini: docs/reviews/clo-600-spec-review-gemini.md
+    review_ollama: docs/reviews/clo-600-spec-review-ollama.md
+    review_synthesis: docs/reviews/clo-600-spec-review-synthesis.md
+    review_verdict: REVISE
+    review_external: >-
+      A second, external review moved the verdict from APPROVE_WITH_SUGGESTIONS to REVISE with
+      4 blocking findings and 6 high-priority gaps. All 4 blockers were validated against the
+      tree at fad3e91 and confirmed. Spec rewritten as rev 2.
+    review_completed: true
+    review_applied: true
+    review_notes: >-
+      Gemini returned APPROVE_WITH_SUGGESTIONS. Ollama (Codex via glm-5:cloud) returned
+      REVIEW_FAILED with empty stdout, so the verdict rests on a single reviewer. Gemini's
+      top-ranked item (swap macos-15-intel for macos-13) was wrong on a checkable fact -
+      macos-13 is retired - and was rejected.
+    applied_suggestions:
+      - >-
+        Sub-task 2 now prefers extending the existing acquire_test_lock() to the five probe
+        tests that lack it, and only falls back to changing write_exec_script if the stress
+        run still reproduces under the lock.
+      - AC-5 pins `cargo build --release --locked --target <triple>` so the release compile cannot drift from Cargo.lock.
+      - AC-8 records that --dry-run does not authenticate and the token check is a presence assertion only.
+      - AC-5 and sub-task 5 specify one archive per target carrying both binaries plus LICENSE.
+      - Sub-tasks 5 and 6 pin explicit token permissions (read on build/publish, write only on release assembly).
+      - >-
+        Added an assumptions-to-verify block for ubuntu-24.04-arm availability and the
+        August 2027 x86_64 macOS runner sunset.
+    flagged_suggestions:
+      - >-
+        REJECTED - Gemini's priority-1 item asked to replace macos-15-intel with macos-13.
+        Verified against actions/runner-images README: macos-13 is absent (retired),
+        macos-15-intel is current. Kept as written; the external review independently agreed.
+      - >-
+        REVERSED - Gemini's "extend acquire_test_lock instead of changing write_exec_script"
+        was applied in rev 1 and reversed in rev 2. The external review showed the lock
+        inventory was stale (gemini success DOES hold it; codex holds none; mod.rs:542 is an
+        unguarded sync test; claude.rs:491 uses a separate PATH_LOCK that cannot interoperate
+        with TEST_MUTEX). Serialisation is containment that decays with every new subprocess
+        test, so rev 2 prefers removing the race in the helper and keeps the lock sweep as a
+        documented fallback.
+    external_review_findings_applied:
+      - >-
+        BLOCKER 1 - branch-protection ordering was circular (main cannot be green on the new
+        workflow before merge, yet the same PR had to prove the gate). Rev 2 splits it into
+        AC-14 (ruleset exists and is verified via /rulesets/{id}), AC-15 (gate observed
+        blocking this PR), AC-16 (post-merge push run on main is green) with an explicit
+        enable-mid-PR sequence in sub-task 8.
+      - >-
+        BLOCKER 2 - stale ETXTBSY inventory and unprovable stress strategy. Rev 2 carries a
+        verified site table, requires the FULL unit suite for the stress run (filtering would
+        exclude the competing spawners that create the race), adds a deterministic Linux-only
+        regression test as AC-3, and drops the impossible "no write descriptor at any point"
+        phrasing for "not in the calling process".
+      - >-
+        BLOCKER 3 - sub-task 6 ended with "then the real publish" while the constraints forbade
+        publishing. Rev 2 removes the real publish step entirely and records that CARGO_TOKEN
+        is not the variable cargo reads automatically (CARGO_REGISTRY_TOKEN is).
+      - >-
+        BLOCKER 4 - verification commands omitted --ref and would have rehearsed main's old
+        workflows. Rev 2 adds --ref, moves the publish test post-merge (publish.yml has no
+        workflow_dispatch on main so it cannot be dispatched pre-merge), gates the stress job
+        on a PR label rather than dispatch for the same reason, and names it outside CI Gate's
+        needs so it cannot satisfy the required context.
+      - >-
+        GAP 5 - required check is now a single non-matrix aggregator job (CI Gate) and the
+        ruleset is verified by reading rule parameters, not the list summary.
+      - >-
+        GAP 6 - tag validation moved from gcm's loose `case v[0-9]*` to a strict regex plus
+        existence, reachability-from-main and prerelease/make_latest handling.
+      - >-
+        GAP 7 - release integrity: manual rehearsals now produce a draft that is deleted after
+        inspection, so a rehearsal cannot mutate a public release. Mutable re-runs on real tags
+        are accepted explicitly with the checksum-vs-provenance tradeoff stated; attestations
+        recorded as follow-up.
+      - >-
+        GAP 8 - Linux release builds pinned to ubuntu-22.04 / ubuntu-22.04-arm to declare a
+        glibc floor (2.35), with a GLIBC-symbol check and recorded libssl dependencies.
+      - >-
+        GAP 9 - --locked now covers clippy, the CI release build and the publish dry run;
+        bedrock is linted and tested rather than only compiled.
+      - >-
+        GAP 10 - Cargo.toml still pointing repository/homepage at ducks/lok is recorded as
+        out-of-scope follow-up, since no real publish happens in this task.
+      - >-
+        SMALL - AC-8 now escalates rather than silently dropping the ARM target; action
+        pinning policy made explicit (drop dtolnay/rust-toolchain, SHA-pin action-gh-release,
+        keep first-party actions on major tags); action-gh-release corrected from the stale
+        @v2 to v3.0.2 (SHA 3d0d9888cb7fd7b750713d6e236d1fcb99157228, node24 - which also
+        clears the Node 20 deprecation warnings in lok's current runs); header counts fixed to
+        7 files / 8 sub-tasks.
+  implement:
+    status: in_progress
+    subtasks:
+      1_instrument_assertions: pending
+      2_deterministic_repro: pending
+      3_fix_write_exec_script: pending
+      4_ci_yml: pending
+      5_stress_job: pending
+      6_release_yml: pending
+      7_publish_yml: pending
+      8_branch_protection: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-07-31T20:17:35.000Z'
+    action: workflow_started
+    phase: spec
+    details: >-
+      Initialized CLO-600 as a specification task. Entry investigation established that the
+      dispatch root cause is already fixed and reframed the remaining work as: green CI on main,
+      a required status check, and porting gcm's workflow hardening to all three lok workflows.
+  - timestamp: '2026-07-31T20:30:00.000Z'
+    action: spec_review_complete
+    phase: spec
+    details: >-
+      Gemini APPROVE_WITH_SUGGESTIONS with 5 findings; Ollama REVIEW_FAILED (empty stdout from
+      Codex v0.146.0 / glm-5:cloud). Single-reviewer verdict.
+  - timestamp: '2026-07-31T20:32:00.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      Applied 6 refinements (test-lock-first fix ordering, --locked on release builds, dry-run
+      caveat on AC-8, single-archive packaging, explicit job permissions, runner assumptions).
+      Rejected the macos-13 suggestion as factually wrong.
+  - timestamp: '2026-07-31T20:52:00.000Z'
+    action: spec_review_complete
+    phase: spec
+    details: >-
+      External review returned REVISE with 4 blocking findings. All 4 validated against the
+      tree at fad3e91 and confirmed correct, including two facts that invalidated rev 1 edits:
+      the acquire_test_lock inventory was stale, and softprops/action-gh-release has moved to
+      v3.0.2 so gcm's @v2 is not the current target.
+  - timestamp: '2026-07-31T20:55:00.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      Spec rewritten as rev 2. 16 acceptance criteria (was 10), 8 sub-tasks, 16 evaluation
+      rows. Reversed rev 1's lock-extension decision in favour of removing the race in
+      write_exec_script.
+  - timestamp: '2026-07-31T20:17:35.000Z'
+    action: problem_framed
+    phase: spec
+    details: >-
+      User chose full scope (all three workflows ported from gcm), fixing the failing
+      gemini_health_check_version_timeout test inside this task, and having branch protection
+      configured via gh after CI is green.
