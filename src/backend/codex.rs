@@ -12,6 +12,12 @@ pub struct CodexBackend {
     command: String,
     args: Vec<String>,
     default_model: Option<String>,
+    /// Timeout budget for the `codex --version` probe in `health_check`.
+    /// Defaults to 2s. Configurable for the same reason as the Gemini
+    /// equivalent: timing-sensitive tests need a generous budget to stay
+    /// deterministic under parallel CPU load, rather than racing the 2s
+    /// boundary when the suite saturates the machine.
+    version_probe_timeout: Duration,
 }
 
 /// One entry in the flag matrix.
@@ -139,6 +145,7 @@ impl CodexBackend {
             command,
             args,
             default_model: config.model.clone(),
+            version_probe_timeout: Duration::from_secs(2),
         })
     }
 
@@ -344,9 +351,9 @@ impl super::Backend for CodexBackend {
             message: format!("Codex CLI command '{}' not found on PATH", self.command),
         })?;
 
-        // 2. Version probe with 2 s timeout
+        // 2. Version probe, budget from `version_probe_timeout`.
         let output = tokio::time::timeout(
-            Duration::from_secs(2),
+            self.version_probe_timeout,
             Command::new(&cmd)
                 .arg("--version")
                 .kill_on_drop(true)
@@ -354,7 +361,10 @@ impl super::Backend for CodexBackend {
         )
         .await
         .map_err(|_| super::BackendError::Unavailable {
-            message: format!("Codex CLI '{}' --version timed out after 2s", self.command),
+            message: format!(
+                "Codex CLI '{}' --version timed out after {:?}",
+                self.command, self.version_probe_timeout
+            ),
         })?
         .map_err(|e| super::BackendError::Unavailable {
             message: format!("Failed to spawn codex --version: {}", e),
@@ -399,6 +409,7 @@ mod tests {
     use crate::backend::SandboxMode;
     use std::io::{self, Write};
     use std::path::PathBuf;
+    use std::time::Duration;
     use tempfile::NamedTempFile;
 
     #[test]
@@ -848,7 +859,10 @@ mod tests {
             args: vec![" exec".to_string(), "--json".to_string()],
             ..Default::default()
         };
-        let backend = CodexBackend::new(&cfg).unwrap();
+        let mut backend = CodexBackend::new(&cfg).unwrap();
+        // Generous budget: a fake shell script must not race the default 2s
+        // probe boundary when the suite saturates the machine.
+        backend.version_probe_timeout = Duration::from_secs(30);
         let status = backend.health_check().await.unwrap();
         assert!(status.available);
         assert_eq!(status.version, Some("0.119.0".to_string()));

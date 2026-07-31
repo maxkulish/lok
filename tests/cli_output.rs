@@ -23,46 +23,65 @@ fn ttl_warning_reaches_stderr_without_logger_chrome() {
         .output()
         .expect("spawn lok");
 
+    assert!(
+        output.status.success(),
+        "lok backends failed: {:?}",
+        output.status.code()
+    );
+
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let line = stderr
-        .lines()
-        .find(|l| l.contains("LOK_HEALTH_TTL"))
-        .unwrap_or_else(|| panic!("no TTL warning on stderr; got: {stderr:?}"));
+    let lines: Vec<_> = stderr.lines().collect();
+
+    // The whole of stderr, not merely the line we went looking for. Asserting
+    // on a found line would let extra chrome appear alongside it and still pass.
+    assert_eq!(
+        lines.len(),
+        1,
+        "expected exactly one stderr line, got {}: {stderr:?}",
+        lines.len()
+    );
 
     // Byte-identical to the pre-CLO-591 `eprintln!("{} {}", "warning:".yellow(), w)`,
     // once ANSI colour is stripped.
-    let plain = strip_ansi(line);
     assert_eq!(
-        plain,
+        strip_ansi(lines[0]),
         "warning: Invalid LOK_HEALTH_TTL 'bogus': expected number at 0; using default TTL (30m)",
-        "TTL warning text changed"
-    );
-
-    // The point of the custom formatter: env_logger's default would prefix
-    // every line with a timestamp, the target and a level header.
-    assert!(
-        !plain.contains("WARN") && !plain.contains("lokomotiv::"),
-        "logger chrome leaked into CLI output: {plain:?}"
-    );
-    assert!(
-        !plain.starts_with('['),
-        "timestamp prefix leaked into CLI output: {plain:?}"
+        "TTL warning text or formatting changed"
     );
 }
 
 #[test]
-fn rust_log_can_still_raise_verbosity() {
-    // Proves the binary honours RUST_LOG rather than hard-coding a level, and
-    // that the filter is scoped: raising lokomotiv to debug must not pull in
-    // reqwest, hyper or tokio records.
+fn rust_log_is_honoured_rather_than_hard_coded() {
+    // Positive control: `RUST_LOG=off` must silence a warning that otherwise
+    // appears. Asserting only the absence of noise would also pass for a
+    // regression that ignored RUST_LOG entirely, so drive it in the direction
+    // that requires the variable to be wired up.
+    let silenced = Command::new(env!("CARGO_BIN_EXE_lok"))
+        .arg("backends")
+        .env("LOK_HEALTH_TTL", "bogus")
+        .env("RUST_LOG", "off")
+        .output()
+        .expect("spawn lok");
+
+    assert_eq!(
+        String::from_utf8_lossy(&silenced.stderr),
+        "",
+        "RUST_LOG=off did not suppress the warning, so RUST_LOG is not wired"
+    );
+}
+
+#[test]
+fn raising_verbosity_does_not_leak_third_party_records() {
+    // The logger filter is scoped to this crate: raising it to debug must not
+    // pull in reqwest, hyper, tokio or rustls internals.
     let output = Command::new(env!("CARGO_BIN_EXE_lok"))
         .arg("backends")
-        .env("RUST_LOG", "lokomotiv=debug")
+        .env("RUST_LOG", "debug")
         .output()
         .expect("spawn lok");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    for noisy in ["hyper::", "reqwest::", "tokio::", "rustls::"] {
+    for noisy in ["hyper::", "reqwest::", "tokio::", "rustls::", "h2::"] {
         assert!(
             !stderr.contains(noisy),
             "third-party records leaked at debug level ({noisy}): {stderr:?}"

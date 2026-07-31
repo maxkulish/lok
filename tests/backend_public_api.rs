@@ -184,9 +184,15 @@ fn successful_query_emits_no_records_even_with_a_logger() {
     // logger.
     let (stdout, stderr) = run_silence_probe("success", "logger");
     assert_eq!(stderr, "");
+    // Any record at any level, not just warnings: the probe's logger is set to
+    // Trace, so a stray debug! or info! on the success path is caught too.
+    let records: Vec<_> = stdout
+        .lines()
+        .filter(|l| l.starts_with("RECORD:"))
+        .collect();
     assert!(
-        !stdout.contains("RECORD:WARN:"),
-        "a successful query should log no warnings: {stdout:?}"
+        records.is_empty(),
+        "a successful query should log nothing at any level, got: {records:?}"
     );
 }
 
