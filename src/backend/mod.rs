@@ -507,30 +507,69 @@ pub async fn acquire_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
     TEST_MUTEX.lock().await
 }
 
-/// Write `body` to an executable temporary script and close the write handle.
+/// Write `body` to an executable temporary script, without this process ever
+/// holding a write descriptor for it.
 ///
-/// Linux refuses to `execve` a file that any process still holds open for
-/// writing and fails the spawn with `ETXTBSY` ("Text file busy"); macOS does
-/// not enforce that, so a still-open `NamedTempFile` only breaks on Linux. The
-/// returned `TempPath` deletes the file when dropped, so callers keep it alive
-/// for as long as the script must exist.
-#[cfg(any(test, feature = "test-support"))]
+/// Linux refuses to `execve` a file that any process holds open for writing and
+/// fails the spawn with `ETXTBSY` ("Text file busy"); macOS does not enforce it.
+/// Closing the handle before `execve` is not sufficient on its own: the unit
+/// suite runs these tests in parallel, and a `fork` from any other thread while
+/// this process holds the script open copies that descriptor into the child,
+/// where `O_CLOEXEC` does not close it until the child reaches its own `execve`.
+/// A script executed inside that gap still finds a writer and fails.
+///
+/// So the file is materialised by a short-lived child instead: the body travels
+/// down a pipe and only that child ever opens the script for writing. Once it
+/// exits, no descriptor to the script exists anywhere, and no concurrent `fork`
+/// in this process can have inherited one. A descriptor that never exists here
+/// cannot be inherited from here.
+///
+/// The returned `TempPath` deletes the file when dropped, so callers keep it
+/// alive for as long as the script must exist.
+#[cfg(all(any(test, feature = "test-support"), unix))]
+pub fn write_exec_script(body: &[u8]) -> tempfile::TempPath {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+
+    let path = std::env::temp_dir().join(format!(
+        "lok-test-{}-{}.sh",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+
+    let mut writer = Command::new("/bin/sh")
+        .arg("-c")
+        .arg(r#"cat > "$1" && chmod 755 "$1""#)
+        .arg("write_exec_script")
+        .arg(&path)
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("spawn temp script writer");
+
+    {
+        let mut stdin = writer.stdin.take().expect("writer stdin");
+        stdin.write_all(body).expect("write temp script");
+    }
+
+    let status = writer.wait().expect("temp script writer exits");
+    assert!(status.success(), "temp script writer failed: {status:?}");
+
+    tempfile::TempPath::from_path(path)
+}
+
+/// Non-unix fallback. `ETXTBSY` is a unix rule, so the straightforward
+/// in-process write is correct where it does not apply.
+#[cfg(all(any(test, feature = "test-support"), not(unix)))]
 pub fn write_exec_script(body: &[u8]) -> tempfile::TempPath {
     use std::io::Write;
 
     let mut script = tempfile::NamedTempFile::with_suffix(".sh").expect("create temp script");
     script.write_all(body).expect("write temp script");
     script.flush().expect("flush temp script");
-    let path = script.into_temp_path();
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-            .expect("mark temp script executable");
-    }
-
-    path
+    script.into_temp_path()
 }
 
 #[cfg(test)]
@@ -548,6 +587,111 @@ mod library_tests {
 
         assert!(output.status.success(), "status was {:?}", output.status);
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "ready");
+    }
+
+    /// Pins the mechanism `write_exec_script` is built around, by performing the
+    /// interleaving it avoids: hold the script open for writing, let a child
+    /// inherit that descriptor and carry it through its own `execve`, then try to
+    /// run the script. The `dup` in `pre_exec` is what makes this deterministic -
+    /// it clears `O_CLOEXEC` on the copy, so the descriptor survives into the
+    /// living `sleep` rather than vanishing at exec, which is the state a losing
+    /// race lands in for a few microseconds.
+    ///
+    /// If this test ever fails, the premise behind the helper's shape has changed
+    /// and the helper should be revisited rather than the test relaxed.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn etxtbsy_is_reachable_when_a_child_inherits_the_write_descriptor() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::process::CommandExt;
+        use std::process::{Command, Stdio};
+
+        let mut script = tempfile::NamedTempFile::with_suffix(".sh").expect("create temp script");
+        script
+            .write_all(b"#!/bin/sh\necho ready\n")
+            .expect("write temp script");
+        script.flush().expect("flush temp script");
+        let raw = script.as_file().as_raw_fd();
+
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", "echo holding; sleep 30"])
+            .stdout(Stdio::piped());
+        // SAFETY: `dup` is async-signal-safe, which is the only requirement the
+        // post-fork/pre-exec context imposes.
+        unsafe {
+            cmd.pre_exec(move || {
+                if libc::dup(raw) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let mut holder = cmd.spawn().expect("spawn descriptor holder");
+
+        // Reading the child's first line proves it is past `pre_exec` and `execve`,
+        // so the duplicated write descriptor is live before we try to run anything.
+        let mut line = String::new();
+        BufReader::new(holder.stdout.take().expect("holder stdout"))
+            .read_line(&mut line)
+            .expect("holder announces itself");
+        assert_eq!(line.trim(), "holding");
+
+        let path = script.into_temp_path();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("mark temp script executable");
+
+        let err = Command::new(path.as_os_str())
+            .output()
+            .expect_err("execve must fail while a child holds a write descriptor");
+
+        let _ = holder.kill();
+        let _ = holder.wait();
+
+        assert_eq!(
+            err.raw_os_error(),
+            Some(libc::ETXTBSY),
+            "expected ETXTBSY, got {err:?}"
+        );
+    }
+
+    /// Guards the property the helper exists for: scripts stay executable while
+    /// this process is forking on other threads. The old helper lost this race in
+    /// CI (run 30223254125); the current one cannot, because the descriptor a
+    /// child would need to inherit is never opened here.
+    #[test]
+    #[cfg(unix)]
+    fn write_exec_script_survives_concurrent_forks() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let forker = {
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    let _ = std::process::Command::new("/bin/sh")
+                        .args(["-c", ":"])
+                        .output();
+                }
+            })
+        };
+
+        for i in 0..50 {
+            let path = write_exec_script(b"#!/bin/sh\necho ready\n");
+            let output = std::process::Command::new(path.as_os_str())
+                .output()
+                .unwrap_or_else(|e| panic!("iteration {i} failed to spawn: {e:?}"));
+            assert!(
+                output.status.success(),
+                "iteration {i} exited {:?}",
+                output.status
+            );
+        }
+
+        stop.store(true, Ordering::Relaxed);
+        forker.join().expect("forker thread joins");
     }
 
     #[test]
