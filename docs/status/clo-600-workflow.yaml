@@ -24,8 +24,8 @@ linear:
   branch_actual: feat/clo-600-github-action
   priority: High
 workflow:
-  current_phase: implement
-  status: in_progress
+  current_phase: pr
+  status: checkpoint
   created_at: '2026-07-31T20:17:35.000Z'
   updated_at: '2026-07-31T21:00:00.000Z'
 entry_findings:
@@ -154,7 +154,7 @@ phases:
         clears the Node 20 deprecation warnings in lok's current runs); header counts fixed to
         7 files / 8 sub-tasks.
   implement:
-    status: in_progress
+    status: complete
     subtasks:
       1_instrument_assertions: complete
       2_deterministic_repro: complete
@@ -191,9 +191,23 @@ phases:
         same errno as the eight failures in run 30222596040, but the production-path diagnostic
         string was not re-captured post-instrumentation.
   pr:
-    status: in_progress
+    status: awaiting_merge
     pr_url: https://github.com/maxkulish/lok/pull/64
     pr_number: 64
+    checks: CI Gate pass, both matrix legs pass, etxtbsy-stress pass (run 30668065205)
+    merge_state: CLEAN
+    verified_pre_merge:
+      - CI Gate green on ubuntu-latest and macos-latest
+      - etxtbsy-stress 20/20 green (run 30667318307)
+      - cause demonstrated by red control run 30667858179 vs green treatment
+      - release rehearsal run 30668135705 - 4 targets, draft release, 4 checksums verified, draft deleted
+      - bad tag v0.0.0 rejected (at checkout, before the in-workflow assertion)
+      - ruleset 20153405 verified by rule contents
+      - PR observed BLOCKED while CI Gate pending, CLEAN once passed
+      - ubuntu-22.04-arm resolves; glibc max required 2.34 under the 2.35 baseline; libssl.so.3 linked
+    pending_post_merge:
+      - AC-16 - push run on main must be green
+      - publish.yml dry run - not dispatchable until the workflow exists on main
   complete:
     status: pending
 history:
