@@ -25,21 +25,21 @@ struct BedrockRequest {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Message {
+pub(crate) struct Message {
     pub role: String,
     pub content: MessageContent,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(untagged)]
-pub enum MessageContent {
+pub(crate) enum MessageContent {
     Text(String),
     Blocks(Vec<ContentBlock>),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type")]
-pub enum ContentBlock {
+pub(crate) enum ContentBlock {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
@@ -57,7 +57,7 @@ pub enum ContentBlock {
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
-pub struct BedrockResponse {
+pub(crate) struct BedrockResponse {
     pub content: Vec<ResponseBlock>,
     pub stop_reason: Option<String>,
     #[serde(default)]
@@ -67,7 +67,7 @@ pub struct BedrockResponse {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct BedrockUsage {
+pub(crate) struct BedrockUsage {
     pub input_tokens: u32,
     pub output_tokens: u32,
 }
@@ -75,7 +75,7 @@ pub struct BedrockUsage {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
 #[allow(dead_code)]
-pub enum ResponseBlock {
+pub(crate) enum ResponseBlock {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
@@ -100,7 +100,7 @@ impl BedrockBackend {
     }
 
     #[allow(dead_code)]
-    pub async fn invoke_with_messages(
+    pub(crate) async fn invoke_with_messages(
         &self,
         system: Option<&str>,
         messages: Vec<Message>,

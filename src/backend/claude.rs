@@ -16,8 +16,11 @@ use tokio::time::timeout;
 use super::{BackendError, TokenUsage};
 
 /// Claude backend mode - API or CLI
+///
+/// Internal: `ClaudeBackend::mode` is private and no public signature mentions
+/// this type, so it is not part of the downstream API.
 #[derive(Clone)]
-pub enum ClaudeMode {
+pub(crate) enum ClaudeMode {
     /// Use Claude API directly (requires ANTHROPIC_API_KEY)
     Api {
         api_key: SecretString,
@@ -31,6 +34,8 @@ pub enum ClaudeMode {
     },
 }
 
+/// Anthropic Claude, reached either through the Messages API or the
+/// `claude` CLI depending on how it is configured.
 pub struct ClaudeBackend {
     mode: ClaudeMode,
 }
@@ -56,6 +61,11 @@ struct ClaudeUsage {
 }
 
 impl ClaudeBackend {
+    /// Build the backend from `config`.
+    ///
+    /// # Errors
+    /// Returns an error when the configuration does not name a usable
+    /// command, endpoint or credential for this backend.
     pub fn new(config: &BackendConfig) -> Result<Self> {
         // Check if we have a command configured (CLI mode) or API key (API mode)
         if let Some(ref cmd) = config.command {

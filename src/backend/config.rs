@@ -10,14 +10,24 @@ use std::time::Duration;
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(deny_unknown_fields)]
 pub struct BackendConfig {
+    /// Whether this backend may be selected. Defaults to `true`.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Executable to invoke for subprocess-backed backends, or the endpoint URL
+    /// for HTTP-backed ones such as Ollama.
     pub command: Option<String>,
+    /// Extra arguments appended to every invocation of `command`.
     #[serde(default)]
     pub args: Vec<String>,
+    /// Number of leading lines to strip from the backend's stdout before it is
+    /// treated as the response, for CLIs that print a banner.
     #[serde(default)]
     pub skip_lines: usize,
+    /// Environment variable holding the API key, for backends that authenticate
+    /// with one. The key itself is never stored in config.
     pub api_key_env: Option<String>,
+    /// Model identifier passed to the backend. Backend-specific; `None` leaves
+    /// the backend's own default in place.
     pub model: Option<String>,
     /// Per-backend timeout duration (overrides defaults.timeout). Accepts
     /// human-readable strings like "30s" or raw integers (seconds).
@@ -42,7 +52,10 @@ pub fn default_enabled() -> bool {
 /// Fallbacks a caller supplies when a `BackendConfig` leaves retry fields unset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryDefaults {
+    /// Retry count used when `BackendConfig::max_retries` is `None`.
     pub max_retries: usize,
+    /// Base delay in milliseconds used when `BackendConfig::retry_delay_ms` is
+    /// `None`.
     pub retry_delay_ms: u64,
 }
 

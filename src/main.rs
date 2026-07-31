@@ -440,15 +440,13 @@ fn init_logger(verbose: bool) {
         "lokomotiv=warn,lok=warn"
     };
 
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or(default_filter),
-    )
-    .format(|buf, record| match record.level() {
-        log::Level::Error => writeln!(buf, "{} {}", "error:".red(), record.args()),
-        log::Level::Warn => writeln!(buf, "{} {}", "warning:".yellow(), record.args()),
-        _ => writeln!(buf, "{}", record.args()),
-    })
-    .init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_filter))
+        .format(|buf, record| match record.level() {
+            log::Level::Error => writeln!(buf, "{} {}", "error:".red(), record.args()),
+            log::Level::Warn => writeln!(buf, "{} {}", "warning:".yellow(), record.args()),
+            _ => writeln!(buf, "{}", record.args()),
+        })
+        .init();
 }
 
 #[tokio::main]

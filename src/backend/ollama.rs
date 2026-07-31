@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+/// A local Ollama server, reached over its HTTP API.
 pub struct OllamaBackend {
     client: Client,
     base_url: String,
@@ -38,6 +39,11 @@ struct ChatResponse {
 }
 
 impl OllamaBackend {
+    /// Build the backend from `config`.
+    ///
+    /// # Errors
+    /// Returns an error when the configuration does not name a usable
+    /// command, endpoint or credential for this backend.
     pub fn new(config: &BackendConfig) -> Result<Self> {
         let base_url = config
             .command

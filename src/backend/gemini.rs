@@ -7,6 +7,7 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
 
+/// Google Gemini, reached through the `opencode` CLI as a subprocess.
 pub struct GeminiBackend {
     command: String,
     args: Vec<String>,
@@ -28,6 +29,11 @@ pub(crate) struct GeminiEnvelope {
 }
 
 impl GeminiBackend {
+    /// Build the backend from `config`.
+    ///
+    /// # Errors
+    /// Returns an error when the configuration does not name a usable
+    /// command, endpoint or credential for this backend.
     pub fn new(config: &BackendConfig) -> Result<Self> {
         let command = config
             .command

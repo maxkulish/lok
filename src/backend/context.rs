@@ -10,6 +10,7 @@ use std::time::Duration;
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub struct StepContext<'a> {
+    /// The prompt to send.
     pub prompt: &'a str,
     /// Conversation history (FR-19c). Empty slice = single-turn.
     pub history: &'a [Message],
@@ -38,6 +39,9 @@ pub struct StepContext<'a> {
 pub type StepOptions = std::collections::HashMap<String, serde_json::Value>;
 
 impl<'a> StepContext<'a> {
+    /// The narrow entry point for a one-shot query: a prompt, a working
+    /// directory, and an optional model override. Every other field takes its
+    /// default, leaving the backend's own behaviour in place.
     pub fn from_prompt(prompt: &'a str, cwd: &'a Path, model: Option<&'a str>) -> Self {
         Self {
             prompt,
@@ -56,28 +60,42 @@ impl<'a> StepContext<'a> {
 /// Carrying struct for all health checks, version details, and capabilities.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthStatus {
+    /// Whether the backend answered its probe and can serve queries.
     pub available: bool,
+    /// Version string reported by the backend, when it reports one.
     pub version: Option<String>,
     /// Discriminator for backends with multiple probe modes
     /// (e.g. "api" | "cli" for Claude, None for single-mode backends).
     pub mode: Option<String>,
     /// Human-readable failure reason when available is false.
     pub diagnostic: Option<String>,
+    /// How the backend authenticated, e.g. `"oauth"`, `"api-key"` or `"none"`.
     pub auth_method: Option<String>,
+    /// Backend-specific capability payload, shape defined by each backend.
     pub capabilities: Option<serde_json::Value>,
+    /// Flags this backend's binary advertised but cannot honour, so callers can
+    /// skip them rather than failing mid-run.
     pub unusable_flags: Vec<String>,
+    /// Models the backend reports as installed and usable. Empty when the
+    /// backend does not enumerate models.
     pub models: Vec<ModelInfo>,
 }
 
+/// A model the backend reports as available.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModelInfo {
+    /// Identifier to pass as `StepContext::model`.
     pub name: String,
+    /// Last-modified timestamp as reported by the backend, if any.
     pub modified_at: Option<String>,
+    /// On-disk size in bytes, if the backend reports it.
     pub size: Option<u64>,
+    /// Content digest, if the backend reports one.
     pub digest: Option<String>,
 }
 
 impl HealthStatus {
+    /// An available status with every optional detail unset.
     pub fn new_available() -> Self {
         Self {
             available: true,
@@ -91,6 +109,8 @@ impl HealthStatus {
         }
     }
 
+    /// An unavailable status. Set [`HealthStatus::diagnostic`] afterwards to
+    /// explain why.
     pub fn new_unavailable() -> Self {
         Self {
             available: false,
@@ -112,8 +132,11 @@ impl HealthStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SandboxMode {
+    /// No writes. The backend may read the workspace but not modify it.
     ReadOnly,
+    /// Writes confined to the working directory.
     WorkspaceWrite,
+    /// No sandboxing. Use only with backends and prompts you trust.
     DangerFullAccess,
 }
 
@@ -121,15 +144,21 @@ pub enum SandboxMode {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Message {
+    /// Who produced this turn.
     pub role: Role,
+    /// The turn's text.
     pub content: String,
 }
 
+/// Author of a [`Message`].
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
+    /// Sent by the caller.
     User,
+    /// Returned by the model.
     Assistant,
+    /// Instruction framing the conversation.
     System,
 }
 

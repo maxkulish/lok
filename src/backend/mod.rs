@@ -1,12 +1,19 @@
+/// Provider-agnostic configuration accepted by every backend.
 pub mod config;
 
 #[cfg(feature = "bedrock")]
+/// AWS Bedrock backend. Requires the `bedrock` feature.
 pub mod bedrock;
+/// Anthropic Claude backend, in API or CLI mode.
 pub mod claude;
+/// OpenAI Codex CLI backend.
 pub mod codex;
 mod codex_event;
+/// Per-call inputs and health/capability reporting types.
 pub mod context;
+/// Google Gemini backend, via the `opencode` CLI.
 pub mod gemini;
+/// Local Ollama backend, over its HTTP API.
 pub mod ollama;
 mod retry;
 
@@ -34,35 +41,68 @@ use std::time::{Duration, Instant};
 /// for retry decisions, user-facing messages, and error classification.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum BackendError {
+    /// The backend did not answer within its effective timeout.
     #[error("timeout: {message}")]
-    Timeout { message: String, elapsed_ms: u64 },
+    Timeout {
+        /// What timed out.
+        message: String,
+        /// How long the call ran before giving up.
+        elapsed_ms: u64,
+    },
 
+    /// The provider refused the request for rate-limit reasons.
     #[error("rate limited: {message}")]
     RateLimit {
+        /// What the provider reported.
         message: String,
+        /// Server-supplied backoff, honoured in preference to the retry policy
+        /// when present.
         retry_after_ms: Option<u64>,
     },
 
+    /// Credentials were missing, malformed or rejected.
     #[error("auth: {message}")]
-    Auth { message: String },
+    Auth {
+        /// What failed to authenticate.
+        message: String,
+    },
 
+    /// The provider could not be reached.
     #[error("network: {message}")]
-    Network { message: String },
+    Network {
+        /// The underlying transport failure.
+        message: String,
+    },
 
+    /// The backend answered, but its response could not be decoded.
     #[error("parse: {message}")]
-    Parse { message: String },
+    Parse {
+        /// What could not be parsed.
+        message: String,
+    },
 
+    /// A subprocess-backed backend ran and failed.
     #[error("execution failed: {message}")]
     ExecutionFailed {
+        /// What the subprocess reported.
         message: String,
+        /// Process exit code, when one was produced.
         exit_code: Option<i32>,
     },
 
+    /// The backend is not usable at all, e.g. its binary is missing.
     #[error("unavailable: {message}")]
-    Unavailable { message: String },
+    Unavailable {
+        /// Why the backend is unavailable.
+        message: String,
+    },
 
+    /// The supplied [`BackendConfig`] cannot drive this backend.
     #[error("config: {message}")]
-    Config { message: String },
+    Config {
+        /// What is wrong with the configuration.
+        message: String,
+    },
 }
 
 impl BackendError {
@@ -84,8 +124,11 @@ impl BackendError {
 /// `total_tokens` is computed via saturating addition to avoid overflow panics on pathological inputs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TokenUsage {
+    /// Tokens in the request.
     pub prompt_tokens: u32,
+    /// Tokens in the response.
     pub completion_tokens: u32,
+    /// `prompt_tokens + completion_tokens`, saturating.
     pub total_tokens: u32,
     /// Tokens served from prompt cache (Anthropic `cache_read_input_tokens`,
     /// Codex `cached_input_tokens`). `None` when the backend does not report it.
@@ -132,6 +175,8 @@ impl TokenUsage {
         self
     }
 
+    /// Sum two usage records field by field, saturating rather than
+    /// overflowing. `None` and `Some` counts combine as `None + x = x`.
     pub fn saturating_add(&self, other: &Self) -> Self {
         Self {
             prompt_tokens: self.prompt_tokens.saturating_add(other.prompt_tokens),
@@ -182,13 +227,22 @@ fn sum_opt(a: Option<u32>, b: Option<u32>) -> Option<u32> {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct QueryOutput {
+    /// The backend's answer.
     pub stdout: String,
+    /// Diagnostics from a subprocess-backed backend, when it produced any.
     pub stderr: Option<String>,
+    /// Process exit code for subprocess-backed backends.
     pub exit_code: Option<i32>,
+    /// Model that actually served the request, as reported by the backend.
     pub model: Option<String>,
+    /// Wall-clock time for the call.
     pub duration: Duration,
+    /// Token counts, when the backend reports them.
     pub usage: Option<TokenUsage>,
+    /// Decoded JSON when the call requested structured output via
+    /// [`StepContext::schema`].
     pub structured: Option<serde_json::Value>,
+    /// Name of the backend that produced this output.
     pub backend: String,
 }
 
@@ -255,10 +309,23 @@ impl QueryOutput {
     }
 }
 
+/// A provider that can answer a query.
+///
+/// Implementors are `Send + Sync` and are normally handled as
+/// `Arc<dyn Backend>`, which is what [`create_backend`] returns.
 #[async_trait]
 pub trait Backend: Send + Sync {
+    /// Stable identifier for this backend, e.g. `"claude"` or `"ollama"`.
     fn name(&self) -> &str;
+    /// Run one query.
+    ///
+    /// # Errors
+    /// Returns a [`BackendError`] describing the failure mode. Check
+    /// [`BackendError::is_retryable`] to decide whether retrying is sensible,
+    /// or wrap the backend in a [`RetryExecutor`] to handle that for you.
     async fn query(&self, ctx: StepContext<'_>) -> std::result::Result<QueryOutput, BackendError>;
+    /// Cheap, synchronous availability check answered from cache. Performs no
+    /// I/O; call [`Backend::health_check`] to probe for real.
     fn is_available(&self) -> bool;
     /// Live async health probe. Default delegates to `is_available()`.
     /// Returns a placeholder `HealthStatus` so the trait signature is stable
@@ -274,6 +341,20 @@ pub trait Backend: Send + Sync {
     }
 }
 
+/// Construct a backend by name, wrapped in a [`RetryExecutor`].
+///
+/// Recognised names are `"codex"`, `"gemini"`, `"claude"`, `"ollama"`, and
+/// `"bedrock"` under the `bedrock` feature.
+///
+/// # Caching
+/// Instances are memoised in [`BACKEND_CACHE`], a process-global keyed by name
+/// alone. Two callers in one process asking for the same name with different
+/// configurations therefore share the first instance built. See the
+/// `BACKEND_CACHE` documentation for why this is not yet keyed by config.
+///
+/// # Errors
+/// Returns an error when `name` is unknown or the configuration cannot build
+/// that backend.
 pub fn create_backend(
     name: &str,
     config: &BackendConfig,
@@ -334,8 +415,21 @@ pub fn create_backend(
     Ok(backend)
 }
 
+/// Process-global cache of constructed backends and their health, keyed by
+/// backend name.
+///
+/// # Known constraint
+/// The key is the backend name alone, so two consumers in one process using
+/// the same name with different configurations silently share one instance.
+///
+/// Keying by configuration hash, or moving the cache out of the library, would
+/// both break [`is_backend_available`], which looks entries up by name from
+/// inside each provider's `is_available` implementation and has no
+/// configuration to hash. Fixing this properly means reworking `is_available`;
+/// tracked as a follow-up rather than done here.
 pub static BACKEND_CACHE: OnceLock<RwLock<HashMap<String, CachedBackend>>> = OnceLock::new();
 
+/// Access [`BACKEND_CACHE`], initialising it on first use.
 pub fn get_backend_cache() -> &'static RwLock<HashMap<String, CachedBackend>> {
     BACKEND_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(16)))
 }
@@ -343,8 +437,11 @@ pub fn get_backend_cache() -> &'static RwLock<HashMap<String, CachedBackend>> {
 /// Combined cache entry linking a constructed backend instance with its health status.
 /// Replaces separate CONSTRUCTED_BACKENDS and HEALTH_CACHE maps, ensuring consistency.
 pub struct CachedBackend {
+    /// The constructed backend instance.
     pub backend: Arc<dyn Backend>,
+    /// Result of the last health probe, if one has run.
     pub health: Option<HealthStatus>,
+    /// When that probe ran, for TTL comparison.
     pub checked_at: Option<Instant>,
 }
 
@@ -353,11 +450,14 @@ pub struct CachedBackend {
 #[cfg(any(test, feature = "test-support"))]
 #[derive(Debug)]
 pub struct StubBackend {
+    /// Name this stub reports from [`Backend::name`].
     pub name: String,
 }
 
 #[cfg(any(test, feature = "test-support"))]
 impl StubBackend {
+    /// Build a stub reporting `name`. Querying it panics; it exists only to
+    /// occupy the backend slot of a cache entry.
     pub fn new(name: impl Into<String>) -> Self {
         Self { name: name.into() }
     }
@@ -403,12 +503,18 @@ pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
             checked_at: now,
         });
 }
+/// How long a health probe stays fresh when `LOK_HEALTH_TTL` is unset.
 pub const DEFAULT_HEALTH_CACHE_TTL: Duration = Duration::from_secs(60 * 30);
+/// Environment variable overriding [`DEFAULT_HEALTH_CACHE_TTL`]. Accepts a
+/// humantime duration such as `"5m"`.
 pub const HEALTH_TTL_ENV: &str = "LOK_HEALTH_TTL";
 
 static HEALTH_CACHE_TTL: OnceLock<Duration> = OnceLock::new();
+/// Latch ensuring the resolved TTL is announced at most once per process.
 pub static HEALTH_TTL_LOGGED: OnceLock<()> = OnceLock::new();
 
+/// Parse a [`HEALTH_TTL_ENV`] value into a TTL, plus a warning when the input
+/// was present but unusable and the default was substituted.
 pub fn parse_health_cache_ttl(val: Option<&str>) -> (Duration, Option<String>) {
     match val {
         Some(v) if !v.trim().is_empty() => {
@@ -431,7 +537,7 @@ pub fn parse_health_cache_ttl(val: Option<&str>) -> (Duration, Option<String>) {
     }
 }
 
-pub fn resolve_health_cache_ttl() -> Duration {
+pub(crate) fn resolve_health_cache_ttl() -> Duration {
     let val = std::env::var_os(HEALTH_TTL_ENV);
     let val_str = val.as_ref().map(|os| os.to_string_lossy());
     let (ttl, warn) = parse_health_cache_ttl(val_str.as_deref());
@@ -441,10 +547,12 @@ pub fn resolve_health_cache_ttl() -> Duration {
     ttl
 }
 
+/// The process-wide health-cache TTL, resolved once from the environment.
 pub fn health_cache_ttl() -> Duration {
     *HEALTH_CACHE_TTL.get_or_init(resolve_health_cache_ttl)
 }
 
+/// Whether `entry`'s health probe is still within `ttl`.
 pub fn is_cache_entry_fresh(entry: &CachedBackend, ttl: Duration) -> bool {
     entry
         .checked_at
@@ -499,11 +607,32 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
 pub const NO_TIMEOUT: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
 #[cfg(any(test, feature = "test-support"))]
-pub static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+/// Opaque guard returned by [`acquire_test_lock`].
+///
+/// The wrapped lock type is deliberately hidden. Returning a
+/// `tokio::sync::MutexGuard` directly, or exposing the static it borrows from,
+/// would pin a downstream test suite to this crate's Tokio version. Holding
+/// this value holds the lock; dropping it releases the lock.
 #[cfg(any(test, feature = "test-support"))]
-pub async fn acquire_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
-    TEST_MUTEX.lock().await
+pub struct TestLockGuard(
+    /// Held for its `Drop`, never read.
+    #[allow(dead_code)]
+    tokio::sync::MutexGuard<'static, ()>,
+);
+
+/// Serialize tests that touch process-global state, such as [`BACKEND_CACHE`]
+/// or the `LOK_HEALTH_TTL` environment variable.
+///
+/// Hold the returned guard for the duration of the test:
+///
+/// ```ignore
+/// let _guard = acquire_test_lock().await;
+/// ```
+#[cfg(any(test, feature = "test-support"))]
+pub async fn acquire_test_lock() -> TestLockGuard {
+    TestLockGuard(TEST_MUTEX.lock().await)
 }
 
 /// Write `body` to an executable temporary script and close the write handle.

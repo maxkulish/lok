@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 use tokio::process::Command;
 
+/// The OpenAI Codex CLI, invoked as a subprocess.
 pub struct CodexBackend {
     command: String,
     args: Vec<String>,
@@ -15,8 +16,10 @@ pub struct CodexBackend {
 
 /// One entry in the flag matrix.
 pub struct FlagRequirement {
+    /// The CLI flag, spelled exactly as passed.
     pub flag: &'static str,
-    pub min_version: (u32, u32, u32), // (major, minor, patch)
+    /// Lowest `(major, minor, patch)` Codex version accepting the flag.
+    pub min_version: (u32, u32, u32),
 }
 
 /// Canonical flag-version matrix for Codex CLI.
@@ -109,6 +112,11 @@ fn compare_versions(installed: (u32, u32, u32), required: (u32, u32, u32)) -> bo
 }
 
 impl CodexBackend {
+    /// Build the backend from `config`.
+    ///
+    /// # Errors
+    /// Returns an error when the configuration does not name a usable
+    /// command, endpoint or credential for this backend.
     pub fn new(config: &BackendConfig) -> Result<Self> {
         let command = config
             .command
