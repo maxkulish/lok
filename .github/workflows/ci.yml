@@ -4,71 +4,108 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # `labeled` is here so the stress job below can be requested on an open PR.
+    # Without it, adding a label raises no event and the job is unreachable
+    # before merge.
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
+# Third-party actions are pinned to a full commit SHA; first-party `actions/*`
+# ride their major tag. The asymmetry is deliberate: GitHub owns the latter.
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  build-and-test:
+    name: build / test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        run: rustup component add rustfmt clippy
 
       - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build
-        run: cargo build --verbose
-
-      - name: Run tests
-        run: cargo test --verbose
-
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check formatting
+      - name: Format check
         run: cargo fmt --all -- --check
 
-  clippy:
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      # `bedrock` is optional and pulls its own AWS SDK tree, so it is the
+      # configuration that rots unnoticed. Lint and test it, do not just compile it.
+      - name: Clippy (bedrock)
+        run: cargo clippy --locked --all-targets --features bedrock -- -D warnings
+
+      - name: Test (bedrock)
+        run: cargo test --locked --features bedrock
+
+      - name: Build (release)
+        run: cargo build --release --locked
+
+  # Single stable context for the branch ruleset. Requiring the matrix legs
+  # directly would mean adding or renaming an OS silently changes what `main`
+  # is protected by.
+  ci-gate:
+    name: CI Gate
+    needs: build-and-test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every matrix leg succeeded
+        run: |
+          result='${{ needs.build-and-test.result }}'
+          echo "build-and-test: $result"
+          [ "$result" = "success" ] || exit 1
+
+  # Deliberately outside `ci-gate`'s `needs`, so a required check can never be
+  # satisfied by this job. Run it by adding the `ci-stress` label to a PR.
+  etxtbsy-stress:
+    name: etxtbsy-stress
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'ci-stress')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - name: Install Rust toolchain
+        run: rustup show active-toolchain
 
       - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+      # The whole unit suite at default parallelism, not a filter over the
+      # exec-script tests: the competing subprocess tests are what create the
+      # fork traffic the race needs, so filtering them out can turn the run
+      # green by removing the cause.
+      - name: Stress the unit suite (20x)
+        run: |
+          cargo build --locked --tests
+          for i in $(seq 1 20); do
+            echo "::group::iteration $i"
+            cargo test --locked --lib || { echo "::error::failed on iteration $i"; exit 1; }
+            echo "::endgroup::"
+          done
