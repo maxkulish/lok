@@ -156,16 +156,44 @@ phases:
   implement:
     status: in_progress
     subtasks:
-      1_instrument_assertions: pending
-      2_deterministic_repro: pending
-      3_fix_write_exec_script: pending
-      4_ci_yml: pending
-      5_stress_job: pending
-      6_release_yml: pending
-      7_publish_yml: pending
-      8_branch_protection: pending
+      1_instrument_assertions: complete
+      2_deterministic_repro: complete
+      3_fix_write_exec_script: complete
+      4_ci_yml: complete
+      5_stress_job: complete
+      6_release_yml: complete
+      7_publish_yml: complete
+      8_branch_protection: complete
+    evidence:
+      cause_established: >-
+        Control experiment on throwaway branch tmp/clo-600-prefix-control (run 30667858179)
+        restored the pre-fix write_exec_script and lost the stress job on the first iteration:
+        "iteration 16 failed to spawn: Os { code: 26, kind: ExecutableFileBusy, message: \"Text
+        file busy\" }" at src/backend/mod.rs:669. The same job passes 20/20 with the fix
+        (run 30667318307). ETXTBSY is therefore the demonstrated cause, not a hypothesis.
+      mechanism_test: >-
+        etxtbsy_is_reachable_when_a_child_inherits_the_write_descriptor passes on ubuntu-latest,
+        confirming execve does fail with ETXTBSY there when a child holds a duplicated write
+        descriptor past its own exec.
+      ci_runs:
+        - 30667312066 (pull_request, CI Gate success, stress skipped - no label yet)
+        - 30667318307 (labeled, CI Gate success, etxtbsy-stress success 20/20)
+        - 30667858179 (control, pre-fix helper, etxtbsy-stress FAILED as designed; canceled after capture)
+      ruleset_id: 20153405
+      ruleset_verified: >-
+        GET /repos/maxkulish/lok/rulesets/20153405 - enforcement active, target branch,
+        refs/heads/main, bypass_actors empty, required_status_checks [{context "CI Gate",
+        integration_id 15368}], strict_required_status_checks_policy true, plus deletion and
+        non_fast_forward rules.
+      caveat: >-
+        The captured errno came from write_exec_script's own fork-storm test, not from a fresh
+        reproduction inside gemini_health_check_version_timeout. Same helper, same code path,
+        same errno as the eight failures in run 30222596040, but the production-path diagnostic
+        string was not re-captured post-instrumentation.
   pr:
-    status: pending
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/64
+    pr_number: 64
   complete:
     status: pending
 history:
