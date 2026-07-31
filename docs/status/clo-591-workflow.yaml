@@ -26,10 +26,10 @@ linear:
   labels:
     - AFK
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
   created_at: '2026-07-31T20:11:26.000Z'
-  updated_at: '2026-07-31T21:17:03.000Z'
+  updated_at: '2026-07-31T22:05:00.000Z'
 phases:
   discovery:
     status: skipped
@@ -82,7 +82,33 @@ phases:
           consumer outside src/backend/ and is demoted. The rest are recorded as a third classification category,
           binary-support, with their pinning call sites.
   implement:
-    status: pending
+    status: complete
+    commits:
+      - 06337be feat(CLO-591): route library warnings through log and gate CLI deps
+      - c438058 feat(CLO-591): close the Tokio leak, shrink and document the API
+      - 6e74dbc feat(CLO-591): prove the silence, gate the boundary, reconcile the ADR
+      - 8c883a0 fix(CLO-591): make the docs gate real and close the validation findings
+      - 442078d fix(CLO-591): strengthen the new tests and de-flake the codex probe
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    codex_report: docs/reviews/clo-591-codex-validation-2.md
+    codex_report_first_pass: docs/reviews/clo-591-codex-validation.md
+    gemini_validation_report: docs/reviews/clo-591-gemini-validation.md
+    gemini_verdict: FAILED
+    gemini_failure_reason: >-
+      Gemini CLI refused to run headless in an untrusted directory; needs --skip-trust or
+      GEMINI_CLI_TRUST_WORKSPACE=true. No review produced.
+    verification:
+      tests_default: 1243 passed, 0 failed, 0 ignored
+      tests_lean: 150 passed, 0 failed, 0 ignored
+      clippy_default: clean
+      clippy_lean: clean
+      bedrock: clean
+      rustdoc_gate: clean under default, test-support and all-features
+      fmt: clean
+      dependency_leak: none of the 8 gated packages present
+      terminal_writes: none in src/backend/
+      install: cargo install --path . produced lok and lokomotiv with no extra flags
   pr:
     status: pending
   complete:
@@ -247,39 +273,65 @@ implement:
   sub_tasks:
     - id: 1
       title: Route library warnings through log
-      status: pending
+      status: complete
       blocks: [3, 4, 8]
     - id: 2
       title: Add the no-terminal-writes grep gate
-      status: pending
+      status: complete
     - id: 3
       title: Feature-gate binary-only dependencies
-      status: pending
+      status: complete
       blocked_by: [1]
     - id: 4
       title: Install a binary-side logger with a custom formatter
-      status: pending
+      status: complete
       blocked_by: [1]
     - id: 5
       title: Close the Tokio leak in test-support (guard and TEST_MUTEX)
-      status: pending
+      status: complete
     - id: 6
       title: Shrink the public surface
-      status: pending
+      status: complete
       blocks: [7]
     - id: 7
       title: Document the remainder and add the rustdoc gate
-      status: pending
+      status: complete
       blocked_by: [6]
     - id: 8
       title: Build the silence test harness
-      status: pending
+      status: complete
       blocked_by: [1]
     - id: 9
       title: Add the CI gates
-      status: pending
+      status: complete
       note: Land last so the gates guard finished work.
     - id: 10
       title: Reconcile the ADR
-      status: pending
+      status: complete
       note: Linear half of this sub-task already done; see linear_ac_amended.
+  - timestamp: '2026-07-31T22:05:00.000Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All 10 sub-tasks complete across 5 commits, pushed to origin/feat/clo-591-strip-cli.
+  - timestamp: '2026-07-31T22:05:00.000Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Two validation rounds. Round 1 returned FAIL on four findings, all of which were checked against the code and all
+      of which were correct. The most serious invalidated a gate already reported as passing: src/lib.rs carried
+      #![warn(missing_docs)], and a crate-level lint attribute overrides the command line, so the -D in RUSTDOCFLAGS was
+      downgraded to a warning and three undocumented Bedrock items sailed through. Changed to deny, documented the
+      items, and negative-tested the gate by injecting an undocumented item. Round 2 returned PASS_WITH_NOTES with three
+      tests that could pass spuriously; all three tightened, and the CLI-chrome assertion was negative-tested by
+      removing the formatter and confirming it fails. Gemini produced no review in either round (headless trust-directory
+      refusal in this one, empty output at spec review), so both verdicts rest on a single model.
+  - timestamp: '2026-07-31T22:05:00.000Z'
+    action: flake_fixed
+    phase: implement
+    details: >-
+      codex_health_check_success failed intermittently under --all-targets: its fake shell script raced the hard-coded
+      2s --version probe budget when the suite saturated the machine. Pre-existing rather than introduced, but the new
+      CI gates run this suite and AC12 requires zero failures. Fixed with the pattern gemini already used
+      (src/backend/gemini.rs:15-19): the probe timeout became a field defaulting to 2s, and the fake-script tests set a
+      generous budget. Reproduced within 2 runs before, 8 consecutive clean runs after.
