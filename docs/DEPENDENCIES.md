@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-07-31 (CLO-591 started; canceled CLO-590 and completed CLO-374 cleared)
+**Last Updated**: 2026-08-01 (CLO-591 in progress; CLO-590 canceled as superseded by CLO-593; completed CLO-374 cleared)
 
 ## Current Blockers
 
@@ -12,3 +12,5 @@
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
 | - | - | - |
+
+CLO-591 moved to Active Work rather than sitting here; CLO-374 is Done (see ROADMAP Phase 10).

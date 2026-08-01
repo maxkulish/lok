@@ -4,102 +4,143 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # `labeled` is here so the stress job below can be requested on an open PR.
+    # Without it, adding a label raises no event and the job is unreachable
+    # before merge.
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
+# Third-party actions are pinned to a full commit SHA; first-party `actions/*`
+# ride their major tag. The asymmetry is deliberate: GitHub owns the latter.
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  build-and-test:
+    name: build / test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        run: rustup component add rustfmt clippy
 
       - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build
-        run: cargo build --verbose
-
-      - name: Run tests
-        run: cargo test --all-targets --verbose
-
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check formatting
+      - name: Format check
         run: cargo fmt --all -- --check
 
-  clippy:
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      # `bedrock` is optional and pulls its own AWS SDK tree, so it is the
+      # configuration that rots unnoticed. Lint and test it, do not just compile it.
+      - name: Clippy (bedrock)
+        run: cargo clippy --locked --all-targets --features bedrock -- -D warnings
+
+      - name: Test (bedrock)
+        run: cargo test --locked --features bedrock
+
+      - name: Build (release)
+        run: cargo build --release --locked
+
+  # Single stable context for the branch ruleset. Requiring the matrix legs
+  # directly would mean adding or renaming an OS silently changes what `main`
+  # is protected by.
+  ci-gate:
+    name: CI Gate
+    needs: [build-and-test, library-boundary]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every required job succeeded
+        run: |
+          failed=0
+          for pair in \
+            "build-and-test:${{ needs.build-and-test.result }}" \
+            "library-boundary:${{ needs.library-boundary.result }}"; do
+            name=${pair%%:*}; result=${pair#*:}
+            echo "$name: $result"
+            [ "$result" = "success" ] || failed=1
+          done
+          [ "$failed" -eq 0 ] || exit 1
+
+  # Deliberately outside `ci-gate`'s `needs`, so a required check can never be
+  # satisfied by this job. Run it by adding the `ci-stress` label to a PR.
+  etxtbsy-stress:
+    name: etxtbsy-stress
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'ci-stress')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - name: Install Rust toolchain
+        run: rustup show active-toolchain
 
       - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+      # The whole unit suite at default parallelism, not a filter over the
+      # exec-script tests: the competing subprocess tests are what create the
+      # fork traffic the race needs, so filtering them out can turn the run
+      # green by removing the cause.
+      - name: Stress the unit suite (20x)
+        run: |
+          cargo build --locked --tests
+          for i in $(seq 1 20); do
+            echo "::group::iteration $i"
+            cargo test --locked --lib || { echo "::error::failed on iteration $i"; exit 1; }
+            echo "::endgroup::"
+          done
 
   # CLO-591. The library/binary boundary is a convention, not a compiler rule:
-  # both live in one package, so `cli` being a default feature means a stray
-  # `colored` import on a library path would compile green under the jobs
-  # above. These gates are what actually hold the boundary.
+  # `lib` and `bin` share one package and one dependency list, so with `cli` as
+  # a default feature a stray `colored` import on a library path compiles green
+  # under build-and-test. This job is what actually holds the boundary, which
+  # is why ci-gate requires it.
   library-boundary:
+    name: library boundary
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - name: Install Rust toolchain
+        run: rustup component add clippy
 
       - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Library builds without CLI features
-        run: cargo build --lib --no-default-features
+        run: cargo build --locked --lib --no-default-features
 
       - name: No CLI dependency reaches a library consumer
         # Exact package names, anchored. A substring match on `futures` would
@@ -107,22 +148,22 @@ jobs:
         # reqwest -> hyper-tls -> hyper-util, and reqwest is a library dependency.
         run: |
           set -euo pipefail
-          leaked=$(cargo tree --no-default-features -e normal --format '{p}' \
+          leaked=$(cargo tree --locked --no-default-features -e normal --format '{p}' \
             | grep -E '^(indicatif|colored|clap|chrono|dirs|futures|minijinja|sha2) v' || true)
           if [ -n "$leaked" ]; then
-            echo "CLI dependencies reachable by a library consumer:"
+            echo "::error::CLI dependencies reachable by a library consumer:"
             echo "$leaked"
             exit 1
           fi
 
       - name: Library writes nothing to the terminal
         # Backs the spawned-process assertions in tests/backend_public_api.rs
-        # with a source-level rule, so a new direct write is caught even if no
-        # test happens to exercise that path.
+        # with a source-level rule, so a new direct write is caught even when
+        # no test exercises that path.
         run: |
           set -euo pipefail
           if grep -rnE '\b(println!|eprintln!|print!|eprint!)' src/backend/; then
-            echo "src/backend/ must not write to the terminal; use log::warn!/debug!"
+            echo "::error::src/backend/ must not write to the terminal; use log::warn!/debug!"
             exit 1
           fi
 
@@ -130,19 +171,16 @@ jobs:
         # --lib, not --all-targets: tests/integration.rs shells out to
         # `cargo run --bin lok`, which re-enters Cargo with default features
         # and so proves nothing about the lean build.
-        run: cargo test --lib --no-default-features
+        run: cargo test --locked --lib --no-default-features
 
       - name: Clippy, no default features
-        run: cargo clippy --lib --tests --no-default-features -- -D warnings
-
-      - name: Bedrock feature still compiles
-        run: cargo check --no-default-features --features bedrock
+        run: cargo clippy --locked --lib --tests --no-default-features -- -D warnings
 
       - name: Public API is fully documented
         # src/lib.rs carries #![deny(missing_docs)] rather than warn: a crate
         # attribute overrides the command-line level, so `warn` would silently
         # downgrade the -D below and make this gate decorative.
-        run: RUSTDOCFLAGS='-D missing_docs' cargo doc --no-deps --lib --all-features
+        run: RUSTDOCFLAGS='-D missing_docs' cargo doc --locked --no-deps --lib --all-features
 
       - name: Binaries install with no extra flags
         # default = ["cli"], so `cargo install` must keep working unchanged.
@@ -150,6 +188,6 @@ jobs:
         run: |
           set -euo pipefail
           root=$(mktemp -d)
-          cargo install --path . --root "$root" --force
+          cargo install --locked --path . --root "$root" --force
           test -x "$root/bin/lok"
           test -x "$root/bin/lokomotiv"

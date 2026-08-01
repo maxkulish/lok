@@ -1,117 +1,201 @@
 name: Release
 
+# Two-stage pipeline, after gcm's:
+#   1. `build`   -> one archive per target, uploaded as an artifact
+#   2. `release` -> a single job assembling ALL artifacts into ONE GitHub Release
+# Stage 2 needs stage 1, so one runner failure cannot fragment a release.
+#
+# Runner labels are pinned by version rather than `-latest`. What ships from
+# here is distributed, so the glibc floor a build inherits is part of the
+# product, not an implementation detail: ubuntu-22.04 sets it at 2.35.
+#
+# lok links OpenSSL through reqwest's default `native-tls`, so gcm's static musl
+# targets are not available without a cross-compiled OpenSSL. Every target below
+# is therefore built natively on its own architecture.
+
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build (e.g. v20260603.0.0) - produces a DRAFT release'
+        required: true
 
-permissions:
-  contents: write
+env:
+  CARGO_TERM_COLOR: always
+  # Oldest glibc the Linux artifacts may require, set by the ubuntu-22.04 image.
+  GLIBC_MAX_MINOR: 35
 
 jobs:
-  test:
-    name: Run tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Clippy
-        run: cargo clippy -- -D warnings
-
-      - name: Run tests
-        run: cargo test --verbose
-
   build:
-    needs: test
-    name: Build ${{ matrix.target }}
+    name: build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: lok
-            asset_name: lok-linux-x86_64
-
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
         with:
-          targets: ${{ matrix.target }}
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Assert tag is well-formed, real, reachable, and matches Cargo.toml
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+          # Strict shape. A `case v[0-9]*` glob would accept `v1-anything`.
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'; then
+            echo "::error::tag '$TAG' must match vX.Y.Z or vX.Y.Z-rc.N"; exit 1
+          fi
 
-      - name: Strip binary
-        run: strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::tag '$TAG' does not exist in this repository"; exit 1
+          fi
 
-      - name: Upload binary
+          # A tag can point anywhere. Releasing a commit that never landed on
+          # main would ship code no gate ever saw.
+          TAG_SHA=$(git rev-list -n1 "refs/tags/$TAG")
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$TAG_SHA" origin/main; then
+            echo "::error::tag '$TAG' ($TAG_SHA) is not reachable from main"; exit 1
+          fi
+
+          VER="${TAG#v}"          # v1.2.3-rc.1 -> 1.2.3-rc.1
+          BASE_VER="${VER%%-*}"   # 1.2.3-rc.1  -> 1.2.3
+          CARGO_VER=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
+          echo "tag=$TAG cargo=$CARGO_VER base=$BASE_VER"
+          # Final tags must match Cargo.toml exactly; -rc.N rehearsals only need
+          # the base to match, because the binary reports the base version.
+          if [ "$VER" = "$BASE_VER" ]; then
+            [ "$CARGO_VER" = "$VER" ] || {
+              echo "::error::Cargo.toml version ($CARGO_VER) does not match tag ($TAG)"; exit 1; }
+          else
+            [ "$CARGO_VER" = "$BASE_VER" ] || {
+              echo "::error::Cargo.toml version ($CARGO_VER) does not match pre-release base ($BASE_VER)"; exit 1; }
+          fi
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build (release)
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Smoke test both binaries on their native runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bin in lok lokomotiv; do
+            BIN="target/${{ matrix.target }}/release/$bin"
+            "$BIN" --version
+            "$BIN" --help >/dev/null
+          done
+
+      # Proves the artifact is distributable, not merely that it runs on the
+      # machine that built it.
+      - name: Check glibc floor and record dynamic dependencies
+        if: contains(matrix.target, 'linux')
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="target/${{ matrix.target }}/release/lok"
+          ldd --version | head -1
+          echo "--- dynamic dependencies ---"
+          ldd "$BIN"
+          echo "--- required GLIBC symbol versions ---"
+          REQUIRED=$(objdump -T "$BIN" | grep -o 'GLIBC_2\.[0-9]\+' | sort -Vu)
+          echo "$REQUIRED"
+          TOO_NEW=$(echo "$REQUIRED" | awk -F. -v max="$GLIBC_MAX_MINOR" '$3 > max')
+          if [ -n "$TOO_NEW" ]; then
+            echo "::error::binary requires glibc newer than 2.$GLIBC_MAX_MINOR: $TOO_NEW"; exit 1
+          fi
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIST="lok-${TAG}-${{ matrix.target }}"
+          STAGE="$(mktemp -d)"
+          cp "target/${{ matrix.target }}/release/lok" "$STAGE/"
+          cp "target/${{ matrix.target }}/release/lokomotiv" "$STAGE/"
+          cp LICENSE "$STAGE/"
+          tar czf "${DIST}.tar.gz" -C "$STAGE" .
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${DIST}.tar.gz" > "${DIST}.tar.gz.sha256"
+          else
+            shasum -a 256 "${DIST}.tar.gz" > "${DIST}.tar.gz.sha256"
+          fi
+          echo "DIST=$DIST" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
-          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          name: ${{ env.DIST }}
+          path: |
+            ${{ env.DIST }}.tar.gz
+            ${{ env.DIST }}.tar.gz.sha256
+          if-no-files-found: error
 
   release:
-    name: Create Release
+    name: assemble release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-
+    permissions:
+      contents: write   # default GITHUB_TOKEN is read-only; needed to create/edit a Release
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: dist
+          merge-multiple: true
 
-      - name: Prepare release binaries
+      - name: Classify the release
+        id: classify
+        shell: bash
         run: |
-          mkdir -p release
-          for dir in artifacts/*/; do
-            artifact_name=$(basename "$dir")
-            mv "$dir/lok" "release/$artifact_name"
-          done
-          ls -la release/
+          set -euo pipefail
+          # A manual run is a rehearsal: it produces a draft, so it can never
+          # replace or mutate something users have already downloaded.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+          fi
+          case "$TAG" in
+            *-rc.*) echo "prerelease=true"  >> "$GITHUB_OUTPUT"
+                    echo "make_latest=false" >> "$GITHUB_OUTPUT" ;;
+            *)      echo "prerelease=false" >> "$GITHUB_OUTPUT"
+                    echo "make_latest=true"  >> "$GITHUB_OUTPUT" ;;
+          esac
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      # Pinned to the v3.0.2 commit. Re-running a real tag updates assets in
+      # place, which keeps re-runs idempotent; the tradeoff is that release
+      # assets are mutable, and the .sha256 files travel with them. They prove
+      # a download is intact, not that it came from a particular build.
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
         with:
-          files: release/*
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ env.TAG }}
+          files: dist/*
+          draft: ${{ steps.classify.outputs.draft }}
+          prerelease: ${{ steps.classify.outputs.prerelease }}
+          make_latest: ${{ steps.classify.outputs.make_latest }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          overwrite_files: true

@@ -1,12 +1,13 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-07-31 (CLO-591 started; CLO-593 backfilled into Recently Completed)
+**Last Updated**: 2026-08-01 (CLO-591 in PR review; CLO-600 merged; CLO-593 completion reconciled)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | In Progress | Phase 12 | - |
+| [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | In Review (PR #65) | Phase 12 | - |
+| [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | In Progress | Phase 12 | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -19,7 +20,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
-| [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | 2026-07-26 | `[lib] lokomotiv` target alongside the existing binaries; `Backend` trait and concrete backends re-exported at the crate root; `test-support` feature for downstream test helpers. PR #61, merged `ee28f3c`. Six divergences from the CLO-589 ADR recorded rather than silently absorbed; CLO-591 closes them. |
+| [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | 2026-07-26 | `[lib]` target added alongside the binaries; `backend::config` split out, orchestration reparented into `engine.rs`, external-consumer test added. Merged as `ee28f3c` (PR #61), superseding CLO-590. Six divergences from the CLO-589 ADR were recorded rather than silently absorbed; CLO-591 closes them. |
 | [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | 2026-07-26 | Boundary contract for backend library extraction recorded; extraction implementation landed in CLO-593 (CLO-590 was canceled as superseded). |
 | [CLO-396](https://linear.app/cloud-ai/issue/CLO-396) | FR-12c: Setup-guide + docs refresh (opencode install, `opencode auth login`, remove npx refs) | 2026-05-25 | Docs and setup guide updated for the opencode migration; breaking-change banner, migration guide rewrite (install/auth/overrides), sandbox-mapping table, and `lok doctor` warmup/cache details. |
 | [CLO-393](https://linear.app/cloud-ai/issue/CLO-393) | FR-14: `lok doctor` HealthStatus renderer (table + JSON) | 2026-05-25 | Wired `lok doctor` to `warmup_backends()`; renders table + `--output json`; exit 0/1 on availability; Gemini row uses `oauth\|api-key\|none` (post-opencode). |

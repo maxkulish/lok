@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-07-31 (Phase 12 opened; CLO-591 in progress)
+**Last Updated**: 2026-08-01 (Phase 12 consolidated; CLO-591 in review, CLO-600 in progress)
 
 ## Summary
 
@@ -17,7 +17,7 @@
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
 | Phase 11: Health Checks | 1 | 1 | Complete |
-| Phase 12: Backend Library Extraction | 4 | 2 | In Progress |
+| Phase 12: Library Extraction & CI | 5 | 2 | In Progress |
 
 ## Phase 11: Health Checks
 
@@ -27,17 +27,18 @@ Source: `docs/prds/prd-phase-2-predictable-cli-execution-v5.md` §9 step 6 (Heal
 |------|-------|--------|--------------|
 | [CLO-391](https://linear.app/cloud-ai/issue/CLO-391/fr-13a-claude-dual-mode-health-probe-api-vs-cli) | FR-13a: Claude dual-mode health probe (Api vs Cli) | Done | CLO-388 |
 
-## Phase 12: Backend Library Extraction
+## Phase 12: Library Extraction & CI
 
 Source: `docs/adrs/clo-589-backend-library-shape.md`
 
-Makes the `Backend` abstraction consumable by an external crate. CLO-589 fixed the contract, CLO-593 built the target, CLO-591 cleans the surface, CLO-592 ships it.
+Makes the `Backend` abstraction consumable by an external crate, and puts a CI gate under the work. CLO-589 fixed the contract, CLO-593 built the target, CLO-591 cleans the surface, CLO-592 ships it; CLO-600 is what stops any of it regressing unnoticed.
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | Done | - |
 | [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | Done | CLO-589 |
-| [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | In Progress | CLO-593 |
+| [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | In Progress | - |
+| [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | In Review (PR #65) | CLO-593 |
 | [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | Backlog | CLO-591 |
 
 ## Phase 2: Validation Pipeline
