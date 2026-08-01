@@ -43,9 +43,10 @@ pub struct BackendConfig {
     pub retry_delay_ms: Option<u64>,
 }
 
-/// Default value for `BackendConfig.enabled`. Public so the derive can reference it
-/// from the binary crate's re-export.
-pub fn default_enabled() -> bool {
+/// Default value for `BackendConfig::enabled`. Crate-internal: the binary
+/// carries its own `default_enabled` in `src/cache.rs`, so nothing outside this
+/// module ever referenced the library's copy.
+pub(crate) fn default_enabled() -> bool {
     true
 }
 
@@ -75,7 +76,7 @@ impl Default for RetryDefaults {
 /// Deserialize an `Option<Duration>` from a human-readable duration string
 /// ("30s", "5m", "1h") or a raw integer (interpreted as **seconds**).
 /// Used for config-level fields (`BackendConfig.timeout`).
-pub fn deser_duration_seconds<'de, D: de::Deserializer<'de>>(
+pub(crate) fn deser_duration_seconds<'de, D: de::Deserializer<'de>>(
     d: D,
 ) -> Result<Option<Duration>, D::Error> {
     d.deserialize_any(DurationSecondsVisitor)
@@ -83,7 +84,7 @@ pub fn deser_duration_seconds<'de, D: de::Deserializer<'de>>(
 
 /// Serialize an `Option<Duration>` as an integer (seconds).
 /// Used for config-level fields (`BackendConfig.timeout`).
-pub fn serialize_duration_seconds<S: ser::Serializer>(
+pub(crate) fn serialize_duration_seconds<S: ser::Serializer>(
     val: &Option<Duration>,
     s: S,
 ) -> Result<S::Ok, S::Error> {

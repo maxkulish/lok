@@ -70,24 +70,14 @@ fn rust_log_is_honoured_rather_than_hard_coded() {
     );
 }
 
-#[test]
-fn raising_verbosity_does_not_leak_third_party_records() {
-    // The logger filter is scoped to this crate: raising it to debug must not
-    // pull in reqwest, hyper, tokio or rustls internals.
-    let output = Command::new(env!("CARGO_BIN_EXE_lok"))
-        .arg("backends")
-        .env("RUST_LOG", "debug")
-        .output()
-        .expect("spawn lok");
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    for noisy in ["hyper::", "reqwest::", "tokio::", "rustls::", "h2::"] {
-        assert!(
-            !stderr.contains(noisy),
-            "third-party records leaked at debug level ({noisy}): {stderr:?}"
-        );
-    }
-}
+// Note on what is NOT tested here: an earlier version asserted that stderr
+// contained no "reqwest::" or "hyper::" under RUST_LOG=debug. That assertion
+// could never fail. The formatter prints `record.args()` and no target, so a
+// leaked dependency record would arrive with no module name in it at all, and
+// `lok backends` makes no HTTP request to produce one either. The filter
+// behaviour it was meant to cover is unit-tested directly against
+// `logger_filter` in src/main.rs, where a bare RUST_LOG level is scoped to
+// lok's own targets rather than replacing the filter wholesale.
 
 fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

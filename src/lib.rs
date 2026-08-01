@@ -14,7 +14,7 @@ pub use backend::{
     create_backend, Backend, BackendConfig, BackendError, ClaudeBackend, CodexBackend,
     GeminiBackend, HealthStatus, Message, ModelInfo, OllamaBackend, QueryOutput, RetryDefaults,
     RetryExecutor, RetryPolicy, Role, SandboxMode, StepContext, StepOptions, TokenUsage,
-    DEFAULT_TIMEOUT, NO_TIMEOUT,
+    DEFAULT_TIMEOUT, NO_TIMEOUT, RETRY_LOG_TARGET,
 };
 
 #[cfg(feature = "bedrock")]

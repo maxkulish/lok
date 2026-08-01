@@ -507,7 +507,7 @@ pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
 pub const DEFAULT_HEALTH_CACHE_TTL: Duration = Duration::from_secs(60 * 30);
 /// Environment variable overriding [`DEFAULT_HEALTH_CACHE_TTL`]. Accepts a
 /// humantime duration such as `"5m"`.
-pub const HEALTH_TTL_ENV: &str = "LOK_HEALTH_TTL";
+pub(crate) const HEALTH_TTL_ENV: &str = "LOK_HEALTH_TTL";
 
 static HEALTH_CACHE_TTL: OnceLock<Duration> = OnceLock::new();
 /// Latch ensuring the resolved TTL is announced at most once per process.
@@ -561,7 +561,7 @@ pub fn is_cache_entry_fresh(entry: &CachedBackend, ttl: Duration) -> bool {
 }
 
 /// Library-side cache availability check used by provider `is_available` impls.
-pub fn is_backend_available(name: &str) -> bool {
+pub(crate) fn is_backend_available(name: &str) -> bool {
     let Some(cache) = BACKEND_CACHE.get() else {
         return false;
     };
@@ -602,6 +602,13 @@ pub fn resolve_timeout(
 
 /// Default timeout applied when no timeout is configured at any layer.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// `log` target for the retry notice emitted by [`RetryExecutor`].
+///
+/// Carved out so a front end can render retries differently from ordinary
+/// warnings. `lok` uses it to keep the `↻` glyph it has always shown, which
+/// lets the library log facts while the binary owns presentation.
+pub const RETRY_LOG_TARGET: &str = "lokomotiv::retry";
 
 /// Near-infinite sentinel: map timeout=0 to this (existing convention for "no timeout").
 pub const NO_TIMEOUT: Duration = Duration::from_secs(365 * 24 * 60 * 60);

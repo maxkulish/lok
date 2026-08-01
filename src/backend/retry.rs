@@ -99,7 +99,8 @@ impl Backend for RetryExecutor {
                 };
 
                 log::warn!(
-                    "retrying {} (attempt {}/{}) in {:?}",
+                    target: crate::backend::RETRY_LOG_TARGET,
+                    "Retrying {} (attempt {}/{}) in {:?}...",
                     self.inner.name(),
                     attempt,
                     self.policy.max_retries,

@@ -71,13 +71,13 @@ The table below is the durable item-by-item contract for the extraction, carried
 | `BedrockBackend` and its constructor | `src/backend/bedrock.rs` | Library, feature-gated | Optional concrete backend; remains under `cfg(feature = "bedrock")`. |
 | `BackendConfig` | `src/backend/config.rs` | Library | Leaf configuration required by backend constructors and retry policy. |
 | `Defaults` | `src/config.rs` | **Binary** *(amended CLO-591)* | The binary's config-shaped defaults. The library takes the narrow `RetryDefaults` instead. |
-| `deser_duration_seconds`, `deser_duration_millis` | `src/config.rs` | Library | Serde dependencies of the leaf configuration. |
-| `serialize_duration_seconds`, `serialize_duration_millis` | `src/config.rs` | Library | Serde dependencies of the leaf configuration. |
+| `deser_duration_seconds`, `deser_duration_millis` | `src/config.rs` | **Binary; library copy is `pub(crate)`** *(amended CLO-591)* | The binary keeps its own at `src/config.rs:114`. `BackendConfig`'s copy is only referenced by its own derive, so it needs no public exposure. |
+| `serialize_duration_seconds`, `serialize_duration_millis` | `src/config.rs` | **Binary; library copy is `pub(crate)`** *(amended CLO-591)* | As above; the binary's lives at `src/config.rs:131`. |
 | `create_backend` | `src/backend/mod.rs` | **Library** *(amended CLO-591)* | The consumer's entry point. It does still mix dispatch with the process-global cache; that constraint is documented on `BACKEND_CACHE` and deferred, not resolved. |
 | `create_claude_backend` | `src/backend/mod.rs` | Binary | Accepts binary-owned `Config`. |
 | `get_backends` | `src/backend/mod.rs` | Binary | Performs CLI selection, warnings, and orchestration. |
 | `list_backends` | `src/backend/mod.rs` | Binary | CLI presentation behavior. |
-| `is_backend_available` | `src/backend/mod.rs` | **Library, binary-support** *(amended CLO-591)* | Called from each provider's own `is_available()`, so it cannot leave the library. This is precisely what blocks re-keying or relocating `BACKEND_CACHE`. |
+| `is_backend_available` | `src/backend/mod.rs` | **Library, `pub(crate)`** *(amended CLO-591)* | Called from each provider's own `is_available()`, so it cannot leave the library, but nothing outside `src/backend/` calls it either: the binary has its own `Engine::is_backend_available` (`src/engine.rs:178`). Its dependence on the name-keyed cache is what blocks re-keying or relocating `BACKEND_CACHE`. |
 | `run_query` | `src/backend/mod.rs` | Binary | Multi-backend CLI orchestration. |
 | `run_query_with_config` | `src/backend/mod.rs` | Binary | Accepts `Config` and owns progress/terminal behavior. |
 | `Engine` | `src/backend/mod.rs` | Binary | CLI lifecycle namespace. |
@@ -174,9 +174,18 @@ Every `pub` item reachable from `lokomotiv::` falls into one of four categories.
 | Category | Meaning | Members |
 | --- | --- | --- |
 | **Abstraction** | The provider-agnostic API a consumer is meant to use | `Backend`, `create_backend`, `BackendConfig`, `BackendError`, `QueryOutput`, `TokenUsage`, `StepContext`, `StepOptions`, `HealthStatus`, `ModelInfo`, `Message`, `Role`, `SandboxMode`, `RetryPolicy`, `RetryExecutor`, `RetryDefaults`, the four provider types, `DEFAULT_TIMEOUT`, `NO_TIMEOUT`, `resolve_timeout` |
-| **Binary-support** | Public only because `src/engine.rs` and `src/workflow.rs` consume them across the lib/bin target boundary, where `pub(crate)` does not reach | `BACKEND_CACHE`, `get_backend_cache`, `CachedBackend`, `is_cache_entry_fresh`, `health_cache_ttl`, `parse_health_cache_ttl`, `HEALTH_TTL_LOGGED`, `DEFAULT_HEALTH_CACHE_TTL`, `HEALTH_TTL_ENV`, `is_backend_available`, `FLAG_MATRIX`, `FlagRequirement`, `ClaudeBackend::api_details`, the `config` serde helpers |
+| **Binary-support** | Public only because `src/engine.rs` and `src/workflow.rs` consume them across the lib/bin target boundary, where `pub(crate)` does not reach. Each was verified against a real call site, not a name match | `BACKEND_CACHE`, `get_backend_cache`, `CachedBackend`, `is_cache_entry_fresh`, `health_cache_ttl`, `parse_health_cache_ttl`, `HEALTH_TTL_LOGGED`, `DEFAULT_HEALTH_CACHE_TTL`, `FLAG_MATRIX`, `FlagRequirement`, `ClaudeBackend::api_details` |
 | **Test-only** | Behind `#[cfg(any(test, feature = "test-support"))]` | `acquire_test_lock`, `TestLockGuard`, `StubBackend`, `clear_health_cache`, `set_mock_health`, `write_exec_script` |
-| **Removed** | Demoted to `pub(crate)` in CLO-591, after checking each against the binary | `ClaudeMode`, `resolve_health_cache_ttl`, the Bedrock wire DTOs (`Message`, `MessageContent`, `ContentBlock`, `BedrockResponse`, `BedrockUsage`, `ResponseBlock`), `BedrockBackend::invoke_with_messages` |
+| **Removed** | Demoted to `pub(crate)` in CLO-591, after checking each against the binary | `ClaudeMode`, `resolve_health_cache_ttl`, the Bedrock wire DTOs (`Message`, `MessageContent`, `ContentBlock`, `BedrockResponse`, `BedrockUsage`, `ResponseBlock`), `BedrockBackend::invoke_with_messages`, `HEALTH_TTL_ENV`, `is_backend_available`, `default_enabled`, `deser_duration_seconds`, `serialize_duration_seconds` |
+
+The last five in that row were first classified as binary-support in error. A
+grep for each name found hits outside `src/backend/`, but those hits were the
+binary's own same-named copies: `Engine::is_backend_available`
+(`src/engine.rs:178`), `default_enabled` (`src/cache.rs:75`), and
+`deser_duration_seconds` / `serialize_duration_seconds` (`src/config.rs:114`,
+`:131`). Nothing imported the library's versions. Name-matching is not a
+usage check; the corrected method is to look for an actual import or a
+qualified path.
 
 Eliminating the binary-support category means moving the health cache into the binary, which the deferral below rules out for now.
 
@@ -190,7 +199,7 @@ Eliminating the binary-support category means moving the health cache into the b
 
 The constraint is now documented on `BACKEND_CACHE` and `create_backend` so a consumer meets it in rustdoc rather than in production. **Revisit before CLO-592 publishes.**
 
-**2. Retry logging — resolved.** All library warnings go through the `log` facade: `log::warn!` for the retry notice, the `LOK_HEALTH_TTL` parse warning and the read-only-sandbox downgrade, `log::debug!` for the Claude probe diagnostics. `log` with no logger installed is a no-op, so an embedding consumer sees nothing. Messages carry facts rather than terminal chrome; the binary installs `env_logger` with a custom formatter and renders them.
+**2. Retry logging — resolved.** All library warnings go through the `log` facade: `log::warn!` for the retry notice, the `LOK_HEALTH_TTL` parse warning and the read-only-sandbox downgrade, `log::debug!` for the Claude probe diagnostics. The retry notice carries its own target, `RETRY_LOG_TARGET`, so a front end can render retries distinctly from ordinary warnings; `lok` uses it to keep the `↻` glyph it has always shown. That keeps presentation in the binary without flattening a retry into a generic `warning:` line. `log` with no logger installed is a no-op, so an embedding consumer sees nothing. Messages carry facts rather than terminal chrome; the binary installs `env_logger` with a custom formatter and renders them.
 
 Two sites the CLO-591 ticket did not know about were included: `codex.rs` and `gemini.rs` were writing the sandbox warning to **stdout**, which corrupts a consumer's piped output.
 
