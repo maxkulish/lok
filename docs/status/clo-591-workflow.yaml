@@ -110,7 +110,18 @@ phases:
       terminal_writes: none in src/backend/
       install: cargo install --path . produced lok and lokomotiv with no extra flags
   pr:
-    status: pending
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/65
+    pr_number: 65
+    branch: feat/clo-591-strip-cli
+    base: main
+    ci_passed: false
+    reviews_addressed: 0
+    pre_flight:
+      fmt: pass
+      clippy: pass
+      tests: 1243 passed, 0 failed, 0 ignored
+      working_tree: clean
   complete:
     status: pending
 pre_spec_verification:
@@ -335,3 +346,16 @@ implement:
       CI gates run this suite and AC12 requires zero failures. Fixed with the pattern gemini already used
       (src/backend/gemini.rs:15-19): the probe timeout became a field defaulting to 2s, and the fake-script tests set a
       generous budget. Reproduced within 2 runs before, 8 consecutive clean runs after.
+  - timestamp: '2026-08-01T00:00:00.000Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'fmt clean, clippy clean, 1243 tests passed with 0 failed and 0 ignored, working tree clean.'
+  - timestamp: '2026-08-01T00:00:00.000Z'
+    action: pr_created
+    phase: pr
+    details: >-
+      PR #65 opened against main. Body records the three findings that changed the work (both proposed cache fixes are
+      blocked by is_backend_available's name-only lookup; two ADR divergence rows were factually wrong; StepContext
+      confirmed call-shaped), the fourth API category, the AC amendment made in Linear, the behaviour change to the
+      claude probe diagnostics, and the two standing risks: the cache footgun ships to crates.io via CLO-592 unless
+      someone reworks is_available, and the boundary is convention-enforced so the new CI job is load-bearing.
