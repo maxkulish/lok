@@ -1337,10 +1337,12 @@ mod tests {
             "claude (disabled) should not be available after warmup"
         );
 
-        // Also verify cache only has exactly one entry (for ollama)
+        // Scoped to the keys this test owns. The cache is process-global and
+        // `create_backend` writes to it, so tests in conductor/spawn/team can add
+        // entries concurrently - asserting on its total size asserts something no
+        // test can control.
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
-        assert_eq!(lock.len(), 1, "Expected exactly 1 cached health status");
         assert!(lock.contains_key("ollama"), "Cache should contain ollama");
         assert!(
             !lock.contains_key("claude"),
@@ -1464,11 +1466,15 @@ mod tests {
         // Unknown backend should not be in the cache
         assert!(!Engine::is_backend_available("nonexistent-backend-name"));
 
-        // Verify the cache only has ollama
+        // Scoped to the keys this test owns; see the note in the disabled-backend
+        // test above on why the cache's total size is not this test's to assert.
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
-        assert_eq!(lock.len(), 1, "Only ollama should be cached");
         assert!(lock.contains_key("ollama"));
+        assert!(
+            !lock.contains_key("nonexistent-backend-name"),
+            "unknown backend must not be cached"
+        );
     }
 
     #[tokio::test]
@@ -1638,9 +1644,9 @@ mod tests {
         set_mock_health("ollama", HealthStatus::new_unavailable());
         assert!(!Engine::is_backend_available("ollama"));
 
-        // Verify the cache only has one entry
+        // Repeated set_mock_health for one name replaces rather than accumulates.
         let lock = cache.read().expect("lock poisoned");
-        assert_eq!(lock.len(), 1);
+        assert!(lock.contains_key("ollama"));
     }
 
     #[tokio::test]
@@ -1729,7 +1735,8 @@ mod tests {
         // Verify warmup didn't re-check gemini
         let cache = get_backend_cache();
         let lock = cache.read().expect("locked");
-        assert_eq!(lock.len(), 2, "Both backends should be in health cache");
+        assert!(lock.contains_key("ollama"), "ollama should be cached");
+        assert!(lock.contains_key("gemini"), "gemini should still be cached");
     }
 
     #[tokio::test]
@@ -1749,10 +1756,13 @@ mod tests {
         set_mock_health("test", HealthStatus::new_available());
         assert!(Engine::is_backend_available("test"));
 
-        // Verify only one entry exists (overwrite, not duplicate)
+        // Overwrites replace the "test" entry rather than accumulating under it.
         let cache = get_backend_cache();
         let lock = cache.read().expect("locked");
-        assert_eq!(lock.len(), 1, "Expected exactly 1 entry after overwrites");
+        assert!(
+            lock.contains_key("test"),
+            "Expected the test entry to survive"
+        );
     }
 
     #[tokio::test]
@@ -1786,7 +1796,8 @@ mod tests {
         // Both should be in the cache
         let cache = get_backend_cache();
         let lock = cache.read().expect("locked");
-        assert_eq!(lock.len(), 2, "Both backends should be cached after warmup");
+        assert!(lock.contains_key("ollama"), "ollama should be cached");
+        assert!(lock.contains_key("gemini"), "gemini should be cached");
 
         // ollama should be probed and recorded, whatever the verdict
         assert!(
