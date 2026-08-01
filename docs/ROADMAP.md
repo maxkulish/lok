@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-07-31 (CLO-593 complete; CLO-600 in progress)
+**Last Updated**: 2026-08-01 (CLO-600 complete)
 
 ## Summary
 
@@ -17,7 +17,7 @@
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
 | Phase 11: Health Checks | 2 | 2 | Complete |
-| Phase 12: Library Extraction & CI | 3 | 1 | In Progress |
+| Phase 12: Library Extraction & CI | 3 | 2 | In Progress |
 
 ## Phase 12: Library Extraction & CI
 
@@ -26,7 +26,7 @@ Source: `docs/adrs/clo-589-backend-library-shape.md`
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | Done | CLO-589 |
-| [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | In Progress | - |
+| [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | Done | - |
 | [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | Backlog | CLO-593 |
 
 ## Phase 11: Health Checks
