@@ -26,8 +26,8 @@ linear:
   labels:
     - AFK
 workflow:
-  current_phase: pr
-  status: in_progress
+  current_phase: complete
+  status: complete
   created_at: '2026-07-31T20:11:26.000Z'
   updated_at: '2026-07-31T22:05:00.000Z'
 phases:
@@ -110,20 +110,52 @@ phases:
       terminal_writes: none in src/backend/
       install: cargo install --path . produced lok and lokomotiv with no extra flags
   pr:
-    status: in_progress
+    status: complete
     pr_url: https://github.com/maxkulish/lok/pull/65
     pr_number: 65
     branch: feat/clo-591-strip-cli
     base: main
-    ci_passed: false
-    reviews_addressed: 0
+    ci_passed: true
+    approved: true
+    merged_at: '2026-08-01T09:46:13Z'
+    merge_commit: 284b646
+    reviews_addressed: 3
+    review_rounds: 2
+    ci_checks:
+      - 'build / test (ubuntu-latest): pass'
+      - 'build / test (macos-latest): pass'
+      - 'library boundary: pass'
+      - 'CI Gate: pass'
+      - 'etxtbsy-stress: skipped (label-gated)'
     pre_flight:
       fmt: pass
       clippy: pass
       tests: 1243 passed, 0 failed, 0 ignored
       working_tree: clean
   complete:
-    status: pending
+    status: complete
+    merged_at: '2026-08-01T09:46:13Z'
+    merge_commit: 284b646
+    aggregation_files_updated: true
+    linear_status: Done
+    lessons_learned:
+      - >-
+        A crate-level lint attribute overrides the command line. `#![warn(missing_docs)]` silently downgraded the -D in
+        RUSTDOCFLAGS, so the CI gate reported success while three undocumented items sailed through. Verifying a gate by
+        grepping its output for "^error" is not verifying the gate; inject a violation and confirm it fails.
+      - >-
+        Name-matching is not a usage check. Five items were classified as needed-by-the-binary because a grep found the
+        name outside src/backend/, but those hits were the binary's own same-named copies. Look for an import or a
+        qualified path.
+      - >-
+        A test can assert something that cannot happen. One test grepped stderr for "reqwest::" while the formatter
+        printed no target at all, so it could never fail. Ask what would have to break for this assertion to fire.
+      - >-
+        Cargo unifies features across the graph, so a dev-dependency carrying a default feature re-enables it during
+        `cargo test --no-default-features` and quietly tests the wrong build.
+      - >-
+        `pub(crate)` does not cross the lib/bin target boundary. Items that look internal can be pinned public by the
+        binary, which needs a fourth API category rather than a forced fit into three.
 pre_spec_verification:
   performed_at: '2026-07-31T20:11:26.000Z'
   note: >-
@@ -201,6 +233,47 @@ open_decisions:
       holds structurally. Binary adds env_logger under the cli feature to keep warnings visible. tracing rejected as
       more machinery than four sites justify; structured-return rejected as signature churn the facade already covers.
     status: resolved
+implement_sub_tasks:
+  sub_tasks:
+    - id: 1
+      title: Route library warnings through log
+      status: complete
+      blocks: [3, 4, 8]
+    - id: 2
+      title: Add the no-terminal-writes grep gate
+      status: complete
+    - id: 3
+      title: Feature-gate binary-only dependencies
+      status: complete
+      blocked_by: [1]
+    - id: 4
+      title: Install a binary-side logger with a custom formatter
+      status: complete
+      blocked_by: [1]
+    - id: 5
+      title: Close the Tokio leak in test-support (guard and TEST_MUTEX)
+      status: complete
+    - id: 6
+      title: Shrink the public surface
+      status: complete
+      blocks: [7]
+    - id: 7
+      title: Document the remainder and add the rustdoc gate
+      status: complete
+      blocked_by: [6]
+    - id: 8
+      title: Build the silence test harness
+      status: complete
+      blocked_by: [1]
+    - id: 9
+      title: Add the CI gates
+      status: complete
+      note: Land last so the gates guard finished work.
+    - id: 10
+      title: Reconcile the ADR
+      status: complete
+      note: Linear half of this sub-task already done; see linear_ac_amended.
+
 history:
   - timestamp: '2026-07-31T20:11:26.000Z'
     action: workflow_started
@@ -280,46 +353,6 @@ history:
       inline note recording why (default = [] would break cargo install lokomotiv), the tradeoff accepted (an ordinary
       consumer still inherits every CLI dependency), the declined workspace-split alternative to revisit before
       CLO-592, and the exact-name matching requirement. Issue moved to In Progress.
-implement:
-  sub_tasks:
-    - id: 1
-      title: Route library warnings through log
-      status: complete
-      blocks: [3, 4, 8]
-    - id: 2
-      title: Add the no-terminal-writes grep gate
-      status: complete
-    - id: 3
-      title: Feature-gate binary-only dependencies
-      status: complete
-      blocked_by: [1]
-    - id: 4
-      title: Install a binary-side logger with a custom formatter
-      status: complete
-      blocked_by: [1]
-    - id: 5
-      title: Close the Tokio leak in test-support (guard and TEST_MUTEX)
-      status: complete
-    - id: 6
-      title: Shrink the public surface
-      status: complete
-      blocks: [7]
-    - id: 7
-      title: Document the remainder and add the rustdoc gate
-      status: complete
-      blocked_by: [6]
-    - id: 8
-      title: Build the silence test harness
-      status: complete
-      blocked_by: [1]
-    - id: 9
-      title: Add the CI gates
-      status: complete
-      note: Land last so the gates guard finished work.
-    - id: 10
-      title: Reconcile the ADR
-      status: complete
-      note: Linear half of this sub-task already done; see linear_ac_amended.
   - timestamp: '2026-07-31T22:05:00.000Z'
     action: implementation_complete
     phase: implement
@@ -359,3 +392,20 @@ implement:
       confirmed call-shaped), the fourth API category, the AC amendment made in Linear, the behaviour change to the
       claude probe diagnostics, and the two standing risks: the cache footgun ships to crates.io via CLO-592 unless
       someone reworks is_available, and the boundary is convention-enforced so the new CI job is load-bearing.
+  - timestamp: '2026-08-01T09:46:13.000Z'
+    action: pr_merged
+    phase: pr
+    details: >-
+      PR #65 merged as 284b646 after two review rounds and two merge-conflict resolutions against a moving main
+      (CLO-600 landed PRs #64, #66 and #67 while this was open). All four CI checks green.
+  - timestamp: '2026-08-01T09:47:37.000Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      PROJECT.md moved CLO-591 to Recently Completed and cleared Active Work. ROADMAP.md marked it Done, Phase 12 now
+      4 of 5. DEPENDENCIES.md cleared the CLO-592 blocker, listed CLO-592 as unblocked, and recorded the two items
+      CLO-591 deliberately left open with why each gets more expensive after CLO-592 publishes.
+  - timestamp: '2026-08-01T09:47:37.000Z'
+    action: workflow_complete
+    phase: complete
+    details: 'Task CLO-591 fully completed. Linear set to Done with a closing comment.'
