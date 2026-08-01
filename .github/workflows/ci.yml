@@ -103,16 +103,18 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      # The whole unit suite at default parallelism, not a filter over the
-      # exec-script tests: the competing subprocess tests are what create the
-      # fork traffic the race needs, so filtering them out can turn the run
-      # green by removing the cause.
-      - name: Stress the unit suite (20x)
+      # Every target at default parallelism, not a filter and not just --lib.
+      # Two reasons, both learned the hard way: the competing subprocess tests
+      # are what create the fork traffic an ETXTBSY race needs, and `--lib`
+      # covers 152 tests while the bin target carries 525 more - including the
+      # engine tests that reddened main in run 30690088822 after this job had
+      # passed 20/20 against the library alone.
+      - name: Stress the whole suite (20x)
         run: |
           cargo build --locked --tests
           for i in $(seq 1 20); do
             echo "::group::iteration $i"
-            cargo test --locked --lib || { echo "::error::failed on iteration $i"; exit 1; }
+            cargo test --locked || { echo "::error::failed on iteration $i"; exit 1; }
             echo "::endgroup::"
           done
 
