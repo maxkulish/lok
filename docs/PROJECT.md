@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-01 (CLO-600 complete: CI is a required gate and main is green)
+**Last Updated**: 2026-08-01 (CLO-600 complete: CI is a required gate and main is green; CLO-591 in review)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | In Review (PR #65) | Phase 12 | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -20,8 +20,8 @@
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
 | [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | 2026-08-01 | Dispatch was already fixed at intake; this made the gate trustworthy. Killed the ETXTBSY race in `write_exec_script` (proved by a red control run against a green treatment), rewrote all three workflows against gcm's, and made `CI Gate` a required check on main via ruleset 20153405. PRs #64 and #66. |
-| [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | 2026-07-26 | `[lib]` target added; `backend::config` split out, orchestration reparented into `engine.rs`, external-consumer test added. Merged as `ee28f3c` (PR #61). Supersedes CLO-590. |
-| [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | 2026-07-26 | Boundary contract for backend library extraction recorded; extraction implementation deferred to CLO-590. |
+| [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | 2026-07-26 | `[lib]` target added alongside the binaries; `backend::config` split out, orchestration reparented into `engine.rs`, external-consumer test added. Merged as `ee28f3c` (PR #61), superseding CLO-590. Six divergences from the CLO-589 ADR were recorded rather than silently absorbed; CLO-591 closes them. |
+| [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | 2026-07-26 | Boundary contract for backend library extraction recorded; extraction implementation landed in CLO-593 (CLO-590 was canceled as superseded). |
 | [CLO-396](https://linear.app/cloud-ai/issue/CLO-396) | FR-12c: Setup-guide + docs refresh (opencode install, `opencode auth login`, remove npx refs) | 2026-05-25 | Docs and setup guide updated for the opencode migration; breaking-change banner, migration guide rewrite (install/auth/overrides), sandbox-mapping table, and `lok doctor` warmup/cache details. |
 | [CLO-393](https://linear.app/cloud-ai/issue/CLO-393) | FR-14: `lok doctor` HealthStatus renderer (table + JSON) | 2026-05-25 | Wired `lok doctor` to `warmup_backends()`; renders table + `--output json`; exit 0/1 on availability; Gemini row uses `oauth\|api-key\|none` (post-opencode). |
 | [CLO-392](https://linear.app/cloud-ai/issue/CLO-392) | FR-13: Codex health probe + version-aware unusable-flag matrix | 2026-05-24 | Codex probe runs `codex --version` and records `unusable_flags` for older binaries so step execution skips unsupported flags rather than failing mid-run. |

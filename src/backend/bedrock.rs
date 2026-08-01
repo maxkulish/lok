@@ -8,8 +8,10 @@ use std::time::Instant;
 
 use super::TokenUsage;
 
+/// AWS Bedrock backend, reached through the AWS SDK.
 pub struct BedrockBackend {
     client: Client,
+    /// Bedrock model identifier this instance invokes.
     pub model_id: String,
 }
 
@@ -25,21 +27,21 @@ struct BedrockRequest {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Message {
+pub(crate) struct Message {
     pub role: String,
     pub content: MessageContent,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(untagged)]
-pub enum MessageContent {
+pub(crate) enum MessageContent {
     Text(String),
     Blocks(Vec<ContentBlock>),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type")]
-pub enum ContentBlock {
+pub(crate) enum ContentBlock {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
@@ -57,7 +59,7 @@ pub enum ContentBlock {
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
-pub struct BedrockResponse {
+pub(crate) struct BedrockResponse {
     pub content: Vec<ResponseBlock>,
     pub stop_reason: Option<String>,
     #[serde(default)]
@@ -67,7 +69,7 @@ pub struct BedrockResponse {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct BedrockUsage {
+pub(crate) struct BedrockUsage {
     pub input_tokens: u32,
     pub output_tokens: u32,
 }
@@ -75,7 +77,7 @@ pub struct BedrockUsage {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
 #[allow(dead_code)]
-pub enum ResponseBlock {
+pub(crate) enum ResponseBlock {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
@@ -87,6 +89,12 @@ pub enum ResponseBlock {
 }
 
 impl BedrockBackend {
+    /// Build the backend, loading AWS configuration from the ambient
+    /// environment (profile, region, credentials).
+    ///
+    /// # Errors
+    /// Returns an error when AWS configuration cannot be loaded or the config
+    /// names no model.
     pub async fn new(config: &BackendConfig) -> Result<Self> {
         let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
         let client = Client::new(&aws_config);
@@ -100,7 +108,7 @@ impl BedrockBackend {
     }
 
     #[allow(dead_code)]
-    pub async fn invoke_with_messages(
+    pub(crate) async fn invoke_with_messages(
         &self,
         system: Option<&str>,
         messages: Vec<Message>,

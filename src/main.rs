@@ -422,9 +422,79 @@ enum WorkflowCommands {
     },
 }
 
+/// Render library `log` records the way the CLI used to print them directly.
+///
+/// The library no longer writes to the terminal; it emits `log` records and
+/// leaves presentation here. The formatter deliberately drops env_logger's
+/// default timestamp, target and level prefixes, which would otherwise appear
+/// on every warning line the CLI has always shown bare.
+///
+/// Filtering is scoped to this crate so `--verbose` surfaces our own debug
+/// records without dumping reqwest, hyper and tokio internals on the user.
+fn init_logger(verbose: bool) {
+    use std::io::Write;
+
+    env_logger::Builder::new()
+        .parse_filters(&logger_filter(verbose, std::env::var("RUST_LOG").ok()))
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{}",
+                render_record(record.target(), record.level(), &record.args().to_string())
+            )
+        })
+        .init();
+}
+
+/// Render one `log` record the way the CLI has always printed it.
+///
+/// Split out from the formatter closure so the presentation is testable. The
+/// retry notice regressed to a generic `warning:` line once before, and nothing
+/// caught it, because the only assertions lived behind a spawned binary.
+fn render_record(target: &str, level: log::Level, message: &str) -> String {
+    // The library logs the retry notice under its own target precisely so the
+    // CLI can keep rendering it the way it always has, glyph and all, without
+    // the library owning any presentation.
+    if target == lokomotiv::RETRY_LOG_TARGET {
+        return format!("  {} {}", "↻".yellow(), message);
+    }
+    match level {
+        log::Level::Error => format!("{} {}", "error:".red(), message),
+        log::Level::Warn => format!("{} {}", "warning:".yellow(), message),
+        _ => message.to_string(),
+    }
+}
+
+/// Build the env_logger filter, keeping dependencies off by default.
+///
+/// `Env::default().default_filter_or(..)` is wrong here: a bare `RUST_LOG=debug`
+/// *replaces* the scoped filter outright and switches on records from every
+/// dependency in the tree. Since the formatter above prints no target, those
+/// records would arrive looking like lok's own output.
+///
+/// So a bare level is scoped to lok's targets and the global default stays
+/// `off`. A spec that names modules is passed through untouched, because
+/// `RUST_LOG=hyper=debug` is someone deliberately asking for hyper.
+fn logger_filter(verbose: bool, rust_log: Option<String>) -> String {
+    let level = |l: &str| format!("off,lokomotiv={l},lok={l}");
+
+    match rust_log {
+        Some(spec) if !spec.trim().is_empty() => {
+            if spec.contains('=') {
+                spec
+            } else {
+                level(spec.trim())
+            }
+        }
+        _ => level(if verbose { "debug" } else { "warn" }),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    // Before any library call, so no record is emitted while no logger exists.
+    init_logger(cli.verbose);
     let config = config::load_config(cli.config.as_deref())?;
 
     match cli.command {
@@ -2315,5 +2385,93 @@ mod tests {
     fn test_parse_pr_missing_pr_number() {
         let result = parse_pr_identifier("https://github.com/owner/repo/pull/", None);
         assert!(result.is_err());
+    }
+
+    // --- CLO-591: logger filter and record presentation ---
+
+    fn strip_ansi(s: &str) -> String {
+        let mut out = String::new();
+        let mut chars = s.chars();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                for e in chars.by_ref() {
+                    if e.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn bare_rust_log_level_is_scoped_to_lok_targets() {
+        // The bug this guards: `Env::default().default_filter_or(..)` lets a bare
+        // RUST_LOG=debug replace the scoped filter outright, switching on every
+        // dependency in the tree. The formatter prints no target, so those records
+        // would arrive looking like lok's own output.
+        assert_eq!(
+            super::logger_filter(false, Some("debug".to_string())),
+            "off,lokomotiv=debug,lok=debug"
+        );
+        assert_eq!(
+            super::logger_filter(false, Some("  trace  ".to_string())),
+            "off,lokomotiv=trace,lok=trace"
+        );
+    }
+
+    #[test]
+    fn explicit_module_directives_pass_through() {
+        // Someone writing RUST_LOG=hyper=debug is deliberately asking for hyper.
+        assert_eq!(
+            super::logger_filter(false, Some("hyper=debug".to_string())),
+            "hyper=debug"
+        );
+    }
+
+    #[test]
+    fn default_filter_keeps_dependencies_off() {
+        assert_eq!(
+            super::logger_filter(false, None),
+            "off,lokomotiv=warn,lok=warn"
+        );
+        assert_eq!(
+            super::logger_filter(true, None),
+            "off,lokomotiv=debug,lok=debug"
+        );
+        assert_eq!(
+            super::logger_filter(true, Some(String::new())),
+            "off,lokomotiv=debug,lok=debug"
+        );
+    }
+
+    #[test]
+    fn retry_records_keep_their_glyph() {
+        // The library dropped the glyph so it emits no terminal presentation;
+        // the binary puts it back. Byte-identical to the pre-CLO-591 line.
+        let rendered = super::render_record(
+            lokomotiv::RETRY_LOG_TARGET,
+            log::Level::Warn,
+            "Retrying claude (attempt 1/3) in 1s...",
+        );
+        assert_eq!(
+            strip_ansi(&rendered),
+            "  \u{21bb} Retrying claude (attempt 1/3) in 1s..."
+        );
+        assert!(!strip_ansi(&rendered).contains("warning:"));
+    }
+
+    #[test]
+    fn ordinary_warnings_keep_their_prefix() {
+        let rendered = super::render_record("lokomotiv::backend", log::Level::Warn, "bad TTL");
+        assert_eq!(strip_ansi(&rendered), "warning: bad TTL");
+
+        let err = super::render_record("lokomotiv::backend", log::Level::Error, "boom");
+        assert_eq!(strip_ansi(&err), "error: boom");
+
+        let dbg = super::render_record("lokomotiv::backend", log::Level::Debug, "detail");
+        assert_eq!(strip_ansi(&dbg), "detail");
     }
 }

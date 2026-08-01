@@ -1,6 +1,5 @@
 use super::{Backend, BackendError, HealthStatus, QueryOutput};
 use async_trait::async_trait;
-use colored::Colorize;
 use rand::Rng;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
@@ -99,9 +98,9 @@ impl Backend for RetryExecutor {
                     self.policy.get_delay(attempt)
                 };
 
-                eprintln!(
-                    "  {} Retrying {} (attempt {}/{}) in {:?}...",
-                    "↻".yellow(),
+                log::warn!(
+                    target: crate::backend::RETRY_LOG_TARGET,
+                    "Retrying {} (attempt {}/{}) in {:?}...",
                     self.inner.name(),
                     attempt,
                     self.policy.max_retries,

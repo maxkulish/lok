@@ -10,14 +10,24 @@ use std::time::Duration;
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(deny_unknown_fields)]
 pub struct BackendConfig {
+    /// Whether this backend may be selected. Defaults to `true`.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Executable to invoke for subprocess-backed backends, or the endpoint URL
+    /// for HTTP-backed ones such as Ollama.
     pub command: Option<String>,
+    /// Extra arguments appended to every invocation of `command`.
     #[serde(default)]
     pub args: Vec<String>,
+    /// Number of leading lines to strip from the backend's stdout before it is
+    /// treated as the response, for CLIs that print a banner.
     #[serde(default)]
     pub skip_lines: usize,
+    /// Environment variable holding the API key, for backends that authenticate
+    /// with one. The key itself is never stored in config.
     pub api_key_env: Option<String>,
+    /// Model identifier passed to the backend. Backend-specific; `None` leaves
+    /// the backend's own default in place.
     pub model: Option<String>,
     /// Per-backend timeout duration (overrides defaults.timeout). Accepts
     /// human-readable strings like "30s" or raw integers (seconds).
@@ -33,16 +43,20 @@ pub struct BackendConfig {
     pub retry_delay_ms: Option<u64>,
 }
 
-/// Default value for `BackendConfig.enabled`. Public so the derive can reference it
-/// from the binary crate's re-export.
-pub fn default_enabled() -> bool {
+/// Default value for `BackendConfig::enabled`. Crate-internal: the binary
+/// carries its own `default_enabled` in `src/cache.rs`, so nothing outside this
+/// module ever referenced the library's copy.
+pub(crate) fn default_enabled() -> bool {
     true
 }
 
 /// Fallbacks a caller supplies when a `BackendConfig` leaves retry fields unset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryDefaults {
+    /// Retry count used when `BackendConfig::max_retries` is `None`.
     pub max_retries: usize,
+    /// Base delay in milliseconds used when `BackendConfig::retry_delay_ms` is
+    /// `None`.
     pub retry_delay_ms: u64,
 }
 
@@ -62,7 +76,7 @@ impl Default for RetryDefaults {
 /// Deserialize an `Option<Duration>` from a human-readable duration string
 /// ("30s", "5m", "1h") or a raw integer (interpreted as **seconds**).
 /// Used for config-level fields (`BackendConfig.timeout`).
-pub fn deser_duration_seconds<'de, D: de::Deserializer<'de>>(
+pub(crate) fn deser_duration_seconds<'de, D: de::Deserializer<'de>>(
     d: D,
 ) -> Result<Option<Duration>, D::Error> {
     d.deserialize_any(DurationSecondsVisitor)
@@ -70,7 +84,7 @@ pub fn deser_duration_seconds<'de, D: de::Deserializer<'de>>(
 
 /// Serialize an `Option<Duration>` as an integer (seconds).
 /// Used for config-level fields (`BackendConfig.timeout`).
-pub fn serialize_duration_seconds<S: ser::Serializer>(
+pub(crate) fn serialize_duration_seconds<S: ser::Serializer>(
     val: &Option<Duration>,
     s: S,
 ) -> Result<S::Ok, S::Error> {

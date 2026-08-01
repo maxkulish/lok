@@ -7,16 +7,25 @@ use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 use tokio::process::Command;
 
+/// The OpenAI Codex CLI, invoked as a subprocess.
 pub struct CodexBackend {
     command: String,
     args: Vec<String>,
     default_model: Option<String>,
+    /// Timeout budget for the `codex --version` probe in `health_check`.
+    /// Defaults to 2s. Configurable for the same reason as the Gemini
+    /// equivalent: timing-sensitive tests need a generous budget to stay
+    /// deterministic under parallel CPU load, rather than racing the 2s
+    /// boundary when the suite saturates the machine.
+    version_probe_timeout: Duration,
 }
 
 /// One entry in the flag matrix.
 pub struct FlagRequirement {
+    /// The CLI flag, spelled exactly as passed.
     pub flag: &'static str,
-    pub min_version: (u32, u32, u32), // (major, minor, patch)
+    /// Lowest `(major, minor, patch)` Codex version accepting the flag.
+    pub min_version: (u32, u32, u32),
 }
 
 /// Canonical flag-version matrix for Codex CLI.
@@ -109,6 +118,11 @@ fn compare_versions(installed: (u32, u32, u32), required: (u32, u32, u32)) -> bo
 }
 
 impl CodexBackend {
+    /// Build the backend from `config`.
+    ///
+    /// # Errors
+    /// Returns an error when the configuration does not name a usable
+    /// command, endpoint or credential for this backend.
     pub fn new(config: &BackendConfig) -> Result<Self> {
         let command = config
             .command
@@ -131,6 +145,7 @@ impl CodexBackend {
             command,
             args,
             default_model: config.model.clone(),
+            version_probe_timeout: Duration::from_secs(2),
         })
     }
 
@@ -144,8 +159,8 @@ impl CodexBackend {
         match (apply_edits, sandbox) {
             (true, None) => Some(super::SandboxMode::WorkspaceWrite),
             (true, Some(super::SandboxMode::ReadOnly)) => {
-                println!(
-                    "[WARN] apply_edits=true but sandbox is read-only; edits will be parsed but the sandbox prevents writes"
+                log::warn!(
+                    "apply_edits=true but sandbox is read-only; edits will be parsed but the sandbox prevents writes"
                 );
                 Some(super::SandboxMode::ReadOnly)
             }
@@ -336,9 +351,9 @@ impl super::Backend for CodexBackend {
             message: format!("Codex CLI command '{}' not found on PATH", self.command),
         })?;
 
-        // 2. Version probe with 2 s timeout
+        // 2. Version probe, budget from `version_probe_timeout`.
         let output = tokio::time::timeout(
-            Duration::from_secs(2),
+            self.version_probe_timeout,
             Command::new(&cmd)
                 .arg("--version")
                 .kill_on_drop(true)
@@ -346,7 +361,10 @@ impl super::Backend for CodexBackend {
         )
         .await
         .map_err(|_| super::BackendError::Unavailable {
-            message: format!("Codex CLI '{}' --version timed out after 2s", self.command),
+            message: format!(
+                "Codex CLI '{}' --version timed out after {:?}",
+                self.command, self.version_probe_timeout
+            ),
         })?
         .map_err(|e| super::BackendError::Unavailable {
             message: format!("Failed to spawn codex --version: {}", e),
@@ -391,6 +409,7 @@ mod tests {
     use crate::backend::SandboxMode;
     use std::io::{self, Write};
     use std::path::PathBuf;
+    use std::time::Duration;
     use tempfile::NamedTempFile;
 
     #[test]
@@ -840,7 +859,10 @@ mod tests {
             args: vec![" exec".to_string(), "--json".to_string()],
             ..Default::default()
         };
-        let backend = CodexBackend::new(&cfg).unwrap();
+        let mut backend = CodexBackend::new(&cfg).unwrap();
+        // Generous budget: a fake shell script must not race the default 2s
+        // probe boundary when the suite saturates the machine.
+        backend.version_probe_timeout = Duration::from_secs(30);
         let status = backend.health_check().await.unwrap();
         assert!(status.available);
         assert_eq!(status.version, Some("0.119.0".to_string()));

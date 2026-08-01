@@ -64,15 +64,21 @@ jobs:
   # is protected by.
   ci-gate:
     name: CI Gate
-    needs: build-and-test
+    needs: [build-and-test, library-boundary]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Assert every matrix leg succeeded
+      - name: Assert every required job succeeded
         run: |
-          result='${{ needs.build-and-test.result }}'
-          echo "build-and-test: $result"
-          [ "$result" = "success" ] || exit 1
+          failed=0
+          for pair in \
+            "build-and-test:${{ needs.build-and-test.result }}" \
+            "library-boundary:${{ needs.library-boundary.result }}"; do
+            name=${pair%%:*}; result=${pair#*:}
+            echo "$name: $result"
+            [ "$result" = "success" ] || failed=1
+          done
+          [ "$failed" -eq 0 ] || exit 1
 
   # Deliberately outside `ci-gate`'s `needs`, so a required check can never be
   # satisfied by this job. Run it by adding the `ci-stress` label to a PR.
@@ -111,3 +117,79 @@ jobs:
             cargo test --locked || { echo "::error::failed on iteration $i"; exit 1; }
             echo "::endgroup::"
           done
+
+  # CLO-591. The library/binary boundary is a convention, not a compiler rule:
+  # `lib` and `bin` share one package and one dependency list, so with `cli` as
+  # a default feature a stray `colored` import on a library path compiles green
+  # under build-and-test. This job is what actually holds the boundary, which
+  # is why ci-gate requires it.
+  library-boundary:
+    name: library boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup component add clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Library builds without CLI features
+        run: cargo build --locked --lib --no-default-features
+
+      - name: No CLI dependency reaches a library consumer
+        # Exact package names, anchored. A substring match on `futures` would
+        # false-positive: futures-core and futures-util legitimately remain via
+        # reqwest -> hyper-tls -> hyper-util, and reqwest is a library dependency.
+        run: |
+          set -euo pipefail
+          leaked=$(cargo tree --locked --no-default-features -e normal --format '{p}' \
+            | grep -E '^(indicatif|colored|clap|chrono|dirs|futures|minijinja|sha2) v' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::CLI dependencies reachable by a library consumer:"
+            echo "$leaked"
+            exit 1
+          fi
+
+      - name: Library writes nothing to the terminal
+        # Backs the spawned-process assertions in tests/backend_public_api.rs
+        # with a source-level rule, so a new direct write is caught even when
+        # no test exercises that path.
+        run: |
+          set -euo pipefail
+          if grep -rnE '\b(println!|eprintln!|print!|eprint!)' src/backend/; then
+            echo "::error::src/backend/ must not write to the terminal; use log::warn!/debug!"
+            exit 1
+          fi
+
+      - name: Tests, no default features
+        # --lib, not --all-targets: tests/integration.rs shells out to
+        # `cargo run --bin lok`, which re-enters Cargo with default features
+        # and so proves nothing about the lean build.
+        run: cargo test --locked --lib --no-default-features
+
+      - name: Clippy, no default features
+        run: cargo clippy --locked --lib --tests --no-default-features -- -D warnings
+
+      - name: Public API is fully documented
+        # src/lib.rs carries #![deny(missing_docs)] rather than warn: a crate
+        # attribute overrides the command-line level, so `warn` would silently
+        # downgrade the -D below and make this gate decorative.
+        run: RUSTDOCFLAGS='-D missing_docs' cargo doc --locked --no-deps --lib --all-features
+
+      - name: Binaries install with no extra flags
+        # default = ["cli"], so `cargo install` must keep working unchanged.
+        # Guards the other half of the feature-gating trade.
+        run: |
+          set -euo pipefail
+          root=$(mktemp -d)
+          cargo install --locked --path . --root "$root" --force
+          test -x "$root/bin/lok"
+          test -x "$root/bin/lokomotiv"
