@@ -24,8 +24,8 @@ linear:
   branch_actual: feat/clo-600-github-action
   priority: High
 workflow:
-  current_phase: pr
-  status: checkpoint
+  current_phase: complete
+  status: complete
   created_at: '2026-07-31T20:17:35.000Z'
   updated_at: '2026-07-31T21:00:00.000Z'
 entry_findings:
@@ -191,7 +191,7 @@ phases:
         same errno as the eight failures in run 30222596040, but the production-path diagnostic
         string was not re-captured post-instrumentation.
   pr:
-    status: awaiting_merge
+    status: complete
     pr_url: https://github.com/maxkulish/lok/pull/64
     pr_number: 64
     checks: CI Gate pass, both matrix legs pass, etxtbsy-stress pass (run 30668065205)
@@ -205,11 +205,31 @@ phases:
       - ruleset 20153405 verified by rule contents
       - PR observed BLOCKED while CI Gate pending, CLEAN once passed
       - ubuntu-22.04-arm resolves; glibc max required 2.34 under the 2.35 baseline; libssl.so.3 linked
-    pending_post_merge:
-      - AC-16 - push run on main must be green
-      - publish.yml dry run - not dispatchable until the workflow exists on main
+    merged_at: '2026-08-01T07:36:51Z'
+    merge_commit: 72ed18f68670e34a97be6bea73472858376a425d
+    follow_up_pr:
+      number: 66
+      url: https://github.com/maxkulish/lok/pull/66
+      merge_commit: 60ef32a9a9ca3065bf3afebe86b85696929ecfda
+      reason: >-
+        The first post-merge run on main (30690088822) went red on
+        engine::tests::test_warmup_unknown_backend_skipped - "Only ollama should be cached,
+        left 2 right 1". BACKEND_CACHE is a process-global keyed by backend name and
+        create_backend writes to it, while conductor.rs, spawn.rs and team.rs reach it through
+        get_backends without taking acquire_test_lock. Six assertions on the map's total size
+        were rescoped to the keys each test owns. PR #64's stress job could not have caught it:
+        it ran `cargo test --lib` (152 tests) and the engine tests live in the 525-test bin
+        target. The job now runs the whole suite.
   complete:
-    status: pending
+    status: complete
+    ac_16_verified: >-
+      Run 30690810495 on main - build/test (ubuntu-latest) success, build/test (macos-latest)
+      success, CI Gate success. main is green.
+    publish_dry_run: >-
+      Run 30691054895 - tag assertion passed, CARGO_TOKEN guard failed as designed (the secret
+      is genuinely absent), publish steps skipped. Nothing reached crates.io.
+    all_acceptance_criteria: 16/16 closed
+
 history:
   - timestamp: '2026-07-31T20:17:35.000Z'
     action: workflow_started
