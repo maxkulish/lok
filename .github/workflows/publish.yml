@@ -1,19 +1,75 @@
-name: Publish to crates.io
+name: Publish to crates.io (dry run)
+
+# This workflow deliberately stops at `cargo publish --dry-run`. It does not
+# publish.
+#
+# Its predecessor triggered on `release: [published]` and had run zero times in
+# the repo's lifetime, for two independent reasons: no Actions secret exists on
+# this repository, so `secrets.CARGO_TOKEN` was never set; and a release created
+# by release.yml through the default GITHUB_TOKEN does not emit events that
+# start further workflow runs, so the trigger was unreachable from lok's own
+# pipeline.
+#
+# Before a real publish step is added here it needs its own authorization, a
+# protected environment holding the token, and verified ownership of the crate
+# name. Note also that cargo reads CARGO_REGISTRY_TOKEN from the environment
+# automatically - CARGO_TOKEN is not that variable, so any real step must pass
+# the secret explicitly via `--token` or export it under the name cargo expects.
 
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to rehearse publishing (e.g. v20260603.0.0)'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  publish:
-    name: Publish to crates.io
+  dry-run:
+    name: cargo publish --dry-run
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.event.inputs.tag }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag }}
+          fetch-depth: 0
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Assert tag matches Cargo.toml
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'; then
+            echo "::error::tag '$TAG' must match vX.Y.Z or vX.Y.Z-rc.N"; exit 1
+          fi
+          VER="${TAG#v}"
+          BASE_VER="${VER%%-*}"
+          CARGO_VER=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
+          echo "tag=$TAG cargo=$CARGO_VER base=$BASE_VER"
+          [ "$CARGO_VER" = "$BASE_VER" ] || {
+            echo "::error::Cargo.toml version ($CARGO_VER) does not match tag ($TAG)"; exit 1; }
 
-      - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_TOKEN }}
+      # A presence assertion on the environment, nothing more. It does not
+      # validate the credential, and the dry run below does not authenticate
+      # against crates.io either - it packages and compiles locally. Together
+      # they rule out the two failures visible from here, not a real publish.
+      - name: Assert CARGO_TOKEN is configured
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        run: |
+          if [ -z "${CARGO_TOKEN:-}" ]; then
+            echo "::error::secret CARGO_TOKEN is not set on this repository. Add it before any real publish (gh secret set CARGO_TOKEN)."
+            exit 1
+          fi
+          echo "CARGO_TOKEN is present (value not inspected)"
+
+      - name: Install Rust toolchain
+        run: rustup show active-toolchain
+
+      - name: Package and compile the crate as crates.io would
+        run: cargo publish --dry-run --locked

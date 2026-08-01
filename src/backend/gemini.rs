@@ -1243,7 +1243,7 @@ mod tests {
         // observed as success, not raced against the 1s boundary under load.
         backend.version_probe_timeout = Duration::from_secs(30);
         let status = backend.health_check().await.unwrap();
-        assert!(status.available);
+        assert!(status.available, "diagnostic was: {:?}", status.diagnostic);
         assert_eq!(status.version, Some("1.15.10".to_string()));
         assert_eq!(status.mode, Some("api-key".to_string()));
 
@@ -1274,8 +1274,13 @@ mod tests {
         // timeout path reliably and fast, regardless of machine load.
         backend.version_probe_timeout = Duration::from_millis(200);
         let status = backend.health_check().await.unwrap();
-        assert!(!status.available);
-        assert!(status.diagnostic.unwrap().contains("timed out"));
+        let diag = status.diagnostic.clone();
+        assert!(!status.available, "diagnostic was: {diag:?}");
+        // `health_check` wraps every probe failure as "Version probe failed: {e}",
+        // so only the substring distinguishes a timeout from a spawn failure. Print
+        // what we actually got, or a CI failure here says nothing about why.
+        let diag = diag.expect("timeout path must set a diagnostic");
+        assert!(diag.contains("timed out"), "diagnostic was: {diag:?}");
     }
 
     #[tokio::test]
@@ -1291,8 +1296,9 @@ mod tests {
         // non-zero exit ("exited"), not that it races the 1s boundary under load.
         backend.version_probe_timeout = Duration::from_secs(30);
         let status = backend.health_check().await.unwrap();
-        assert!(!status.available);
-        let diag = status.diagnostic.unwrap();
+        let diag = status.diagnostic.clone();
+        assert!(!status.available, "diagnostic was: {diag:?}");
+        let diag = diag.expect("bad-exit path must set a diagnostic");
         assert!(diag.contains("exited"), "diagnostic was: {diag:?}");
     }
 

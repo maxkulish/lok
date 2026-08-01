@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-05-26 (Phase 2 §9 step 6 + opencode migration batch complete; FR-15a deferred for dogfood)
+**Last Updated**: 2026-07-31 (CLO-600 started; CLO-593 completion reconciled)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | In Progress | Phase 12 | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -19,6 +19,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | 2026-07-26 | `[lib]` target added; `backend::config` split out, orchestration reparented into `engine.rs`, external-consumer test added. Merged as `ee28f3c` (PR #61). Supersedes CLO-590. |
 | [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | 2026-07-26 | Boundary contract for backend library extraction recorded; extraction implementation deferred to CLO-590. |
 | [CLO-396](https://linear.app/cloud-ai/issue/CLO-396) | FR-12c: Setup-guide + docs refresh (opencode install, `opencode auth login`, remove npx refs) | 2026-05-25 | Docs and setup guide updated for the opencode migration; breaking-change banner, migration guide rewrite (install/auth/overrides), sandbox-mapping table, and `lok doctor` warmup/cache details. |
 | [CLO-393](https://linear.app/cloud-ai/issue/CLO-393) | FR-14: `lok doctor` HealthStatus renderer (table + JSON) | 2026-05-25 | Wired `lok doctor` to `warmup_backends()`; renders table + `--output json`; exit 0/1 on availability; Gemini row uses `oauth\|api-key\|none` (post-opencode). |
