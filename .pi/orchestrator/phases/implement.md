@@ -34,7 +34,7 @@ phases:
     token_usage:                                  # optional, observational
       - recorded_at: "2026-05-16T12:00:00Z"
         provider: "codex"
-        model: "gpt-5.5"
+        model: "gpt-5.6-sol"
         prompt_tokens: 0
         completion_tokens: 0
         task_label: "pre-pr-validation-codex"
@@ -70,7 +70,7 @@ matching file end-to-end. Hits become test-plan inputs:
   `pr-review-failures.md § L1` - "CI absence != bot absence"), the
   sub-task that lands the relevant code path must include a test or a
   gate that prevents the same class of failure.
-- Lessons concerning the PR phase (bot timing, reply trailer) are
+- Lessons concerning the PR phase (bot timing, thread resolution) are
   enforced in `pr.md`, not here - but if a lesson affects
   implementation (e.g. migration safety, retry semantics), it lands as
   a test in this phase.
@@ -199,7 +199,7 @@ manage prompt assembly, parallel reviewer dispatch, output validation,
 and review-file writes.
 
 Anti-pattern (do not do this): writing a `/tmp/run_validation.sh` that
-shells out to `codex exec` and `gemini` directly. That bypasses the
+shells out to `codex exec` and `opencode run` directly. That bypasses the
 workflow's output validators, fallback logic, and synthesis step, and it
 hardcodes models that drift over time. Always go through `lok`.
 
@@ -214,9 +214,27 @@ Optional environment overrides:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CODEX_MODEL` | `gpt-5.5` | Codex model used for the codex reviewer |
-| `GEMINI_MODEL` | `gemini-3.5-flash` | Primary Gemini model |
-| `GEMINI_FALLBACK_MODEL` | `gemini-2.5-pro` | Used if the primary returns empty |
+| `CODEX_MODEL` | `gpt-5.6-sol` | Codex model used for the codex reviewer |
+| `GEMINI_MODEL` | `gemini-3.1-pro-preview` | Primary Google model (opencode prefixes `google/`) |
+| `GEMINI_FALLBACK_MODEL` | `gemini-3.6-flash` | Used if the primary returns empty; also the health-check probe |
+
+The "gemini" reviewer is a **role name**, not a CLI. It runs Google models
+through `opencode`; the retired `gemini` CLI is no longer used anywhere in
+the gate. The canonical invocation is:
+
+```bash
+opencode run --model "google/$MODEL" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null
+```
+
+- `--agent plan` is opencode's read-only mode - the analogue of `codex -s read-only`.
+- `--` guards prompts that begin with `-`.
+- `< /dev/null` stops opencode blocking on stdin in a non-interactive step.
+- opencode **rejects unknown flags**: it prints help to stderr and runs nothing,
+  leaving stdout empty. Never pass Claude Code flags such as
+  `--dangerously-skip-permissions`; the reviewer leg silently degrades to
+  `REVIEW_FAILED` on every run.
+- opencode writes its progress banner and tool trace to stderr, so stdout is
+  clean Markdown and needs no post-processing.
 
 The workflow writes (and the rest of this phase reads):
 
@@ -303,9 +321,9 @@ update_workflow_state({
     validation_fix_iteration_count: 0 | 1
   },
   token_usage: [
-    { provider: "codex", model: "gpt-5.5", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-codex" },
-    { provider: "gemini", model: "gemini-3.5-flash", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-gemini" },
-    { provider: "claude", model: "claude-opus-4", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-synthesis" }
+    { provider: "codex", model: "gpt-5.6-sol", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-codex" },
+    { provider: "gemini", model: "google/gemini-3.1-pro-preview", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-gemini" },
+    { provider: "claude", model: "claude-opus-5", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-synthesis" }
   ]
 })
 ```

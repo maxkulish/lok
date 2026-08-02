@@ -17,20 +17,40 @@ the input contract (what context the persona receives) and the
 expected output path. Phase scripts are the source of truth; this
 table is a routing aid.
 
-| Phase                   | Persona                 | Default model               | Role            | Output                                              |
-|-------------------------|-------------------------|-----------------------------|-----------------|-----------------------------------------------------|
-| `design`                | `claude-designer.md`    | Claude Opus 4.x             | Drafter         | `docs/designs/clo-XX-<slug>.md`                     |
-| `design`                | `gemini-architect.md`   | `gemini-3.5-flash`    | Design reviewer | `docs/reviews/clo-XX-design-gemini.md`              |
-| `spec`                  | `gemini-architect.md`   | `gemini-3.5-flash`    | Spec reviewer   | `docs/reviews/clo-XX-spec-gemini.md`                |
-| `spec`                  | `ollama-rust-reviewer.md` | local Ollama (Qwen / similar) | Spec reviewer (footguns) | `docs/reviews/clo-XX-spec-ollama.md`        |
-| `implement` (step 4)    | `codex-pre-pr.md`       | `gpt-5.5` (Codex)           | Validation gate | `docs/reviews/clo-XX-codex-validation.md`           |
-| `implement` (step 4)    | `gemini-architect.md`   | `gemini-3.5-flash`    | Validation gate | `docs/reviews/clo-XX-gemini-validation.md`          |
-| `implement` (step 4)    | `security-reviewer.md`  | Claude Opus 4.x             | Conditional - LLM backend / secret handling changes | inline in validation synthesis |
-| `implement` (step 4)    | `ops-reviewer.md`       | Claude Opus 4.x             | Conditional - rarely (lok is a CLI; only applies to deploy / packaging changes) | inline in validation synthesis |
+| Phase                   | Persona                 | Default model               | Transport | Role            | Output                                              |
+|-------------------------|-------------------------|-----------------------------|-----------|-----------------|-----------------------------------------------------|
+| `design`                | `claude-designer.md`    | Claude Opus 5               | `claude`  | Drafter         | `docs/designs/clo-XX-<slug>.md`                     |
+| `design`                | `gemini-architect.md`   | `google/gemini-3.1-pro-preview` | `opencode` | Design reviewer | `docs/reviews/clo-XX-design-gemini.md`         |
+| `spec`                  | `gemini-architect.md`   | `google/gemini-3.1-pro-preview` | `opencode` | Spec reviewer   | `docs/reviews/clo-XX-spec-gemini.md`           |
+| `spec`                  | `ollama-rust-reviewer.md` | `glm-5.2:cloud`           | `ollama`  | Spec reviewer (footguns) | `docs/reviews/clo-XX-spec-ollama.md`       |
+| `implement` (step 4)    | `codex-pre-pr.md`       | `gpt-5.6-sol`               | `codex`   | Validation gate | `docs/reviews/clo-XX-codex-validation.md`           |
+| `implement` (step 4)    | `gemini-architect.md`   | `google/gemini-3.1-pro-preview` | `opencode` | Validation gate | `docs/reviews/clo-XX-gemini-validation.md`     |
+| `implement` (step 4)    | `security-reviewer.md`  | Claude Opus 5               | `claude`  | Conditional - LLM backend / secret handling changes | inline in validation synthesis |
+| `implement` (step 4)    | `ops-reviewer.md`       | Claude Opus 5               | `claude`  | Conditional - rarely (lok is a CLI; only applies to deploy / packaging changes) | inline in validation synthesis |
 
 The model column lists the *default*. Phase scripts and the
 underlying tooling (`lok workflow run …`, `pi run …`) can override
 via environment variables - see the relevant phase doc.
+
+**"Gemini" is a role name, not a CLI.** Google models are dispatched
+through `opencode` (`opencode run --model "google/<model>" --agent plan`),
+not the retired `gemini` CLI. The persona file, the `review_gemini` /
+`gemini_validation_report` schema fields, and the
+`docs/reviews/clo-XX-*-gemini.md` paths intentionally keep the `gemini`
+name: `PHASE_CONFIG` in `extensions/orchestrate/index.ts` gates on those
+identifiers and existing status YAMLs reference them. Only the transport
+and the model changed.
+
+Fallback model is `google/gemini-3.6-flash` (`GEMINI_FALLBACK_MODEL`),
+which also serves as the pre-flight health-check probe.
+
+Not to be confused with the former **GitHub bot** of a similar name:
+`gemini-code-assist` and its `/gemini review` trailer were removed from
+`skills/pr-review-cycle.md` on 2026-08-02 because the consumer Gemini
+Code Assist app is sunset. That was a PR-comment bot and is unrelated to
+the `gemini-architect` persona above, which is alive and runs on
+`opencode`. With the bot gone, this pre-PR gate is the automated review
+of record for lok.
 
 ## Conditional dispatch by module
 

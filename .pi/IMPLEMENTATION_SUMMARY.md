@@ -165,9 +165,16 @@ Optional environment overrides:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CODEX_MODEL` | `gpt-5.5` | Codex reviewer model |
-| `GEMINI_MODEL` | `gemini-3.5-flash` | Primary Gemini model |
-| `GEMINI_FALLBACK_MODEL` | `gemini-2.5-pro` | Secondary Gemini model if primary returns empty |
+| `CODEX_MODEL` | `gpt-5.6-sol` | Codex reviewer model (via `codex exec`) |
+| `GEMINI_MODEL` | `gemini-3.1-pro-preview` | Primary Google model (via `opencode`, prefixed `google/`) |
+| `GEMINI_FALLBACK_MODEL` | `gemini-3.6-flash` | Secondary Google model if primary returns empty; also the health-check probe |
+| `OLLAMA_MODEL` | `glm-5.2:cloud` | Local/cloud Ollama reviewer model (`design-review`, `spec-review`) |
+
+The Gemini reviewer leg runs through `opencode`, not the retired `gemini`
+CLI: `opencode run --model "google/<model>" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null`.
+`--agent plan` is opencode's read-only mode. opencode rejects unknown flags
+by printing help to stderr and running nothing, so a wrong flag degrades the
+whole leg to `REVIEW_FAILED` silently.
 
 Pipeline shape: `health_check` -> `codex_review` + `gemini_review`
 (parallel) -> `claude_fallback` (only when both external reviewers

@@ -161,17 +161,22 @@ update_workflow_state({
 ## Step 3.5 - Address all PR review comments (skill: pr-review-cycle)
 
 The full procedure for waiting on bot reviewers, fetching comments,
-categorizing them, addressing them, replying with the mandatory
-`/gemini review` trailer, verifying the trailer landed, and
-re-fetching post-reply lives in
+categorizing them, addressing them, replying, and re-fetching
+post-reply lives in
 [`.pi/skills/pr-review-cycle.md`](../../skills/pr-review-cycle.md).
-Run that skill in order from step 1 to step 10. Do not reinvent any
+Run that skill in order from step 1 to step 9. Do not reinvent any
 part of it inline here.
+
+Replies carry **no `/gemini review` trailer** - Gemini Code Assist is
+sunset and the marker triggers nothing. The author replies and resolves
+the thread; there is no automated validator left on the PR itself, so
+the pre-PR validation gate in `implement.md` Step 4 is the automated
+review of record.
 
 The skill cites `.pi/lessons/pr-review-failures.md` for the durable
 rules behind its non-negotiables (current-head bot-review completion,
-CI/bot independence, mandatory trailer on every reply). Read both
-before short-circuiting any step.
+CI/bot independence). Read both before short-circuiting any step. L3 in
+that file mandated the reply trailer and is superseded.
 
 Exit state on success: the skill writes `bot_review_wait_completed`
 and `review_addressed` history events with

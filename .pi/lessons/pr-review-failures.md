@@ -21,8 +21,9 @@ either direction - is a fatal class of error.
 
 **How to apply:**
 - Bot-reviewer presence is verified by inspecting the last 5 closed PRs
-  in this repo for reviews authored by `gemini-code-assist` or
-  `copilot-pull-request-reviewer`. The check lives in `pr.md` §3.5.1.5.
+  in this repo for reviews authored by `copilot-pull-request-reviewer`.
+  The check lives in `pr.md` §3.5.1.5. (`gemini-code-assist` was dropped
+  on 2026-08-02 - the app is sunset; see L3.)
 - "No CI configured" by itself is never a valid rationale for skipping
   the review-fetch step. If CI is absent but bots are installed, bots
   still need to be waited for.
@@ -49,26 +50,36 @@ processing was logged before bots had a chance to post.
 
 ---
 
-## L3 - Every author reply ends with `/gemini review` on its own line
+## L3 - ~~Every author reply ends with `/gemini review` on its own line~~ (SUPERSEDED 2026-08-02)
+
+> **SUPERSEDED.** Gemini Code Assist's consumer GitHub app is sunset and
+> has ceased all review activity - on this repo its last review was PR #55
+> (2026-05-26); PRs #58+ have none. The `/gemini review` trailer now
+> triggers nothing, so the rule and its regex gate were removed from
+> `skills/pr-review-cycle.md` and `phases/pr.md`. The incident below is
+> kept because the underlying failure mode still exists; only the remedy
+> changed.
 
 **Source incident:** Pre-CLO-332, replies to Copilot and human
 reviewers were not re-validated by Gemini, leaving threads in
 ambiguous resolved-but-unvalidated state. Several merged with
 unaddressed concerns the author had implicitly declined.
 
-**Rule:** Every author reply to ANY review comment - Gemini, Copilot,
-human, anyone - ends with the `/gemini review` trailer on its own line.
-Gemini is treated as the universal validator: it re-evaluates the
-rationale, the fix description, or the declined suggestion regardless
-of who originally posted the comment.
+**What still applies:** the risk is a thread resolved without its
+rationale being recorded anywhere. With no universal validator left,
+the author is the closer, so the rationale has to be written down
+rather than delegated to a bot re-read.
 
-**How to apply:**
-- `pr.md` §3.5.6 mandates the trailer on every reply template.
-- `pr.md` §3.5.6.5 runs a regex gate against `gh api` reply output that
-  rejects the phase if any reply since the latest push lacks the
-  trailer on its own line. The regex is `(^|\n)/gemini review\s*$`.
-- The trailer is not optional for "trivial" replies; the gate makes no
-  exceptions.
+**How to apply now:**
+- Every reply states the fix commit, or the explicit rationale for
+  declining. "Intentionally kept as-is: `<rationale>`" is still the
+  required shape for a declined suggestion - a bare resolve is not.
+- Resolve the thread yourself after replying. Exception: a human
+  `CHANGES_REQUESTED` thread is left for that human to resolve.
+- Automated review moved earlier: the `implement.md` Step 4 gate
+  (Codex + Gemini-via-opencode + synthesis) runs before the PR exists
+  and is now the automated review of record. A quiet PR is not an
+  unreviewed one - confirm that gate ran.
 
 ---
 
@@ -118,7 +129,13 @@ clean. If installed bots do not produce a current-head review by the
 `reviews_addressed: true`.
 
 **How to apply:** `pr-review-cycle.md` step 1 polls
-`repos/<owner>/<repo>/pulls/<n>/reviews` for `gemini-code-assist` or
+`repos/<owner>/<repo>/pulls/<n>/reviews` for
 `copilot-pull-request-reviewer` on the current head SHA, then fetches
 inline comments and GraphQL review threads. Step 2 only permits a skip
-when recent closed PRs confirm those bots are not installed.
+when recent closed PRs confirm that bot is not installed.
+
+This rule still holds for any bot that IS installed, but on lok today no
+bot reviewer is installed at all, so step 1 would only ever time out.
+That is why step 1 now runs the installation probe first and skips the
+poll on confirmed absence - the safety property is preserved, the
+guaranteed 10-minute stall is not.
