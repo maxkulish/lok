@@ -1,0 +1,129 @@
+task_id: clo-592
+task_type: development
+classification_reason: >-
+  Title starts with 'Make' (no special prefix), ACs are mechanical (documentation, CI dry-run, feature docs) — standard
+  development task
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Personal-health
+  status_at_start: Backlog
+  blocks: []
+  blocked_by:
+    - CLO-591
+  branch_suggested: kmamemo/clo-592-make-the-backend-library-consumable-from-cratesio-with
+  priority: Low
+  branch_actual: feat/clo-592-crates
+workflow:
+  current_phase: design
+  status: active
+  created_at: '2026-08-02T07:46:35.160Z'
+  updated_at: '2026-08-02T10:20:11.864Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: Documentation + publish workflow fix
+    approaches_identified: 3
+    approved: true
+    baseline_score: 7
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-592.md
+    prd_created: false
+    prd_exists: true
+    prd_file: ''
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/design-docs/clo-592-library-docs-and-publish-dry-run.md
+    draft_ready: true
+    applied_suggestions:
+      - 'Added Phase 2: public type documentation audit with per-type checklist'
+      - Renamed CARGO_TOKEN to CARGO_REGISTRY_TOKEN in publish workflow design
+      - 'Added Phase 4: silence_probe binary publish=false decision'
+      - Added main.rs multiple-build-target warning to edge cases (tolerate)
+      - 'Resolved self path-dependency open question: cargo publish --dry-run succeeds, no workaround needed'
+      - Added AC6 (public type docs), AC7 (silence_probe), AC8 (CARGO_REGISTRY_TOKEN) to acceptance criteria
+      - Updated architecture diagram and affected components table
+    flagged_suggestions: []
+    review_applied: true
+    review_completed: true
+    review_gemini: docs/reviews/clo-592-review-gemini.md
+    review_ollama: docs/reviews/clo-592-review-ollama.md
+    review_verdict: APPROVE
+    discovery_context_used: true
+    finalized: true
+  plan:
+    status: pending
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-08-02T07:46:35.160Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-592 as development
+  - timestamp: '2026-08-02T07:46:44.794Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: Title starts with 'Make' (no special prefix), ACs are mechanical (documentation, CI
+      dry-run, feature docs) — standard development task
+  - timestamp: '2026-08-02T07:47:07.438Z'
+    action: project_sync_start
+    phase: init
+    details: PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced via /project:sync CLO-592 --start
+  - timestamp: '2026-08-02T07:47:09.009Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-08-02T07:47:23.337Z'
+    action: branch_created
+    phase: discovery
+    details: Branch feat/clo-592-crates checked out from main (284b646) and pushed to origin
+  - timestamp: '2026-08-02T07:48:20.969Z'
+    action: discovery_approved
+    phase: discovery
+    details: 'Approach: Documentation + publish workflow fix. Baseline 7/10. 3 approaches considered.'
+  - timestamp: '2026-08-02T07:48:22.670Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-08-02T07:48:41.772Z'
+    action: design_started
+    phase: design
+    details: >-
+      Starting design phase. Discovery report available at docs/discovery/clo-592.md. Approach chosen: Documentation +
+      publish workflow fix.
+  - timestamp: '2026-08-02T07:49:25.050Z'
+    action: design_draft_ready
+    phase: design
+    details: Design document created at docs/design-docs/clo-592-library-docs-and-publish-dry-run.md
+  - timestamp: '2026-08-02T07:52:02.091Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      AI review complete. Gemini: APPROVE. Second opinion: APPROVE. Synthesis: APPROVE. 2 suggestions auto-applied
+      (pre-flight check, CONTRIBUTING.md note).
+  - timestamp: '2026-08-02T08:00:18.823Z'
+    action: review_applied
+    phase: design
+    details: >-
+      Applied 5 blind-spot fixes from feedback: (1) Added Phase 2 for public type documentation with per-type checklist,
+      (2) CARGO_TOKEN→CARGO_REGISTRY_TOKEN rename in publish.yml design, (3) Added Phase 4 for silence_probe
+      publish=false decision, (4) Added main.rs multiple-build-target warning handling, (5) Resolved self
+      path-dependency open question (tested OK).
+  - timestamp: '2026-08-02T10:20:11.864Z'
+    action: design_finalized
+    phase: design
+    details: Design document approved and finalized. 8 phases, 8 ACs, 5 blind spots fixed.
+task_title: Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run
+task_url: https://linear.app/cloud-ai/issue/CLO-592/make-the-backend-library-consumable-from-cratesio-with-rustdoc-feature

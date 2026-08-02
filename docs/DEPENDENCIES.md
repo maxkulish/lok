@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-01 (CLO-591 complete; CLO-592 unblocked)
+**Last Updated**: 2026-08-02 (CLO-592 started)
 
 ## Current Blockers
 
@@ -11,7 +11,7 @@
 
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
-| [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | CLO-591 complete (merged `284b646`) | 2026-08-01 |
+| - | - | - |
 
 Two items CLO-591 deliberately left open, both of which get more expensive once
 CLO-592 publishes to crates.io:
