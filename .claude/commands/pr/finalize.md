@@ -726,9 +726,12 @@ sides. Deleting only the remote leaves the local branch behind and Step 4 keeps 
 `BRANCH_EXISTS_LOCAL`:
 
 ```bash
-# reuse: fast-forward local onto the remote; if it refuses, the two have diverged —
-# inspect rather than force
-git checkout "$FINALIZE_BRANCH" && git merge --ff-only "origin/$FINALIZE_BRANCH"
+# reuse: fetch first — `origin/$FINALIZE_BRANCH` can be stale or absent even when the
+# remote branch exists, and merging a stale ref silently reconciles to the wrong commit.
+# If the fast-forward refuses, the two have diverged: inspect rather than force.
+git fetch origin "$FINALIZE_BRANCH" \
+  && git checkout "$FINALIZE_BRANCH" \
+  && git merge --ff-only FETCH_HEAD
 
 # delete: remote first, then local — both, or Step 4 aborts again
 git checkout main
