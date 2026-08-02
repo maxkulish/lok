@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-01 (CLO-591 complete: the library surface is clean and the boundary is CI-enforced)
+**Last Updated**: 2026-08-02 (CLO-592 started)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | In Progress | Discovery | - |
 
 ## Up Next (Prioritized Backlog)
 

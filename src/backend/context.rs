@@ -33,7 +33,14 @@ pub struct StepContext<'a> {
     pub timeout: Option<Duration>,
 }
 
-/// Minimal options bag for per-step config passthrough.
+/// Minimal options bag for per-step config passthrough (temperature, top_p, etc.).
+///
+/// Populate this when you need to override a backend's default generation
+/// parameters for a single query. Leave `None` in [`StepContext::options`] to
+/// use the backend's own defaults.
+///
+/// Currently a type alias for `HashMap<String, Value>`; will be replaced with
+/// a typed struct when FR-24 lands.
 /// Replace with a typed struct when FR-24 lands.
 #[allow(dead_code)]
 pub type StepOptions = std::collections::HashMap<String, serde_json::Value>;
@@ -58,6 +65,14 @@ impl<'a> StepContext<'a> {
 }
 
 /// Carrying struct for all health checks, version details, and capabilities.
+///
+/// Reach for this when you need to know whether a backend is usable, what
+/// version it reports, or what capabilities it advertises. Construct via
+/// [`HealthStatus::new_available`] or [`HealthStatus::new_unavailable`], then
+/// populate the optional fields as the probe discovers them.
+///
+/// The [`crate::backend::Backend::health_check`] method returns this; [`crate::backend::Backend::is_available`]
+/// is a cheaper synchronous alternative when you only need the boolean.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthStatus {
     /// Whether the backend answered its probe and can serve queries.
@@ -82,6 +97,13 @@ pub struct HealthStatus {
 }
 
 /// A model the backend reports as available.
+///
+/// Reach for this when you need to enumerate which models a backend can serve,
+/// e.g. to present a selection UI or validate a requested model name. The
+/// `name` field is what you pass as [`StepContext::model`].
+///
+/// `modified_at`, `size`, and `digest` are backend-specific metadata that may
+/// be useful for cache invalidation or display.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModelInfo {
     /// Identifier to pass as `StepContext::model`.
@@ -141,6 +163,11 @@ pub enum SandboxMode {
 }
 
 /// One turn in a conversation history.
+///
+/// Reach for this when you need to provide multi-turn context to a backend.
+/// Each `Message` pairs a [`Role`] (who said it) with the text content.
+/// Pass a slice of messages as [`StepContext::history`]; an empty slice means
+/// single-turn mode.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Message {
@@ -151,6 +178,10 @@ pub struct Message {
 }
 
 /// Author of a [`Message`].
+///
+/// Reach for this when constructing conversation history. `User` represents
+/// the caller's input, `Assistant` is the model's response, and `System` is
+/// an instruction framing the conversation (supported by some backends).
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {

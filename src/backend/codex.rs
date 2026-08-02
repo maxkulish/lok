@@ -8,6 +8,11 @@ use tempfile::NamedTempFile;
 use tokio::process::Command;
 
 /// The OpenAI Codex CLI, invoked as a subprocess.
+///
+/// Reach for this when you need fast code analysis (N+1 queries, dead code,
+/// patterns). Construct via [`create_backend`](crate::create_backend) with
+/// `name: "codex"` for automatic retry wrapping, or instantiate directly if
+/// you need to bypass the cache or supply a custom config.
 pub struct CodexBackend {
     command: String,
     args: Vec<String>,

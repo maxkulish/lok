@@ -423,7 +423,7 @@ pub fn create_backend(
 /// the same name with different configurations silently share one instance.
 ///
 /// Keying by configuration hash, or moving the cache out of the library, would
-/// both break [`is_backend_available`], which looks entries up by name from
+/// both break `is_backend_available`, which looks entries up by name from
 /// inside each provider's `is_available` implementation and has no
 /// configuration to hash. Fixing this properly means reworking `is_available`;
 /// tracked as a follow-up rather than done here.
@@ -513,7 +513,7 @@ static HEALTH_CACHE_TTL: OnceLock<Duration> = OnceLock::new();
 /// Latch ensuring the resolved TTL is announced at most once per process.
 pub static HEALTH_TTL_LOGGED: OnceLock<()> = OnceLock::new();
 
-/// Parse a [`HEALTH_TTL_ENV`] value into a TTL, plus a warning when the input
+/// Parse a `HEALTH_TTL_ENV` value into a TTL, plus a warning when the input
 /// was present but unusable and the default was substituted.
 pub fn parse_health_cache_ttl(val: Option<&str>) -> (Duration, Option<String>) {
     match val {

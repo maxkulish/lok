@@ -20,6 +20,62 @@ multiple backends, get synthesized results.
 - **Not a wrapper for one LLM**: If you only use Claude, you don't need lok. The
   value is in multi-backend orchestration and consensus.
 
+## Using lokomotiv as a library
+
+`lokomotiv` is also published on [crates.io](https://crates.io/crates/lokomotiv)
+as a library crate. Add it to your `Cargo.toml` with **no default features** to
+avoid pulling in CLI-only dependencies:
+
+```toml
+[dependencies]
+lokomotiv = { version = "20260603", default-features = false }
+```
+
+Then build a backend and run a query:
+
+```rust,no_run
+use std::path::Path;
+use lokomotiv::{
+    Backend, BackendConfig, RetryDefaults, RetryPolicy, StepContext,
+    create_backend,
+};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = BackendConfig {
+        command: Some("http://localhost:11434".into()),
+        model: Some("llama3.2".into()),
+        max_retries: Some(2),
+        retry_delay_ms: Some(500),
+        ..Default::default()
+    };
+
+    let defaults = RetryDefaults {
+        max_retries: 3,
+        retry_delay_ms: 1000,
+    };
+    let policy = RetryPolicy::from_backend_config(&config, defaults);
+    let backend = create_backend("ollama", &config, policy)?;
+
+    let ctx = StepContext::from_prompt(
+        "What is the capital of France?",
+        Path::new("."),
+        None,
+    );
+    let output = backend.query(ctx).await?;
+    println!("Answer: {}", output.stdout);
+    Ok(())
+}
+```
+
+See the [full API documentation on docs.rs](https://docs.rs/lokomotiv) for all
+available types, backends, and configuration options.
+
+> **Note**: `lokomotiv` shares its version number with the `lok` binary. Both are
+> published from the same repository under a single `Cargo.toml`. The version
+> follows a date-based scheme (`YYYYMMDD.N.0`) rather than semver. Pin to a
+> specific version in your `Cargo.toml` to avoid unexpected changes.
+
 ## Quick Start
 
 ```bash
