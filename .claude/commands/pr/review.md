@@ -329,11 +329,14 @@ config.push_commands        = ['/agentic_review']
 
 After pushing fixes and posting replies, request one re-review for the whole PR:
 
+Stamp the request time before posting:
+
 ```bash
+REQUESTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 gh api repos/{owner}/{repo}/issues/[number]/comments -X POST -f body='/agentic_review'
 ```
 
-Then poll for a review on the **post-push** head SHA. A review whose `commit_id` is the old SHA is the stale pass, not the re-validation. Re-fetch the SHA after pushing and use a fresh deadline - do not carry over a SHA or deadline captured before the push.
+Then poll for a review on the **post-push** head SHA that was submitted **at or after** `REQUESTED_AT`. Both conditions matter. A review whose `commit_id` is the old SHA is the stale pass. And matching on SHA alone would accept a *previous* run's review on the same SHA - so re-running this step without an intervening push, or after the `/agentic_review` post failed, would report a re-validation that never happened.
 
 ```bash
 NEW_HEAD=$(gh api repos/{owner}/{repo}/pulls/[number] --jq .head.sha)
@@ -341,9 +344,10 @@ DEADLINE=$(( $(date -u +%s) + 600 ))
 
 while :; do
   REREVIEW=$(gh api repos/{owner}/{repo}/pulls/[number]/reviews --paginate --slurp \
-    | jq -r --arg h "$NEW_HEAD" '.[][] | select(.commit_id==$h) | select(.user.login|test("qodo")) | .submitted_at' | tail -1)
+    | jq -r --arg h "$NEW_HEAD" --arg since "$REQUESTED_AT" \
+      '.[][] | select(.commit_id==$h) | select(.user.login|test("qodo")) | select(.submitted_at >= $since) | .submitted_at' | tail -1)
   [ -n "$REREVIEW" ] && { echo "Re-review on ${NEW_HEAD:0:7} at ${REREVIEW}"; break; }
-  [ "$(date -u +%s)" -ge "$DEADLINE" ] && { echo "No re-review within 10 min"; exit 1; }
+  [ "$(date -u +%s)" -ge "$DEADLINE" ] && { echo "No re-review since ${REQUESTED_AT}"; exit 1; }
   sleep 20
 done
 ```

@@ -394,14 +394,24 @@ REPLY_PUSH_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 PR #71 on 2026-08-02. Without an explicit request its findings stay
 pinned to the pre-fix commit and this pass sees nothing new.
 
+Stamp the request time **before** posting, and keep it:
+
 ```bash
+REQUESTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 gh api repos/${REPO}/issues/${PR}/comments -X POST -f body='/agentic_review'
 ```
 
 Then poll for a review whose `commit_id` equals the **post-push** head
-SHA. Do not reuse the 1b loop: its `HEAD_SHA` predates the push and its
-`DEADLINE` is `PR_CREATED_AT + 600s`, which is already in the past by
-the time you reach step 8. Re-derive both.
+SHA **and** whose `submitted_at` is at or after `REQUESTED_AT`. Both
+conditions are load-bearing:
+
+- Do not reuse the 1b loop. Its `HEAD_SHA` predates the push and its
+  `DEADLINE` is `PR_CREATED_AT + 600s`, already in the past by step 8.
+- SHA alone is not proof of a fresh pass. Re-running step 8 without an
+  intervening push, or running it after the `/agentic_review` post
+  failed, would match the *previous* run's review on the same SHA and
+  report re-validation that never happened. The timestamp is what makes
+  the poll observe this run rather than any run.
 
 ```bash
 NEW_HEAD=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
@@ -409,16 +419,20 @@ DEADLINE=$(( $(date -u +%s) + 600 ))
 
 while :; do
   REREVIEW=$(gh api repos/${REPO}/pulls/${PR}/reviews --paginate --slurp \
-    | jq -r --arg h "$NEW_HEAD" '.[][]
+    | jq -r --arg h "$NEW_HEAD" --arg since "$REQUESTED_AT" '.[][]
         | select(.commit_id == $h)
         | select(.user.login | test("qodo"))
+        | select(.submitted_at >= $since)
         | .submitted_at' | tail -1)
 
   [ -n "$REREVIEW" ] && { echo "Re-review on ${NEW_HEAD:0:7} at ${REREVIEW}"; break; }
-  [ "$(date -u +%s)" -ge "$DEADLINE" ] && { echo "GATE FAIL: no re-review on ${NEW_HEAD:0:7} within 10 min"; exit 1; }
+  [ "$(date -u +%s)" -ge "$DEADLINE" ] && { echo "GATE FAIL: no re-review on ${NEW_HEAD:0:7} since ${REQUESTED_AT}"; exit 1; }
   sleep 20
 done
 ```
+
+Both timestamps are ISO-8601 UTC with the same `Z` suffix, so the `>=`
+string comparison in jq is a valid chronological one.
 
 Observed latency on PR #71 was 3-4 minutes per pass.
 
@@ -444,7 +458,8 @@ including any human reviewer's response:
 gh pr view ${PR} --json reviews,reviewDecision
 
 gh api repos/${REPO}/pulls/${PR}/comments --paginate \
-  --jq '.[] | select(.created_at > "<push_timestamp>") | {id, user: .user.login, body}'
+  --jq --arg since "$REPLY_PUSH_TS" \
+  '.[] | select(.created_at > $since) | {id, user: .user.login, body}'
 
 gh api graphql -f query='
 query($owner:String!, $repo:String!, $pr:Int!) {
