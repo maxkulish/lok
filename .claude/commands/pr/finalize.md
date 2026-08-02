@@ -136,8 +136,18 @@ Pulled latest changes including merged PR.
 #### Both modes: branch off the refreshed main
 
 ```bash
+# Local branch from an aborted run in this clone
 if git show-ref --verify --quiet "refs/heads/$FINALIZE_BRANCH"; then
-    echo "BRANCH_EXISTS — stopping. Resolve via Case 7 before continuing."
+    echo "BRANCH_EXISTS_LOCAL — stopping. Resolve via Case 7 before continuing."
+    exit 1
+fi
+
+# Remote branch from an aborted run elsewhere — another worktree, another machine,
+# or this one after the local branch was deleted. Creating a fresh local branch here
+# would push into a remote that already has commits, and `git push -u` would be
+# rejected non-fast-forward.
+if git ls-remote --exit-code --heads origin "$FINALIZE_BRANCH" >/dev/null 2>&1; then
+    echo "BRANCH_EXISTS_REMOTE — stopping. Resolve via Case 7 before continuing."
     exit 1
 fi
 
@@ -145,11 +155,15 @@ git checkout -b "$FINALIZE_BRANCH" || { echo "BRANCH_CREATE_FAILED"; exit 1; }
 git rev-parse --abbrev-ref HEAD   # confirm: $FINALIZE_BRANCH
 ```
 
-The stop is deliberate and must stay non-zero. If the branch already exists, an earlier run aborted
-partway; see **Case 7** — prompt the user, do not silently reuse or delete. Merely printing
-`BRANCH_EXISTS` and continuing would leave `HEAD` on `main` while Step 9 assumes the finalize
-branch, so the aggregation edits would be committed to the wrong branch and the push would be
-rejected by the ruleset all over again.
+Both stops are deliberate and must stay non-zero. If the branch already exists, an earlier run
+aborted partway; see **Case 7** — prompt the user, do not silently reuse or delete. Merely printing
+the marker and continuing would leave `HEAD` on `main` while Step 9 assumes the finalize branch, so
+the aggregation edits would be committed to the wrong branch and the push would be rejected by the
+ruleset all over again.
+
+Local and remote are checked separately because they fail differently. A local branch means this
+clone aborted; a remote-only branch means the abort happened somewhere else and this clone knows
+nothing about the commits already on it.
 
 On the Case 7 `reuse` path, check the branch out (`git checkout "$FINALIZE_BRANCH"`) **before** any
 file edits in Steps 6-8.
@@ -658,8 +672,9 @@ An earlier run aborted between Step 4 and Step 9.
 ```
 NOTE: Finalize branch already exists
 
-Branch: docs/clo-XX-finalize
-Open PR on it: [#number / none]
+Branch:   docs/clo-XX-finalize
+Where:    [local only / remote only / both]
+Open PR:  [#number / none]
 
 Options:
 1. [reuse]  - Check it out and continue; an open PR is adopted rather than recreated
@@ -671,6 +686,22 @@ Your choice:
 
 Do not pick for the user. `reuse` inherits whatever partial state the aborted run left, and
 `delete` discards it; which is right depends on why the earlier run stopped.
+
+**Where it exists changes what each option means.** On `BRANCH_EXISTS_REMOTE` the local clone has
+none of the commits already pushed, so `reuse` must fetch first and `delete` has to remove the
+remote branch too:
+
+```bash
+# reuse (remote-only): adopt what is already there
+git fetch origin "$FINALIZE_BRANCH" \
+  && git checkout -b "$FINALIZE_BRANCH" "origin/$FINALIZE_BRANCH"
+
+# delete (remote-only): discard it, then re-run Step 4 from the top
+git push origin --delete "$FINALIZE_BRANCH"
+```
+
+Deleting a finalize branch is safe — it only ever carries docs commits, and the ruleset's `deletion`
+rule protects `main`, not it.
 
 ### Case 8: Nothing to Commit
 
