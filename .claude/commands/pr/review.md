@@ -329,12 +329,14 @@ config.push_commands        = ['/agentic_review']
 
 After pushing fixes and posting replies, request one re-review for the whole PR:
 
-Stamp the request time before posting:
+Post the request and keep the timestamp **GitHub** assigns it:
 
 ```bash
-REQUESTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-gh api repos/{owner}/{repo}/issues/[number]/comments -X POST -f body='/agentic_review'
+REQUESTED_AT=$(gh api repos/{owner}/{repo}/issues/[number]/comments \
+  -X POST -f body='/agentic_review' --jq .created_at)
 ```
+
+Read the timestamp off the POST response rather than from local `date`. The review's `submitted_at` comes from GitHub's clock, so a locally generated bound compares two clock domains - a local clock running fast would filter out the very re-review it is waiting for and time out. This costs no extra API call.
 
 Then poll for a review on the **post-push** head SHA that was submitted **at or after** `REQUESTED_AT`. Both conditions matter. A review whose `commit_id` is the old SHA is the stale pass. And matching on SHA alone would accept a *previous* run's review on the same SHA - so re-running this step without an intervening push, or after the `/agentic_review` post failed, would report a re-validation that never happened.
 

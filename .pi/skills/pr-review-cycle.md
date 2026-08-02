@@ -380,11 +380,15 @@ gh api repos/${REPO}/pulls/${PR}/comments/<comment_id>/replies \
   -X POST -f body="Intentionally kept as-is: <rationale>."
 ```
 
-Record the UTC timestamp of the most recent reply push so step 8 can
-scope its re-check window:
+Record the timestamp of your most recent reply so step 8 can scope its
+re-check window. Take it from GitHub, not local `date` - it is compared
+against `created_at` on other comments, and mixing clock domains lets a
+fast local clock hide comments that arrived just after your replies:
 
 ```bash
-REPLY_PUSH_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+ME=$(gh api user --jq .login)
+REPLY_PUSH_TS=$(gh api repos/${REPO}/pulls/${PR}/comments --paginate --slurp \
+  | jq -r --arg me "$ME" '[.[][] | select(.user.login == $me) | .created_at] | max')
 ```
 
 ## 8 - Re-check for new comments
@@ -394,12 +398,19 @@ REPLY_PUSH_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 PR #71 on 2026-08-02. Without an explicit request its findings stay
 pinned to the pre-fix commit and this pass sees nothing new.
 
-Stamp the request time **before** posting, and keep it:
+Post the request and keep the timestamp **GitHub** assigns to it:
 
 ```bash
-REQUESTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-gh api repos/${REPO}/issues/${PR}/comments -X POST -f body='/agentic_review'
+REQUESTED_AT=$(gh api repos/${REPO}/issues/${PR}/comments \
+  -X POST -f body='/agentic_review' --jq .created_at)
 ```
+
+Take the timestamp from the POST response rather than from local
+`date`. `submitted_at` on the review comes from GitHub's clock, so a
+locally generated bound compares across two clock domains: a local clock
+running fast would exclude the very re-review it is waiting for and time
+the gate out. Reading `created_at` off the response keeps both sides in
+GitHub's domain and costs no extra call.
 
 Then poll for a review whose `commit_id` equals the **post-push** head
 SHA **and** whose `submitted_at` is at or after `REQUESTED_AT`. Both
@@ -457,9 +468,9 @@ including any human reviewer's response:
 ```bash
 gh pr view ${PR} --json reviews,reviewDecision
 
-gh api repos/${REPO}/pulls/${PR}/comments --paginate \
-  --jq --arg since "$REPLY_PUSH_TS" \
-  '.[] | select(.created_at > $since) | {id, user: .user.login, body}'
+gh api repos/${REPO}/pulls/${PR}/comments --paginate --slurp \
+  | jq -r --arg since "$REPLY_PUSH_TS" \
+    '.[][] | select(.created_at > $since) | {id, user: .user.login, body}'
 
 gh api graphql -f query='
 query($owner:String!, $repo:String!, $pr:Int!) {
