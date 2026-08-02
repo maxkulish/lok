@@ -1,6 +1,6 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-02 (CLO-592 completed)
+**Last Updated**: 2026-08-02 (opencode CLI transition merged; CLO-623 / CLO-624 filed)
 
 ## Active Work (WIP Limit: 3)
 
@@ -14,11 +14,14 @@
 |----------|------|-------|--------------|--------|
 | Review | — | **Review FR-15a / [CLO-406](https://linear.app/cloud-ai/issue/CLO-406) before implementing** — decide default TTL value and whether dogfood usage surfaced any new requirements (CLI flag, log verbosity, etc.) | Dogfood feedback from rs-wisper + other projects | **2026-06-09** |
 | Medium | [CLO-406](https://linear.app/cloud-ai/issue/CLO-406/fr-15a-lok-health-ttl-env-override-for-healthcache-ttl) | FR-15a: LOK_HEALTH_TTL env override for HealthCache TTL | CLO-388 ✓ / 389 ✓ / 391 ✓ / 392 ✓ / 395 ✓ — all probes shipped | After 2026-06-09 review |
+| Medium | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested) | Make pr-review-cycle shell snippets executable and tested — extract the gate logic to `.pi/scripts/`, shellcheck in CI, fixture tests asserting each gate fails *closed*, and collapse the skill/`/pr:review` duplication | None — PR #71 merged | Next |
+| Medium | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624/distinguish-a-bad-reviewer-invocation-from-an-empty-model-response) | Distinguish a bad reviewer invocation from an empty model response — `REVIEW_FAILED` on empty stdout regardless of cause is what hid the retired-gemini-CLI breakage for weeks | None — PR #71 merged | Next |
 
 ## Recently Completed
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| — | Transition the orchestrator from the retired `gemini` CLI to `opencode` | 2026-08-02 | Untracked maintenance, no CLO task. All Google-model review legs moved to `opencode run --model google/<m> --agent plan -- "$PROMPT" < /dev/null`; model pins refreshed; `args = []` in `lok.toml` so `GeminiBackend::build_argv` owns the invocation. A `gmodel` helper mirroring `normalize_model` makes `GEMINI_*` overrides accept bare or namespaced values. `/gemini review` trailer and its gate removed (Gemini Code Assist sunset); `qodo-code-review` adopted as the PR reviewer, with `/agentic_review` required because `handle_push_trigger = False`. PR #71, squashed as `62b6c09`. Ten Qodo findings over six passes: nine real and fixed, one declined with evidence — seven formed one chain of untested-shell regressions, which is why CLO-623 exists. |
 | [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | 2026-08-02 | Crate-level rustdoc with working example, feature docs, backend cache and versioning notes. Public type documentation with "when to reach for it" context for all 16+ re-exported types. README library section. Publish workflow: CARGO_REGISTRY_TOKEN assertion moved after dry-run step. silence_probe decision documented. Workspace-split decision record. All validation checks pass. PR #69, merged `bda06ee`. |
 | [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | 2026-08-01 | Dispatch was already fixed at intake; this made the gate trustworthy. Killed the ETXTBSY race in `write_exec_script` (proved by a red control run against a green treatment), rewrote all three workflows against gcm's, and made `CI Gate` a required check on main via ruleset 20153405. PRs #64 and #66. |
 | [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | 2026-07-26 | `[lib]` target added alongside the binaries; `backend::config` split out, orchestration reparented into `engine.rs`, external-consumer test added. Merged as `ee28f3c` (PR #61), superseding CLO-590. Six divergences from the CLO-589 ADR were recorded rather than silently absorbed; CLO-591 closes them. |
