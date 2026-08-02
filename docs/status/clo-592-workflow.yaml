@@ -21,10 +21,10 @@ linear:
   priority: Low
   branch_actual: feat/clo-592-crates
 workflow:
-  current_phase: design
+  current_phase: implement
   status: active
   created_at: '2026-08-02T07:46:35.160Z'
-  updated_at: '2026-08-02T10:20:11.864Z'
+  updated_at: '2026-08-02T11:23:56.676Z'
 phases:
   discovery:
     status: complete
@@ -58,10 +58,17 @@ phases:
     review_verdict: APPROVE
     discovery_context_used: true
     finalized: true
+    assumptions_surfaced: true
+    human_review_completed: true
   plan:
-    status: pending
+    status: complete
+    plan_file: docs/plans/clo-592-library-docs-and-publish-dry-run.md
+    approved: true
   implement:
-    status: pending
+    status: in_progress
+    commits:
+      - 979fcc6
+    last_phase_completed: 'Phase 1: Crate-level rustdoc'
   pr:
     status: pending
   complete:
@@ -125,5 +132,48 @@ history:
     action: design_finalized
     phase: design
     details: Design document approved and finalized. 8 phases, 8 ACs, 5 blind spots fixed.
+  - timestamp: '2026-08-02T10:20:25.869Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: >-
+      Assumptions surfaced: (1) cargo publish --dry-run handles self path-dependency (confirmed), (2) main.rs
+      multiple-build-target warning is cosmetic (confirmed), (3) silence_probe publish=false is safe (binary still built
+      locally)
+  - timestamp: '2026-08-02T10:20:28.624Z'
+    action: design_human_review_complete
+    phase: design
+    details: >-
+      Human review complete: user approved the design document. 5 blind spots from feedback validated against code and
+      fixed.
+  - timestamp: '2026-08-02T10:20:34.564Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-08-02T10:20:57.111Z'
+    action: plan_started
+    phase: plan
+    details: Creating implementation plan from design document docs/design-docs/clo-592-library-docs-and-publish-dry-run.md
+  - timestamp: '2026-08-02T10:21:18.954Z'
+    action: plan_created
+    phase: plan
+    details: Implementation plan created at docs/plans/clo-592-library-docs-and-publish-dry-run.md. 68 tasks across 9 phases.
+  - timestamp: '2026-08-02T11:20:44.208Z'
+    action: plan_approved
+    phase: plan
+    details: Plan approved. 68 sub-tasks across 9 phases queued.
+  - timestamp: '2026-08-02T11:20:45.787Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-08-02T11:20:50.002Z'
+    action: implementation_started
+    phase: implement
+    details: Starting implementation. 68 sub-tasks across 9 phases.
+  - timestamp: '2026-08-02T11:23:56.676Z'
+    action: phase_completed
+    phase: implement
+    details: >-
+      Phase 1 (Crate-level rustdoc) complete. Crate-level doc comment with working example, feature table, backend cache
+      note, and versioning note added to src/lib.rs.
 task_title: Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run
 task_url: https://linear.app/cloud-ai/issue/CLO-592/make-the-backend-library-consumable-from-cratesio-with-rustdoc-feature
