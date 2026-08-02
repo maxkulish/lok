@@ -333,13 +333,22 @@ After pushing fixes and posting replies, request one re-review for the whole PR:
 gh api repos/{owner}/{repo}/issues/[number]/comments -X POST -f body='/agentic_review'
 ```
 
-Then poll for a review on the **current** head SHA, exactly as `pr-review-cycle` step 1b does. A review whose `commit_id` is the old SHA is the stale pass, not the re-validation.
+Then poll for a review on the **post-push** head SHA. A review whose `commit_id` is the old SHA is the stale pass, not the re-validation. Re-fetch the SHA after pushing and use a fresh deadline - do not carry over a SHA or deadline captured before the push.
 
 ```bash
-HEAD_SHA=$(gh api repos/{owner}/{repo}/pulls/[number] --jq .head.sha)
-gh api repos/{owner}/{repo}/pulls/[number]/reviews --paginate --slurp \
-  | jq -r --arg h "$HEAD_SHA" '.[][] | select(.commit_id==$h) | select(.user.login|test("qodo")) | .submitted_at'
+NEW_HEAD=$(gh api repos/{owner}/{repo}/pulls/[number] --jq .head.sha)
+DEADLINE=$(( $(date -u +%s) + 600 ))
+
+while :; do
+  REREVIEW=$(gh api repos/{owner}/{repo}/pulls/[number]/reviews --paginate --slurp \
+    | jq -r --arg h "$NEW_HEAD" '.[][] | select(.commit_id==$h) | select(.user.login|test("qodo")) | .submitted_at' | tail -1)
+  [ -n "$REREVIEW" ] && { echo "Re-review on ${NEW_HEAD:0:7} at ${REREVIEW}"; break; }
+  [ "$(date -u +%s)" -ge "$DEADLINE" ] && { echo "No re-review within 10 min"; exit 1; }
+  sleep 20
+done
 ```
+
+Expect 3-4 minutes per pass. Qodo **edits its existing review comment in place** rather than posting a new one, and that comment passes through intermediate states while it works - it briefly showed `Bugs (0)` before settling on `Bugs (1)` during one pass on PR #71. Never read the finding count while a "Qodo is busy working" comment is present.
 
 **Command notes** (Qodo's managed app is PR-Agent under the hood):
 

@@ -398,15 +398,43 @@ pinned to the pre-fix commit and this pass sees nothing new.
 gh api repos/${REPO}/issues/${PR}/comments -X POST -f body='/agentic_review'
 ```
 
-Then poll for a review whose `commit_id` equals the current head SHA,
-reusing the 1b loop. Two behaviors to expect, both observed on PR #71:
+Then poll for a review whose `commit_id` equals the **post-push** head
+SHA. Do not reuse the 1b loop: its `HEAD_SHA` predates the push and its
+`DEADLINE` is `PR_CREATED_AT + 600s`, which is already in the past by
+the time you reach step 8. Re-derive both.
+
+```bash
+NEW_HEAD=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
+DEADLINE=$(( $(date -u +%s) + 600 ))
+
+while :; do
+  REREVIEW=$(gh api repos/${REPO}/pulls/${PR}/reviews --paginate --slurp \
+    | jq -r --arg h "$NEW_HEAD" '.[][]
+        | select(.commit_id == $h)
+        | select(.user.login | test("qodo"))
+        | .submitted_at' | tail -1)
+
+  [ -n "$REREVIEW" ] && { echo "Re-review on ${NEW_HEAD:0:7} at ${REREVIEW}"; break; }
+  [ "$(date -u +%s)" -ge "$DEADLINE" ] && { echo "GATE FAIL: no re-review on ${NEW_HEAD:0:7} within 10 min"; exit 1; }
+  sleep 20
+done
+```
+
+Observed latency on PR #71 was 3-4 minutes per pass.
+
+Three behaviors to expect, all observed on PR #71:
 
 - Qodo **edits its existing "Code Review by Qodo" issue comment in
   place** rather than posting a new one. Watching for a new comment id
   will miss the re-review; compare `commit_id` on the review object, or
   the comment's `updated_at`.
-- It posts a transient progress comment and then **deletes** it. A
-  comment id that 404s on fetch is normal, not an error.
+- It posts a transient "Qodo is busy working" comment and then
+  **deletes** it. A comment id that 404s on fetch is normal, not an
+  error.
+- The edited comment passes through **intermediate states**. During the
+  third pass on PR #71 it briefly read `Bugs (0)` before settling on
+  `Bugs (1)`. Never read a count while a "busy working" comment is
+  present; wait for it to disappear, then read.
 
 New findings arrive as new inline comments; the superseded ones remain
 attached to the old commit. Then check for new unresolved threads,
