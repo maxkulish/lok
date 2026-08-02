@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-02 (opencode CLI transition merged; CLO-623 / CLO-624 filed)
+**Last Updated**: 2026-08-02 (CLO-625 started)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-625](https://linear.app/cloud-ai/issue/CLO-625) | Make `/pr:finalize` open a PR for aggregation updates instead of pushing to main | In Progress | Spec | - |
 
 ## Up Next (Prioritized Backlog)
 

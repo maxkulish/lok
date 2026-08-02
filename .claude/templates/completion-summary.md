@@ -40,6 +40,7 @@ Every field below is read from `docs/status/clo-XX-workflow.yaml`. **Do not inve
 | Lessons file | `phases.complete.lessons_file` | omit Lessons block if empty |
 | Lessons list | `phases.complete.lessons_learned[]` (one bullet per item) | omit Lessons block if empty |
 | Aggregation files updated | `phases.complete.aggregation_files_updated` → ✅ / ❌ on each of the three files | ❌ on all three |
+| Finalize PR | `phases.complete.finalize_pr_url` / `finalize_pr_number` | **omit the line** — no finalize PR was needed (the files were already current), which is a success, not a gap |
 | Footer phase / workflow / status | `workflow.current_phase` · `workflow.status` · derived (`✅ DONE` when both are `complete`, else `⚠️ IN PROGRESS`) | as observed |
 
 ---
@@ -53,6 +54,10 @@ Operational tasks (`task_type: operational`) often skip Design, Plan, and full I
 - **Implementation**: same rule using `phases.implement.status`. If status is `complete` but `commits` is empty (docs-only operational change), show `Commits: 0 (docs only)`.
 - **Pull Request** and **PR Review**: if no `pr_url` exists, omit both blocks entirely (no header, no `(skipped)` line) — operational tasks without code changes don't show PR sections at all.
 - **Lessons**: omit the whole block if `lessons_learned` is empty.
+- **Aggregation Files → `Merged via`**: omit just that line if `finalize_pr_url` is empty. The three
+  file rows always render. Two different PRs appear in this summary: the 🔗 Pull Request block is the
+  implementation PR, `Merged via` is the docs-only PR that carried the aggregation and status
+  updates to protected `main`. Never render one in place of the other.
 
 The four mandatory blocks that always render regardless of task type: **Task**, **Discovery** (or skip line), **Aggregation Files**, **Footer**.
 
@@ -112,6 +117,7 @@ Render exactly this layout. Preserve the box-drawing characters, indentation (3-
    {{project_md_icon}} docs/PROJECT.md
    {{roadmap_md_icon}} docs/ROADMAP.md
    {{dependencies_md_icon}} docs/DEPENDENCIES.md
+   Merged via:  {{finalize_pr_url}}  (#{{finalize_pr_number}})
 
 ───────────────────────────────────────────────────────────
  Phase: {{current_phase}} · Workflow: {{workflow_status}} · Status: {{final_status_icon}} {{final_status_word}}
