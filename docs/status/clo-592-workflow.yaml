@@ -21,10 +21,10 @@ linear:
   priority: Low
   branch_actual: feat/clo-592-crates
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-08-02T07:46:35.160Z'
-  updated_at: '2026-08-02T11:33:25.765Z'
+  updated_at: '2026-08-02T11:40:29.590Z'
 phases:
   discovery:
     status: complete
@@ -65,7 +65,7 @@ phases:
     plan_file: docs/plans/clo-592-library-docs-and-publish-dry-run.md
     approved: true
   implement:
-    status: in_progress
+    status: complete
     commits:
       - 979fcc6
       - 17d40b9
@@ -74,12 +74,20 @@ phases:
       - '4e05128'
       - da1db34
       - 1c6c6bd
+      - e4ebe0c
     last_phase_completed: 'Phase 8: Testing & Validation'
     codex_report: docs/reviews/clo-592-codex-validation.md
     codex_validated: true
-    codex_verdict: FAIL (fixed)
+    codex_verdict: PASS_WITH_NOTES (fixed)
+    gemini_validation_report: docs/reviews/clo-592-gemini-validation.md
+    assumptions_revalidated: true
+    validation_synthesis_report: docs/reviews/clo-592-codex-validation.md
+    validation_synthesis_verdict: PASS_WITH_NOTES (fixed)
   pr:
-    status: pending
+    status: in_progress
+    ci_passed: true
+    pr_number: 69
+    pr_url: https://github.com/maxkulish/lok/pull/69
   complete:
     status: pending
 history:
@@ -195,5 +203,34 @@ history:
       Codex validation: FAIL. 2 HIGH issues found and fixed: (1) AC6 public type docs improved for StepOptions,
       HealthStatus, Message, Role, ModelInfo, and all 5 provider backends. (2) Phase 4 silence_probe resolution updated
       to reflect Cargo's lack of bin-level publish=false. Plan and design doc updated to match.
+  - timestamp: '2026-08-02T11:33:53.386Z'
+    action: implementation_complete
+    phase: implement
+    details: All 8 implementation phases complete. Codex validation findings addressed. 8 commits pushed.
+  - timestamp: '2026-08-02T11:33:58.361Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      Assumptions revalidated: (1) cargo publish --dry-run succeeds with self path-dependency (confirmed), (2) main.rs
+      multiple-build-target warning is cosmetic (confirmed), (3) silence_probe is harmless in .crate archive
+      (confirmed), (4) all 3 dry-run variants succeed (default, bedrock, no-default-features)
+  - timestamp: '2026-08-02T11:34:00.338Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-08-02T11:34:39.673Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      All pre-flight CI checks pass: cargo fmt --check, cargo clippy --all-targets -- -D warnings, cargo test (7 passed,
+      0 failed)
+  - timestamp: '2026-08-02T11:34:57.617Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #69 created at https://github.com/maxkulish/lok/pull/69'
+  - timestamp: '2026-08-02T11:40:29.590Z'
+    action: ci_passed
+    phase: pr
+    details: 'All CI jobs pass: library boundary, build/test (ubuntu + macos), CI Gate'
 task_title: Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run
 task_url: https://linear.app/cloud-ai/issue/CLO-592/make-the-backend-library-consumable-from-cratesio-with-rustdoc-feature
