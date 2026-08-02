@@ -1,6 +1,6 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-02 (CLO-625 completed)
+**Last Updated**: 2026-08-02 (CLO-625 completed; CLO-627 / CLO-628 filed)
 
 ## Active Work (WIP Limit: 3)
 
@@ -16,6 +16,8 @@
 | Medium | [CLO-406](https://linear.app/cloud-ai/issue/CLO-406/fr-15a-lok-health-ttl-env-override-for-healthcache-ttl) | FR-15a: LOK_HEALTH_TTL env override for HealthCache TTL | CLO-388 ✓ / 389 ✓ / 391 ✓ / 392 ✓ / 395 ✓ — all probes shipped | After 2026-06-09 review |
 | Medium | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested) | Make pr-review-cycle shell snippets executable and tested — extract the gate logic to `.pi/scripts/`, shellcheck in CI, fixture tests asserting each gate fails *closed*, and collapse the skill/`/pr:review` duplication | None — PR #71 merged | Next |
 | Medium | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624/distinguish-a-bad-reviewer-invocation-from-an-empty-model-response) | Distinguish a bad reviewer invocation from an empty model response — `REVIEW_FAILED` on empty stdout regardless of cause is what hid the retired-gemini-CLI breakage for weeks | None — PR #71 merged | Next |
+| Medium | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627/completemd-edits-the-aggregation-files-then-checks-out-main-with-them) | `complete.md` edits the aggregation files at Step 3, then checks out main at Step 4 with them uncommitted — in worktree mode the same three files get edited twice in two places | None — CLO-625 merged | Next |
+| Medium | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628/gh-pr-merge-delete-branch-silently-skips-the-remote-deletion-when-its) | `gh pr merge --delete-branch` abandons the remote deletion when its local checkout fails, without failing the command — it bit PR #73 and the branch had to be removed via the API | None — CLO-625 merged | Next |
 
 ## Recently Completed
 
