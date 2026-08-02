@@ -4,7 +4,17 @@ use rand::Rng;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
-/// Policy for retrying transient backend failures
+/// Policy for retrying transient backend failures.
+///
+/// Use this when you want automatic retry logic for backends that may
+/// experience transient failures (timeouts, rate limits, network errors).
+/// Construct via [`RetryPolicy::from_backend_config`] to honour per-backend
+/// overrides, or use [`RetryPolicy::default`] for sensible defaults (3 retries,
+/// 1s base delay, 30s max delay).
+///
+/// Pass a `RetryPolicy` to [`create_backend`](crate::create_backend) to wrap
+/// the backend in a [`RetryExecutor`] automatically. Set `max_retries: 0` to
+/// disable retries entirely.
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
     /// Maximum number of retry attempts (0 means no retries)
@@ -59,7 +69,16 @@ impl RetryPolicy {
     }
 }
 
-/// A backend decorator that automatically retries transient failures
+/// A backend decorator that automatically retries transient failures.
+///
+/// You rarely construct this directly. Pass a [`RetryPolicy`] to
+/// [`create_backend`](crate::create_backend) and it wraps the returned backend
+/// in a `RetryExecutor` automatically when `max_retries > 0`.
+///
+/// Only [`BackendError`] variants where [`BackendError::is_retryable`] returns
+/// `true` (Timeout, RateLimit, Network) are retried. All other errors are
+/// returned immediately. Rate-limit errors with a server-supplied
+/// `retry_after_ms` honour that value in preference to the policy's backoff.
 pub struct RetryExecutor {
     inner: Arc<dyn Backend>,
     policy: RetryPolicy,

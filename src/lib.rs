@@ -72,10 +72,10 @@
 //!
 //! # Backend cache
 //!
-//! Backends are cached in a **process-global** [`BACKEND_CACHE`] keyed by name
+//! Backends are cached in a **process-global** [`backend::BACKEND_CACHE`] keyed by name
 //! alone. Two callers in one process asking for the same name with different
 //! configurations share the first instance built. This is a known constraint
-//! documented on [`BACKEND_CACHE`]; it avoids forcing every provider to carry
+//! documented on [`backend::BACKEND_CACHE`]; it avoids forcing every provider to carry
 //! its own cache while keeping the health-probe layer simple.
 //!
 //! # Versioning
