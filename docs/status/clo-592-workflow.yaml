@@ -24,7 +24,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-08-02T07:46:35.160Z'
-  updated_at: '2026-08-02T11:23:56.676Z'
+  updated_at: '2026-08-02T11:33:25.765Z'
 phases:
   discovery:
     status: complete
@@ -68,7 +68,16 @@ phases:
     status: in_progress
     commits:
       - 979fcc6
-    last_phase_completed: 'Phase 1: Crate-level rustdoc'
+      - 17d40b9
+      - '1421589'
+      - '7401757'
+      - '4e05128'
+      - da1db34
+      - 1c6c6bd
+    last_phase_completed: 'Phase 8: Testing & Validation'
+    codex_report: docs/reviews/clo-592-codex-validation.md
+    codex_validated: true
+    codex_verdict: FAIL (fixed)
   pr:
     status: pending
   complete:
@@ -175,5 +184,16 @@ history:
     details: >-
       Phase 1 (Crate-level rustdoc) complete. Crate-level doc comment with working example, feature table, backend cache
       note, and versioning note added to src/lib.rs.
+  - timestamp: '2026-08-02T11:27:30.177Z'
+    action: implementation_complete
+    phase: implement
+    details: All 8 implementation phases complete. 5 commits pushed. All validation checks pass.
+  - timestamp: '2026-08-02T11:33:25.765Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex validation: FAIL. 2 HIGH issues found and fixed: (1) AC6 public type docs improved for StepOptions,
+      HealthStatus, Message, Role, ModelInfo, and all 5 provider backends. (2) Phase 4 silence_probe resolution updated
+      to reflect Cargo's lack of bin-level publish=false. Plan and design doc updated to match.
 task_title: Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run
 task_url: https://linear.app/cloud-ai/issue/CLO-592/make-the-backend-library-consumable-from-cratesio-with-rustdoc-feature

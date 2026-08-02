@@ -8,6 +8,12 @@ use std::time::{Duration, Instant};
 use tokio::process::Command;
 
 /// Google Gemini, reached through the `opencode` CLI as a subprocess.
+///
+/// Reach for this when you need deep security audits or thorough analysis
+/// (Gemini is slower but more thorough than Codex). Construct via
+/// [`create_backend`](crate::create_backend) with `name: "gemini"` for
+/// automatic retry wrapping, or instantiate directly if you need to bypass
+/// the cache or supply a custom config.
 pub struct GeminiBackend {
     command: String,
     args: Vec<String>,

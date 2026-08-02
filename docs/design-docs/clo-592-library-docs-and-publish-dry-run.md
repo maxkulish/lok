@@ -244,12 +244,11 @@ Audit every public type re-exported from `src/lib.rs` and ensure each has a doc 
 
 ### Phase 4: silence_probe binary decision
 
-- [ ] Decide whether `silence_probe` should be in the published artifact
-  - [ ] It requires `test-support` so it won't install by default for end users
-  - [ ] It will still be packaged in the `.crate` archive
-  - [ ] Recommendation: add `publish = false` to its `[[bin]]` section — it is a test helper, not a consumer-facing binary
-- [ ] If `publish = false`: verify `cargo publish --dry-run --locked` no longer includes it
-- [ ] If kept: document why in a comment in `Cargo.toml`
+- [x] Decide whether `silence_probe` should be in the published artifact
+  - [x] It requires `test-support` so it won't install by default for end users
+  - [x] It will still be packaged in the `.crate` archive (Cargo includes all source files)
+  - [x] **Decision**: keep it in the package with a documented rationale. Cargo does not support `publish = false` at the `[[bin]]` level (only at `[package]` level). The binary is harmless in the archive — it is a test helper, not a consumer-facing binary. If this becomes a concern, move it to a workspace member crate.
+- [ ] Document the decision in `Cargo.toml` with a comment explaining the rationale
 - [ ] Verify `cargo build --all-targets` still passes (the binary is still built locally)
 
 ### Phase 5: Publish workflow fix

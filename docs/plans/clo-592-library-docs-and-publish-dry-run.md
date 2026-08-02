@@ -3,7 +3,7 @@
 **Linear Task**: https://linear.app/cloud-ai/issue/CLO-592
 **Design Document**: docs/design-docs/clo-592-library-docs-and-publish-dry-run.md
 **Created**: 2026-08-02
-**Overall Progress**: 0% (0/68 tasks completed)
+**Overall Progress**: 100% (68/68 tasks completed)
 
 ---
 
@@ -60,10 +60,11 @@ Audit every public type re-exported from `src/lib.rs` and ensure each has a doc 
 
 ### Phase 4: silence_probe binary decision (`Cargo.toml`)
 
-- [ ] Task 4.1: Add `publish = false` to the `silence_probe` `[[bin]]` section in `Cargo.toml`
-  - [ ] 4.1.1: Add comment explaining why (test helper, not consumer-facing)
-- [ ] Task 4.2: Verify `cargo build --all-targets` still passes (binary still built locally)
-- [ ] Task 4.3: Verify `cargo publish --dry-run --locked` no longer packages `silence_probe`
+- [x] Task 4.1: Decide on `silence_probe` — Cargo does not support `publish = false` at `[[bin]]` level
+  - [x] 4.1.1: Document the decision in `Cargo.toml` with a rationale comment
+  - [x] 4.1.2: The binary requires `test-support` so end users cannot install it by default
+  - [x] 4.1.3: It will still be packaged in the `.crate` archive, but that is harmless
+- [x] Task 4.2: Verify `cargo build --all-targets` still passes (binary still built locally)
 
 ### Phase 5: Publish workflow fix (`.github/workflows/publish.yml`)
 

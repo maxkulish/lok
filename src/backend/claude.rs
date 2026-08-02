@@ -36,6 +36,11 @@ pub(crate) enum ClaudeMode {
 
 /// Anthropic Claude, reached either through the Messages API or the
 /// `claude` CLI depending on how it is configured.
+///
+/// Reach for this when you need Claude's reasoning and orchestration
+/// capabilities. Construct via [`create_backend`](crate::create_backend)
+/// with `name: "claude"` for automatic retry wrapping, or instantiate
+/// directly if you need to bypass the cache or supply a custom config.
 pub struct ClaudeBackend {
     mode: ClaudeMode,
 }
