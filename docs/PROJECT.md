@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-02 (CLO-625 started)
+**Last Updated**: 2026-08-02 (CLO-625 completed)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-625](https://linear.app/cloud-ai/issue/CLO-625) | Make `/pr:finalize` open a PR for aggregation updates instead of pushing to main | In Progress | Spec | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -21,6 +21,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-625](https://linear.app/cloud-ai/issue/CLO-625) | Make `/pr:finalize` open a PR for aggregation updates instead of pushing to main | 2026-08-02 | `/pr:finalize` committed straight to `main`, which ruleset 20153405 has forbidden since CLO-600 — and it had never been run against it. The assumption was structural, not local: three `git push origin main` calls, a `HEAD == main` assertion, and a checklist line. Step 4 now branches to `docs/clo-XX-finalize`, Steps 6-8 only edit files, and one new Step 9 opens the PR, waits for `CI Gate`, merges with `--delete-branch`, returns to `main`, and flips Linear **last** — so a failure can no longer strand a task the way this one did. Three settings were checked against the live repo rather than assumed, each of which would have broken the first run: `allow_auto_merge=false` (no `--auto`), `delete_branch_on_merge=false` (needs `--delete-branch`), and no `paths:` filter in `ci.yml`, which is the only reason a docs-only PR can satisfy the required check at all. Sibling audit: finalize.md was the only offender. PR #73, squashed as `8e45f6a`. Running the shell rather than reading it caught two bugs reading had not — `git add a b c` stages nothing when one pathspec is missing, and unquoted word-splitting works in bash but not zsh. Eight Qodo findings over four passes, six of them the same fail-open shape this task exists to remove. |
 | — | Transition the orchestrator from the retired `gemini` CLI to `opencode` | 2026-08-02 | Untracked maintenance, no CLO task. All Google-model review legs moved to `opencode run --model google/<m> --agent plan -- "$PROMPT" < /dev/null`; model pins refreshed; `args = []` in `lok.toml` so `GeminiBackend::build_argv` owns the invocation. A `gmodel` helper mirroring `normalize_model` makes `GEMINI_*` overrides accept bare or namespaced values. `/gemini review` trailer and its gate removed (Gemini Code Assist sunset); `qodo-code-review` adopted as the PR reviewer, with `/agentic_review` required because `handle_push_trigger = False`. PR #71, squashed as `62b6c09`. Ten Qodo findings over six passes: nine real and fixed, one declined with evidence — seven formed one chain of untested-shell regressions, which is why CLO-623 exists. |
 | [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | 2026-08-02 | Crate-level rustdoc with working example, feature docs, backend cache and versioning notes. Public type documentation with "when to reach for it" context for all 16+ re-exported types. README library section. Publish workflow: CARGO_REGISTRY_TOKEN assertion moved after dry-run step. silence_probe decision documented. Workspace-split decision record. All validation checks pass. PR #69, merged `bda06ee`. |
 | [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | 2026-08-01 | Dispatch was already fixed at intake; this made the gate trustworthy. Killed the ETXTBSY race in `write_exec_script` (proved by a red control run against a green treatment), rewrote all three workflows against gcm's, and made `CI Gate` a required check on main via ruleset 20153405. PRs #64 and #66. |
