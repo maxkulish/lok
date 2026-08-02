@@ -17,7 +17,7 @@
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
 | Phase 11: Health Checks | 1 | 1 | Complete |
-| Phase 12: Library Extraction & CI | 5 | 4 | In Progress |
+| Phase 12: Library Extraction & CI | 5 | 5 | Complete |
 
 ## Phase 11: Health Checks
 
@@ -39,7 +39,7 @@ Makes the `Backend` abstraction consumable by an external crate, and puts a CI g
 | [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | Done | CLO-589 |
 | [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | Done | - |
 | [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | Done | CLO-593 |
-| [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | In Progress | CLO-591 |
+| [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | Done | CLO-591 |
 
 ## Phase 2: Validation Pipeline
 
