@@ -138,9 +138,18 @@ phases:
         `gh --jq '.[0].number'` yields empty rather than the string "null" for a missing PR.
       end_to_end: deferred to the complete phase - CLO-625 finalizes itself with the rewritten command
   pr:
-    status: pending
-    pr_url: null
-    pr_number: null
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/73
+    pr_number: 73
+    ci_passed: true
+    ci_run: https://github.com/maxkulish/lok/actions/runs/30751190410
+    ci_detail: >-
+      CI Gate passed in 3s on top of build/test (ubuntu 3m20s, macos 2m12s) and library boundary
+      (1m41s); etxtbsy-stress skipped as designed. Confirms in practice what the audit predicted:
+      ci.yml has no paths filter, so a docs-only PR does report the required check.
+    reviews_addressed: false
+    review_comment_threads_resolved: 0
+    bot_review_wait_completed: false
   complete:
     status: pending
 history:

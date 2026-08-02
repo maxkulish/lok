@@ -15,7 +15,7 @@ Every field below is read from `docs/status/clo-XX-workflow.yaml`. **Do not inve
 | Linear URL | `linear_url` or `task_url` | omit row |
 | Linear status | `linear.status_at_complete` | `(unchanged)` |
 | Branch | `linear.branch_actual` | `(none)` |
-| PR url / number | `phases.pr.pr_url` / `pr_number` | `(no PR)` — skip PR block entirely if both empty |
+| PR url / number | `phases.pr.pr_url` / `phases.pr.pr_number` | `(no PR)` — skip PR block entirely if both empty |
 | Merged timestamp | `phases.complete.merged_at` (fallback `phases.pr.merged_at`) | `(not merged)` |
 | Merge commit | `phases.complete.merge_commit` (short to 7) | `(none)` |
 | CI status | `phases.pr.ci_passed` → ✅ passed / ❌ failed / ⚠️ pending | ⚠️ pending |
@@ -40,7 +40,7 @@ Every field below is read from `docs/status/clo-XX-workflow.yaml`. **Do not inve
 | Lessons file | `phases.complete.lessons_file` | omit Lessons block if empty |
 | Lessons list | `phases.complete.lessons_learned[]` (one bullet per item) | omit Lessons block if empty |
 | Aggregation files updated | `phases.complete.aggregation_files_updated` → ✅ / ❌ on each of the three files | ❌ on all three |
-| Finalize PR | `phases.complete.finalize_pr_url` / `finalize_pr_number` | **omit the line** — no finalize PR was needed (the files were already current), which is a success, not a gap |
+| Finalize PR | `phases.complete.finalize_pr_url` / `phases.complete.finalize_pr_number` | **omit the line** — no finalize PR was needed (the files were already current), which is a success, not a gap |
 | Footer phase / workflow / status | `workflow.current_phase` · `workflow.status` · derived (`✅ DONE` when both are `complete`, else `⚠️ IN PROGRESS`) | as observed |
 
 ---

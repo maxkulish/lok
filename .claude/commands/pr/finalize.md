@@ -137,21 +137,29 @@ Pulled latest changes including merged PR.
 
 ```bash
 if git show-ref --verify --quiet "refs/heads/$FINALIZE_BRANCH"; then
-    echo "BRANCH_EXISTS"
-else
-    git checkout -b "$FINALIZE_BRANCH"
+    echo "BRANCH_EXISTS — stopping. Resolve via Case 7 before continuing."
+    exit 1
 fi
+
+git checkout -b "$FINALIZE_BRANCH" || { echo "BRANCH_CREATE_FAILED"; exit 1; }
+git rev-parse --abbrev-ref HEAD   # confirm: $FINALIZE_BRANCH
 ```
 
-If the branch already exists, an earlier run aborted partway. See **Case 7** below — prompt the
-user before touching it; do not silently reuse or delete.
+The stop is deliberate and must stay non-zero. If the branch already exists, an earlier run aborted
+partway; see **Case 7** — prompt the user, do not silently reuse or delete. Merely printing
+`BRANCH_EXISTS` and continuing would leave `HEAD` on `main` while Step 9 assumes the finalize
+branch, so the aggregation edits would be committed to the wrong branch and the push would be
+rejected by the ruleset all over again.
 
-### Step 5: Aggregation Files (Linear update moved to Step 9c)
+On the Case 7 `reuse` path, check the branch out (`git checkout "$FINALIZE_BRANCH"`) **before** any
+file edits in Steps 6-8.
+
+### Step 5: Aggregation Files (Linear update moved to Step 9g)
 
 Linear is **not** updated here. It used to be, and that ordering is what made the original failure
 so damaging: the task was flipped to Done at this point and the push to `main` was rejected two
 steps later, leaving Linear claiming completion that the repository had no record of. The Linear
-transition now happens in Step 9c, after the PR has actually merged.
+transition now happens in Step 9g, after the PR has actually merged.
 
 ### Step 6: Update Aggregation Files
 
@@ -294,7 +302,13 @@ them.
 
 ```bash
 pwd                                # main repo path
-git rev-parse --abbrev-ref HEAD    # $FINALIZE_BRANCH
+
+# Fail fast if Step 4 left us somewhere else — committing the aggregation files
+# onto `main` is the exact failure this whole command exists to remove.
+if [ "$(git rev-parse --abbrev-ref HEAD)" != "$FINALIZE_BRANCH" ]; then
+    echo "WRONG_BRANCH: on $(git rev-parse --abbrev-ref HEAD), expected $FINALIZE_BRANCH"
+    exit 1
+fi
 
 # Stage each path that exists, one at a time. Two traps here, both load-bearing:
 #   - `git add a b c` aborts with exit 128 having staged NOTHING when any single
@@ -312,11 +326,13 @@ done
 
 if [ "$FOUND" -eq 0 ]; then
     echo "NO_AGGREGATION_FILES"      # Case 1
+    exit 1
 elif [ "$STAGE_ERR" -ne 0 ]; then
-    echo "STAGING_FAILED"            # stop; do not read this as "nothing to commit"
+    echo "STAGING_FAILED"            # do NOT read this as "nothing to commit"
+    exit 1
 # Nothing staged means the files were already current — see Case 8
 elif git diff --cached --quiet; then
-    echo "NOTHING_TO_COMMIT"
+    echo "NOTHING_TO_COMMIT"         # the one non-error early exit; route to Case 8
 else
     git commit -m "$(cat <<'EOF'
 docs(CLO-XX): update aggregation and status files for completed task
@@ -326,10 +342,15 @@ docs(CLO-XX): update aggregation and status files for completed task
 - DEPENDENCIES.md: Updated blockers and unblocked tasks
 - docs/status/: Final summary and workflow marked complete
 EOF
-)"
-    git push -u origin "$FINALIZE_BRANCH"
+)" || { echo "COMMIT_FAILED"; exit 1; }
+    git push -u origin "$FINALIZE_BRANCH" || { echo "PUSH_FAILED"; exit 1; }
 fi
 ```
+
+Every error branch here exits non-zero. These markers are load-bearing, not advisory: falling
+through to Step 9b after a failed stage or push would run `gh pr create` against a branch with no
+commit on it, which is the partial-finalization this rewrite exists to prevent. `NOTHING_TO_COMMIT`
+is the only early exit that is **not** an error.
 
 If `NOTHING_TO_COMMIT`, skip to **Case 8**. The task is still finished — it just needs no PR.
 
