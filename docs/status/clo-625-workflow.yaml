@@ -1,0 +1,198 @@
+task_id: clo-625
+task_type: specification
+classification_reason: >-
+  Scope is confined to `.claude/commands/pr/` - one command file to rewrite plus two siblings to
+  audit. No architecture decisions are open: the Linear description already fixes the shape (branch
+  off main, commit aggregation and status together, open one PR, wait for `CI Gate`, merge). The
+  only open question is whether the aggregation and status commits stay separate, and the
+  description already answers it. Well-scoped, single-area, S/M size -> specification workflow.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: true
+  skip_probe: true
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  related_to:
+    - CLO-600
+    - CLO-623
+    - CLO-624
+  branch_suggested: kmamemo/clo-625-make-prfinalize-open-a-pr-for-aggregation-updates-instead-of
+  branch_actual: feat/clo-625-pr-finalize
+  priority: High
+  labels:
+    - AFK
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-08-02T13:45:44Z'
+  updated_at: '2026-08-02T14:00:00Z'
+entry_findings:
+  direct_push_sites:
+    - '.claude/commands/pr/finalize.md:250 - Step 7, worktree mode, aggregation files'
+    - '.claude/commands/pr/finalize.md:266 - Step 7, standard mode, aggregation files'
+    - '.claude/commands/pr/finalize.md:335 - Step 9, docs/status/ workflow state'
+    - '.claude/commands/pr/finalize.md:500 - completion checklist asserts "pushed to main"'
+  main_branch_assertion: >-
+    `.claude/commands/pr/finalize.md:96` (Step 4) asserts `git rev-parse --abbrev-ref HEAD` is
+    `main`, so the command is built end to end around committing on the protected branch.
+  siblings_to_audit:
+    - .claude/commands/pr/create.md
+    - .claude/commands/pr/review.md
+  ruleset: >-
+    Ruleset 20153405 on refs/heads/main is enforcement=active with required_status_checks
+    ["CI Gate"], no bypass_actors, plus deletion and non_fast_forward rules. No workaround exists;
+    the repository owner cannot push to main either.
+  wip_at_start: 0/3 - Active Work table in docs/PROJECT.md is empty
+phases:
+  discovery:
+    status: skipped
+    skip_reason: Specification task
+    approved: true
+  design:
+    status: skipped
+    reason: Specification task - using /spec instead
+  spec:
+    status: complete
+    spec_file: specs/2026-08-02-clo-625-finalize-pr-flow.md
+    approved: true
+    approval_mode: >-
+      Auto-approved on the AFK label. The checkpoint was not put to the user because the task is
+      labelled AFK, the review verdict was APPROVE_WITH_SUGGESTIONS with zero conflicting
+      suggestions, and every change in scope is a reversible edit to a markdown command file. The
+      spec and both review files are on disk for review at PR time.
+    review_gemini: docs/reviews/clo-625-spec-review-gemini.md
+    review_ollama: docs/reviews/clo-625-spec-review-ollama.md
+    review_synthesis: docs/reviews/clo-625-spec-review-synthesis.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_reviewers: 1
+    review_ollama_failed: >-
+      Ollama leg produced nothing: Codex read stdin, printed its banner and exited without output.
+      Same failure family as CLO-624 - an empty stdout is reported as REVIEW_FAILED regardless of
+      whether the model refused or the invocation was malformed. Synthesis ran single-reviewer.
+    review_applied: true
+    applied_suggestions:
+      - 'F1/F5: check `gh pr list --head <branch> --state open` before `gh pr create`; adopt an existing PR rather than hard-failing'
+      - 'F2/F4: empty-diff path defined end to end - no PR, but Linear still flips to Done and the summary still renders (new AC4b, test 10)'
+      - 'F3: AC4 gained a failure path - CI Gate failure aborts before both the merge and the Linear update (test 13)'
+      - 'F6: escalation constraint reworded from "escalate" to "prompt with reuse/delete options", matching the evaluation section'
+      - 'F7: CI wait bounded - `--interval 30` plus a ~20 minute cap, because a bare `--watch` is a hang rather than a wait (test 12)'
+      - 'F8: `finalize_pr_url` renders as an omitted line, not `(none)`, when no PR was needed - matching the template rule already used for the Lessons block'
+    flagged_suggestions: []
+  implement:
+    status: complete
+    files_changed:
+      - .claude/commands/pr/finalize.md
+      - .claude/templates/completion-summary.md
+    sibling_audit:
+      method: >-
+        rg over .claude/ for `push origin main`, `checkout main`, `git push`, and
+        `rev-parse --abbrev-ref` branch assertions.
+      findings:
+        - file: .claude/commands/pr/finalize.md
+          lines: '96, 250, 266, 335, 500'
+          finding: the defect - three pushes to main, a HEAD==main assertion, and a checklist line
+          verdict: fixed
+        - file: .claude/commands/task/phases/complete.md
+          lines: '42-43'
+          finding: '`git checkout main; git pull origin main` - read-only, no push'
+          verdict: clean, but see follow-up T1 in session notes
+        - file: .claude/commands/pr/create.md
+          lines: '92, 421'
+          finding: pushes the feature branch; `git fetch origin main` is read-only
+          verdict: clean
+        - file: .claude/commands/pr/review.md
+          lines: '263'
+          finding: pushes the feature branch
+          verdict: clean
+        - file: >-
+            .claude/commands/plan/create.md:225, .claude/commands/plan/implement.md:659,844,
+            .claude/commands/task/phases/implement.md:20, .claude/commands/design-doc/create.md:381
+          finding: all push feature branches
+          verdict: clean
+      conclusion: >-
+        finalize.md was the only command with the direct-push-to-main assumption. Every other push
+        in .claude/ targets a feature branch, which the ruleset does not restrict.
+    verification:
+      static: >-
+        All 14 bash blocks in finalize.md extracted and checked: `bash -n` clean, shellcheck -S
+        warning clean (SC2034 excluded as a cross-block false positive - each block is linted in
+        isolation so variables set in one and used in the next read as unused).
+      runtime: >-
+        Branch-exists detection, empty-diff detection and the staging logic exercised against
+        throwaway repos over five scenarios (only-one-file-present, unchanged, all-present,
+        status-only, no-docs-dir). Two real bugs in the first draft were caught this way and fixed;
+        see F4 and F5 in the session notes.
+      environment_checks: >-
+        Verified against the live repo rather than assumed - allow_auto_merge=false (rules out
+        `gh pr merge --auto`), delete_branch_on_merge=false (requires --delete-branch), ci.yml has
+        no paths filter (so CI Gate does report on a docs-only PR), `gh pr checks` supports
+        --watch/--interval/--fail-fast, `timeout` exists here only via Homebrew coreutils, and
+        `gh --jq '.[0].number'` yields empty rather than the string "null" for a missing PR.
+      end_to_end: deferred to the complete phase - CLO-625 finalizes itself with the rewritten command
+  pr:
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/73
+    pr_number: 73
+    ci_passed: true
+    ci_run: https://github.com/maxkulish/lok/actions/runs/30751190410
+    ci_detail: >-
+      CI Gate passed in 3s on top of build/test (ubuntu 3m20s, macos 2m12s) and library boundary
+      (1m41s); etxtbsy-stress skipped as designed. Confirms in practice what the audit predicted:
+      ci.yml has no paths filter, so a docs-only PR does report the required check.
+    reviews_addressed: false
+    review_comment_threads_resolved: 0
+    bot_review_wait_completed: false
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-08-02T13:45:44Z'
+    action: workflow_started
+    phase: spec
+    details: >-
+      Workflow created for CLO-625. Classified as specification: the fix shape is already
+      determined by the Linear description, scope is one command file plus a two-file audit.
+      Branch feat/clo-625-pr-finalize already exists with no divergence from main.
+  - timestamp: '2026-08-02T13:47:00Z'
+    action: project_sync_start
+    phase: spec
+    details: >-
+      PROJECT.md Active Work 0/3 -> 1/3. ROADMAP.md untouched: its phase tables track lok's product
+      work, not orchestration tooling, and siblings CLO-623/624 are absent for the same reason.
+      DEPENDENCIES.md untouched: CLO-625 appears in neither Current Blockers nor Unblocked & Ready.
+  - timestamp: '2026-08-02T13:58:00Z'
+    action: spec_review_complete
+    phase: spec
+    details: >-
+      lok spec-review returned APPROVE_WITH_SUGGESTIONS on one reviewer. Gemini raised 8 findings,
+      3 High, all behavioural gaps in the spec rather than defects in the approach: pre-existing PR,
+      empty-diff control flow, and the missing CI-failure path. Ollama leg failed at startup.
+  - timestamp: '2026-08-02T13:59:00Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      All 6 priority actions applied to specs/2026-08-02-clo-625-finalize-pr-flow.md. None
+      contradicted a prior decision, so none needed user resolution. Spec gained AC4b, AC4c, an
+      expanded AC4, four evaluation rows (10-13) and four edge cases.
+  - timestamp: '2026-08-02T14:00:00Z'
+    action: spec_approved
+    phase: implement
+    details: >-
+      Approved without a user checkpoint on the AFK label; see phases.spec.approval_mode. Spec
+      decomposition is the plan, so the plan phase is skipped and implementation starts directly.
+  - timestamp: '2026-08-02T14:30:00Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      finalize.md rewritten: Step 4 branches instead of asserting main, Steps 7/9 collapsed so all
+      edits precede one commit, new Step 9 opens the PR, waits for CI Gate under a bounded timeout,
+      merges with --delete-branch, returns to main, and only then flips Linear. Cases 7/8/9 added
+      for branch-exists, empty-diff and CI-failure. completion-summary.md gained the finalize PR
+      line with an omit-on-empty rule. Sibling audit clean: finalize.md was the only offender.
