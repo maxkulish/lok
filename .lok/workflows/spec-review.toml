@@ -21,7 +21,12 @@ if command -v ollama >/dev/null 2>&1; then
   OLLAMA_OK=true
 fi
 
-if timeout 20 opencode run --model "google/${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}" --agent plan -- "reply OK" < /dev/null 2>/dev/null | grep -qi "ok"; then
+# Add the `google/` transport namespace only when the caller has not already
+# supplied one, so both `gemini-3.6-flash` and `google/gemini-3.6-flash` work as
+# env overrides. Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs).
+gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
+
+if timeout 20 opencode run --model "$(gmodel "${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}")" --agent plan -- "reply OK" < /dev/null 2>/dev/null | grep -qi "ok"; then
   GEMINI_OK=true
 fi
 
@@ -43,13 +48,17 @@ PROMPT=$(sed \
   -e 's|__LINEAR_LABELS__|{{ arg.5 }}|g' \
   .lok/prompts/spec-review-prompt.md)
 
+# Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs): prefix only
+# when the override lacks a transport namespace.
+gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
+
 PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.1-pro-preview}"
 FALLBACK_MODEL="${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}"
 
-OUTPUT=$(timeout 600 opencode run --model "google/$PRIMARY_MODEL" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-spec-stderr.log)
+OUTPUT=$(timeout 600 opencode run --model "$(gmodel "$PRIMARY_MODEL")" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-spec-stderr.log)
 
 if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
-  OUTPUT=$(timeout 600 opencode run --model "google/$FALLBACK_MODEL" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-spec-stderr.log)
+  OUTPUT=$(timeout 600 opencode run --model "$(gmodel "$FALLBACK_MODEL")" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-spec-stderr.log)
 
   if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
     STDERR=$(head -5 /tmp/lok-opencode-spec-stderr.log 2>/dev/null || echo "no stderr")

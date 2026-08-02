@@ -11,6 +11,10 @@ description = "Multi-model pre-PR validation: health-check + Codex + Gemini + Cl
 #   GEMINI_MODEL             default "gemini-3.1-pro-preview"
 #   GEMINI_FALLBACK_MODEL    default "gemini-3.6-flash"
 #
+# The GEMINI_* values may be bare ("gemini-3.6-flash") or namespaced
+# ("google/gemini-3.6-flash"); the `gmodel` helper below adds `google/` only when
+# it is missing, so neither form produces a doubled prefix.
+#
 # The "gemini" reviewer runs Google models through the `opencode` CLI, not the
 # retired `gemini` CLI. Canonical invocation:
 #   opencode run --model "google/<model>" --agent plan -- "$PROMPT" < /dev/null
@@ -31,7 +35,12 @@ if command -v codex >/dev/null 2>&1; then
   CODEX_OK=true
 fi
 
-if timeout 20 opencode run --model "google/${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}" --agent plan -- "reply OK" < /dev/null 2>/dev/null | grep -qi "ok"; then
+# Add the `google/` transport namespace only when the caller has not already
+# supplied one, so both `gemini-3.6-flash` and `google/gemini-3.6-flash` work as
+# env overrides. Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs).
+gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
+
+if timeout 20 opencode run --model "$(gmodel "${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}")" --agent plan -- "reply OK" < /dev/null 2>/dev/null | grep -qi "ok"; then
   GEMINI_OK=true
 fi
 
@@ -102,6 +111,10 @@ retries = 3
 continue_on_error = true
 depends_on = ["health_check"]
 shell = '''
+# Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs): prefix only
+# when the override lacks a transport namespace.
+gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
+
 PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.1-pro-preview}"
 FALLBACK_MODEL="${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}"
 
@@ -112,13 +125,13 @@ PROMPT=$(sed \
   .lok/prompts/pre-pr-validation-prompt.md)
 
 OUTPUT=$(timeout --kill-after=15s 600s opencode run \
-  --model "google/$PRIMARY_MODEL" \
+  --model "$(gmodel "$PRIMARY_MODEL")" \
   --agent plan \
   --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-prepr-stderr.log)
 
 if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
   OUTPUT=$(timeout --kill-after=15s 600s opencode run \
-    --model "google/$FALLBACK_MODEL" \
+    --model "$(gmodel "$FALLBACK_MODEL")" \
     --agent plan \
     --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-prepr-stderr.log)
 
@@ -277,6 +290,10 @@ name = "write_reports"
 depends_on = ["codex_review", "gemini_review", "claude_fallback", "synthesis"]
 min_deps_success = 0
 shell = '''
+# Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs): prefix only
+# when the override lacks a transport namespace.
+gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
+
 mkdir -p docs/reviews
 TASK="{{ arg.3 }}"
 TASK_LC=$(printf '%s' "$TASK" | tr '[:upper:]' '[:lower:]')
@@ -350,7 +367,7 @@ write_review \
 write_review \
   "$TMP_DIR/gemini.md" \
   "docs/reviews/${TASK_LC}-gemini-validation.md" \
-  "Gemini via opencode (google/${GEMINI_MODEL:-gemini-3.1-pro-preview})"
+  "Gemini via opencode ($(gmodel "${GEMINI_MODEL:-gemini-3.1-pro-preview}"))"
 
 {% if steps.claude_fallback is defined %}
 cat <<'LOK_WF_FALLBACK_OUTPUT_EOF' > "$TMP_DIR/fallback.md"

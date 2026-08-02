@@ -1,6 +1,6 @@
 ---
 name: pr-review-cycle
-description: Bot-review wait, fetch, address, reply, re-fetch - the 9-step PR review procedure owned by the pi `pr` phase. Enforces current-head bot-review completion, CI/bot independence, and one-reply-per-thread. No `/gemini review` trailer - Gemini Code Assist is sunset.
+description: Bot-review wait, fetch, address, reply, re-fetch - the 9-step PR review procedure owned by the pi `pr` phase. Enforces current-head bot-review completion, CI/bot independence, and one-reply-per-thread. Recognizes qodo-code-review and copilot-pull-request-reviewer. No `/gemini review` trailer - Gemini Code Assist is sunset.
 ---
 
 # Skill: pr-review-cycle
@@ -24,25 +24,25 @@ It writes `bot_review_wait_completed` and `review_addressed` history events on s
 
 ---
 
-## 1 - Wait for bot reviewers deterministically
+## 1 - Probe for installed bots, then wait for their review
 
 > **Gemini Code Assist is sunset.** The consumer GitHub app has ceased
 > all code review activity; on this repo its last review was PR #55
-> (2026-05-26) and no bot has reviewed since. There is no `/gemini review`
-> trigger and no automated validator. `copilot-pull-request-reviewer`
-> remains the only bot this skill recognizes, and it is not currently
-> installed here - so step 2's absence path is the expected route.
+> (2026-05-26). There is no `/gemini review` trigger and no automated
+> validator from it. Recognized reviewers are now
+> `qodo-code-review` (installed 2026-08-02, first review on PR #71) and
+> `copilot-pull-request-reviewer` (not currently installed here).
 
-Bot reviewers (currently only `copilot-pull-request-reviewer`) post a
-GitHub review on the current head commit when their pass finishes. Poll
-for that observable review, not merely for elapsed time or CI status.
-PR #24 showed why: it was merged at +261s while the bot posted its
-review and inline comment at +289s/+290s.
+Bot reviewers post a GitHub review on the current head commit when their
+pass finishes. Poll for that observable review, not merely for elapsed
+time or CI status. PR #24 showed why: it was merged at +261s while the
+bot posted its review and inline comment at +289s/+290s.
 
-**Check installation before polling.** With no bot installed, the
-10-minute loop below can only ever time out, stalling every PR for ten
-minutes. Run the step-2 installation probe first and skip straight to
-step 3 when it confirms absence.
+**Probe first, then poll.** With no bot installed, the polling loop can
+only ever time out, stalling every PR for ten minutes. Run 1a and skip
+straight to step 3 when it confirms absence; only run the 1b loop when a
+bot is actually installed. Step 2 handles the remaining case - a bot is
+installed but misses the deadline.
 
 **Rules, all mandatory** (see `lessons/pr-review-failures.md` L1, L2,
 L6):
@@ -59,14 +59,58 @@ L6):
    `pull_request.created_at + 600s`, block for user guidance instead of
    silently marking reviews addressed.
 4. **Only confirmed absence of installed bots may skip bot review.**
-   Absence is confirmed by inspecting recent closed PRs for bot reviews.
+   Absence is confirmed by 1a below.
+
+### 1a - Probe which bots are installed
+
+Scan the last 10 PRs in any state, plus the current PR's own issue
+comments. Both halves matter: a newly installed bot has no history on
+closed PRs, and Qodo posts its summary as an issue comment about a
+minute before it submits the review. Scanning only closed PRs would have
+reported "not installed" for Qodo on PR #71, its first review.
 
 ```bash
 PR=<n>
 REPO=maxkulish/lok
 PR_CREATED_AT=$(gh api repos/${REPO}/pulls/${PR} --jq .created_at)
 HEAD_SHA=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
-BOT_RE='copilot-pull-request-reviewer'
+BOT_RE='qodo-code-review|copilot-pull-request-reviewer'
+
+INSTALLED_BOTS=$( { gh api "repos/${REPO}/issues/${PR}/comments" --paginate --slurp \
+    | jq -r --arg re "$BOT_RE" '.[][] | select(.user.login | test($re)) | .user.login'
+  gh api "repos/${REPO}/pulls?state=all&per_page=10" --jq '.[].number' \
+    | while read prev_pr; do
+        gh api "repos/${REPO}/pulls/${prev_pr}/reviews" --paginate --slurp \
+          | jq -r --arg re "$BOT_RE" '.[][] | select(.user.login | test($re)) | .user.login'
+      done
+  } | sort -u)
+
+if [ -z "$INSTALLED_BOTS" ]; then
+  echo "No reviewer bots installed; skipping the wait loop and going to step 3"
+fi
+```
+
+If `INSTALLED_BOTS` is empty, record the wait gate with the absence
+rationale below and go straight to **step 3**. Do not run 1b.
+
+```ts
+update_workflow_state({
+  task_id: "CLO-XX",
+  phase: "pr",
+  action: "bot_review_wait_completed",
+  details: "No reviewer bots installed (no qodo-code-review or copilot-pull-request-reviewer activity on the last 10 PRs or this PR's comments; Gemini Code Assist is sunset); zero inline comments expected.",
+  phase_updates: {
+    bot_review_wait_completed: true,
+    bot_review_wait_completed_at: "<ISO-8601>"
+  }
+})
+```
+
+### 1b - Poll for a current-head review
+
+Only run when 1a found at least one installed bot.
+
+```bash
 DEADLINE=$(date -u -j -v+600S -f "%Y-%m-%dT%H:%M:%SZ" "$PR_CREATED_AT" "+%s" 2>/dev/null \
            || date -u -d "$PR_CREATED_AT + 600 seconds" "+%s")
 BOT_REVIEW_SEEN=0
@@ -89,7 +133,7 @@ for i in $(seq 1 60); do
 
   now=$(date -u +%s)
   if [ "$now" -ge "$DEADLINE" ]; then
-    echo "10 min elapsed with no current-head bot review; proceed to step 2"
+    echo "10 min elapsed with no current-head bot review; go to step 2 (gate failure)"
     break
   fi
 
@@ -113,41 +157,25 @@ update_workflow_state({
 })
 ```
 
-## 2 - Confirm bots are absent or block on timeout
+## 2 - Block when an installed bot misses the deadline
 
-Only run when step 1 timed out without a current-head bot review.
-Distinguish "bots are not installed" from "bots are installed but did
-not finish in time". Conflating these is the PR #4 / PR #24 failure
-mode (`lessons/pr-review-failures.md` L1, L2, L6).
+Only reached when 1a found installed bots and the 1b loop hit the
+deadline without a current-head review. The absence case was already
+settled in 1a, so there is nothing left to distinguish here: an installed
+bot that did not finish is a gate failure, not a pass. Conflating the two
+is the PR #4 / PR #24 failure mode
+(`lessons/pr-review-failures.md` L1, L2, L6).
 
 ```bash
-INSTALLED_BOTS=$(gh api "repos/${REPO}/pulls?state=closed&per_page=5" --jq '.[].number' \
-  | while read prev_pr; do
-      gh api "repos/${REPO}/pulls/${prev_pr}/reviews" --paginate --slurp \
-        | jq -r --arg re "$BOT_RE" '.[][] | select(.user.login | test($re)) | .user.login'
-    done | sort -u)
-
-if [ -n "$INSTALLED_BOTS" ]; then
+if [ "$BOT_REVIEW_SEEN" -eq 0 ]; then
   echo "GATE FAIL: bots installed but no current-head bot review by 10 min deadline:"
   echo "$INSTALLED_BOTS"
   exit 1
 fi
 ```
 
-If bots are confirmed absent, record the wait gate and continue:
-
-```ts
-update_workflow_state({
-  task_id: "CLO-XX",
-  phase: "pr",
-  action: "bot_review_wait_completed",
-  details: "Bots not installed (no copilot-pull-request-reviewer reviews on last 5 closed PRs; Gemini Code Assist is sunset); zero inline comments expected.",
-  phase_updates: {
-    bot_review_wait_completed: true,
-    bot_review_wait_completed_at: "<ISO-8601>"
-  }
-})
-```
+Stop and ask the user how to proceed. Do not record
+`bot_review_wait_completed`.
 
 Unacceptable rationales (see `lessons/pr-review-failures.md` L1, L2,
 L6):
@@ -200,14 +228,27 @@ outdated.
 
 | Reviewer | Severity signal | Priority |
 |---|---|---|
+| `qodo-code-review` | `Action required` badge | High; `Review recommended` = medium |
 | `copilot-pull-request-reviewer` | None | Treat as medium |
 | Human | `CHANGES_REQUESTED` state | High; `COMMENTED` = medium |
 
-With no bot validator left, **human `CHANGES_REQUESTED` is the only
-blocking signal that arrives from outside**. The pre-PR validation gate
-in `phases/implement.md` (Codex + Gemini-via-opencode + synthesis) is now
-the primary automated review for this repo; it runs before the PR exists.
-Do not treat a quiet PR as an unreviewed one - check that the gate ran.
+Qodo submits its review as `COMMENTED`, never `CHANGES_REQUESTED`, so
+its state tells you nothing about severity - read the badge in each
+inline comment body instead. It posts twice per PR: a summary issue
+comment first, then the review carrying the inline findings. Only the
+second one matters here.
+
+**Qodo findings are claims, not verdicts.** Verify each against the code
+before acting; it reasons from the diff without running anything. On
+PR #71 it filed three bugs, of which two were real and one rested on a
+false premise about `timeout` portability. Reply with the evidence either
+way - see step 7.
+
+**Human `CHANGES_REQUESTED` remains the only externally blocking
+signal.** The pre-PR validation gate in `phases/implement.md` (Codex +
+Gemini-via-opencode + synthesis) is still the primary automated review
+for this repo; it runs before the PR exists. Do not treat a quiet PR as
+an unreviewed one - check that the gate ran.
 
 High-severity and `CHANGES_REQUESTED` comments are blocking. Medium /
 low may be addressed or declined with rationale.

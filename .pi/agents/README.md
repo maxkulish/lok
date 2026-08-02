@@ -41,8 +41,15 @@ name: `PHASE_CONFIG` in `extensions/orchestrate/index.ts` gates on those
 identifiers and existing status YAMLs reference them. Only the transport
 and the model changed.
 
-Fallback model is `google/gemini-3.6-flash` (`GEMINI_FALLBACK_MODEL`),
-which also serves as the pre-flight health-check probe.
+Fallback model is `gemini-3.6-flash` (`GEMINI_FALLBACK_MODEL`), which also
+serves as the pre-flight health-check probe.
+
+**Env overrides take the bare model name.** The `google/` above is the
+transport namespace, added by the workflows and by
+`GeminiBackend::normalize_model`, not part of the value you export. Both
+`GEMINI_MODEL=gemini-3.1-pro-preview` and the namespaced
+`GEMINI_MODEL=google/gemini-3.1-pro-preview` resolve correctly - the prefix is
+only added when absent - but the bare form is canonical.
 
 Not to be confused with the former **GitHub bot** of a similar name:
 `gemini-code-assist` and its `/gemini review` trailer were removed from
