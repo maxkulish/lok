@@ -20,10 +20,19 @@ and must be verified independently. Inferring one from the other - in
 either direction - is a fatal class of error.
 
 **How to apply:**
-- Bot-reviewer presence is verified by inspecting the last 5 closed PRs
-  in this repo for reviews authored by `copilot-pull-request-reviewer`.
-  The check lives in `pr.md` §3.5.1.5. (`gemini-code-assist` was dropped
-  on 2026-08-02 - the app is sunset; see L3.)
+- Bot-reviewer presence is verified by `pr-review-cycle` step 1a:
+  the last 10 PRs in any state, plus the current PR's own issue
+  comments, scanned for `qodo-code-review|copilot-pull-request-reviewer`.
+  (`gemini-code-assist` was dropped on 2026-08-02 - the app is sunset;
+  see L3.)
+- **A closed-PR-only scan is not sufficient.** It was the original form
+  of this check and it fails for a newly installed bot, which by
+  definition has no history. `qodo-code-review` was installed
+  2026-08-02 and first reviewed PR #71; the old scan would have
+  reported "not installed" while Qodo was actively reviewing that very
+  PR. Include open PRs and the current PR's comments - Qodo posts its
+  summary as an issue comment about a minute before the review lands,
+  which is the earliest observable proof of installation.
 - "No CI configured" by itself is never a valid rationale for skipping
   the review-fetch step. If CI is absent but bots are installed, bots
   still need to be waited for.

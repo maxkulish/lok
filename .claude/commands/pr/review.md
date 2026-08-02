@@ -16,12 +16,15 @@
 ├─────────────────────────────────────────────────────────────────┤
 │  1. Fetch PR reviews and comments (with pagination)             │
 │  2. Analyze feedback (blocking vs suggestions)                  │
-│  3. Detect stale comments (line changed since comment)          │
-│  4. Make code changes to address feedback                       │
-│  5. Commit changes with descriptive message                     │
-│  6. Push to branch (BEFORE replying)                            │
-│  7. Reply to EVERY comment (MANDATORY - track N/N)              │
-│  8. Repeat if new comments arrive                               │
+│  3. VERIFY each bot claim before acting on it                   │
+│  4. Detect stale comments (line changed since comment)          │
+│  5. Make code changes to address verified feedback              │
+│  6. Commit changes with descriptive message                     │
+│  7. Push to branch (BEFORE replying)                            │
+│  8. Reply to EVERY comment (MANDATORY - track N/N)              │
+│  9. Request re-validation (/agentic_review - Qodo needs it)     │
+│ 10. Poll for a review on the CURRENT head SHA                   │
+│ 11. Repeat if new comments arrive                               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -37,7 +40,11 @@ No comment may be left without a response - whether the fix was applied, decline
 | Question answered | "[explanation]. [reference to design doc if relevant]" |
 | Deferred | "Tracked as follow-up in [task/issue]. [reason for deferral]" |
 
-For `gemini-code-assist` comments, every reply MUST end with `/gemini review` on its own line to trigger re-validation.
+**Addressing Qodo in a reply.** Qodo only answers a reply that mentions it. Per Qodo's docs you must mention `@qodo` (or `/qodo`, or a bare `qodo`) *each* time you want a response, including follow-ups in a thread it already participates in. A plain reply is recorded but Qodo will not read or respond to it.
+
+Mention `@qodo` only when you actually want an answer - a declined finding where you want its assessment, or a question about its reasoning. For a straightforward "fixed in SHA", leave the mention off; a re-review is what confirms the fix, not a thread reply.
+
+There is no `/gemini review` trailer any more. Gemini Code Assist is sunset.
 
 ---
 
@@ -272,9 +279,11 @@ gh api repos/{owner}/{repo}/pulls/[number]/comments/[comment_id]/replies \
 1. Every comment gets a reply - no exceptions
 2. Reference the commit SHA that contains the fix
 3. If declining a suggestion, explain why (reference design docs, ADRs, or project constraints)
-4. For `gemini-code-assist` comments: every reply MUST end with `/gemini review` on its own line
-5. For `copilot-pull-request-reviewer` comments: reply with fix details (no special trigger needed)
-6. Track reply count - the final summary must show `Replies Posted: N/N`
+4. Declining a bot finding requires evidence, not assertion. Paste the command output, file:line, or config value that disproves it. `qodo-code-review` reasons from the diff without running anything, so its premises are the thing to check first
+5. For `qodo-code-review`: add `@qodo` only when you want it to answer (a disputed finding). Omit it otherwise - see the addressing rule above
+6. For `copilot-pull-request-reviewer`: reply with fix details, no trigger needed
+7. Re-validation is a separate step - a reply never triggers it. See Step 9.5
+8. Track reply count - the final summary must show `Replies Posted: N/N`
 
 **Reply templates by reviewer type**:
 
@@ -282,8 +291,8 @@ gh api repos/{owner}/{repo}/pulls/[number]/comments/[comment_id]/replies \
 |----------|----------|----------------|
 | Human | Bug fix | "Fixed in abc1234. Good catch!" |
 | Human | Declined | "Intentionally kept as-is: [rationale]. Happy to discuss." |
-| `gemini-code-assist` | Fixed | "Fixed in abc1234. [details]\n\n/gemini review" |
-| `gemini-code-assist` | Declined | "Kept as-is: [reason]\n\n/gemini review" |
+| `qodo-code-review` | Fixed | "Fixed in abc1234. [what changed, and why it satisfies the finding]" |
+| `qodo-code-review` | Declined | "@qodo Keeping as-is. [evidence: command output / file:line / config value that disproves the premise]" |
 | `copilot-pull-request-reviewer` | Fixed | "Fixed in abc1234. [details]" |
 | `copilot-pull-request-reviewer` | Declined | "Intentionally kept as-is: [rationale]" |
 
@@ -304,7 +313,47 @@ for item in "${COMMENTS[@]}"; do
 done
 ```
 
-For `gemini-code-assist` comments, append `/gemini review` to each reply body.
+No per-reply trigger suffix is needed for any reviewer. Re-validation is requested once, in Step 9.5, not per comment.
+
+### Step 9.5: Request Re-validation from Qodo
+
+**Qodo does not re-review on push in this repo.** Verified on 2026-08-02 by posting `/config` to PR #71:
+
+```
+config.handle_push_trigger  = False
+config.pr_commands          = ['/agentic_describe', '/agentic_review']
+config.push_commands        = ['/agentic_review']
+```
+
+`pr_commands` runs on PR open. `push_commands` would run on each new commit, but only when `handle_push_trigger` is `True`, and it is `False`. Pushing a fix therefore leaves Qodo's findings sitting against the old head SHA forever unless you ask for a new pass.
+
+After pushing fixes and posting replies, request one re-review for the whole PR:
+
+```bash
+gh api repos/{owner}/{repo}/issues/[number]/comments -X POST -f body='/agentic_review'
+```
+
+Then poll for a review on the **current** head SHA, exactly as `pr-review-cycle` step 1b does. A review whose `commit_id` is the old SHA is the stale pass, not the re-validation.
+
+```bash
+HEAD_SHA=$(gh api repos/{owner}/{repo}/pulls/[number] --jq .head.sha)
+gh api repos/{owner}/{repo}/pulls/[number]/reviews --paginate --slurp \
+  | jq -r --arg h "$HEAD_SHA" '.[][] | select(.commit_id==$h) | select(.user.login|test("qodo")) | .submitted_at'
+```
+
+**Command notes** (Qodo's managed app is PR-Agent under the hood):
+
+| Command | Effect |
+|---|---|
+| `/agentic_review` | Full re-review. This is the recheck command |
+| `/agentic_describe` | Regenerate the PR summary comment |
+| `/ask <question>` | Ask about the diff |
+| `/config` | Dump effective configuration - use it to re-verify these trigger settings if behavior changes |
+| `/checks` | Analyze CI failures |
+
+`/review` is the legacy PR-Agent name and is **not** the configured command here; `pr_commands` lists `/agentic_review`. Do not encode `/review` in any procedure.
+
+**Do not enable `handle_push_trigger` to avoid this step.** It would fire a full review on every intermediate push, including work-in-progress commits, and `push_trigger_dedup_ttl_seconds` is only 60. One explicit request at a known point is cheaper and gives a deterministic signal to poll for, which is what `pr-review-cycle` is built around.
 
 ### Step 10: Update Workflow State (if exists)
 
@@ -394,7 +443,7 @@ Pushed: Yes
 
 Replies Posted: [N/N] (MUST be N/N - all comments replied to)
 - Comment [id]: [fixed/declined/answered] (@reviewer)
-- Comment [id]: [fixed/declined/answered] (@gemini-code-assist, with /gemini review)
+- Comment [id]: [fixed/declined/answered] (@qodo-code-review)
 - Comment [id]: [fixed/declined/answered] (@copilot-pull-request-reviewer)
 - ...
 
@@ -568,192 +617,134 @@ Your choice:
 
 ---
 
-## AI Code Review: gemini-code-assist
+## AI Code Review: qodo-code-review
 
-When `gemini-code-assist` is configured on the repository, it automatically reviews PRs and leaves inline comments with code suggestions.
+`qodo-code-review` is the repository's automated reviewer, installed 2026-08-02. Its first review on this repo was PR #71. It replaced `gemini-code-assist`, whose consumer GitHub app is sunset and no longer reviews anything.
 
-### Fetching gemini-code-assist Comments
+### How Qodo posts
 
-**Get all comments from gemini-code-assist**:
+Two artifacts per pass, in order:
+
+1. **A summary issue comment** ("PR Summary by Qodo") - AI description, a mermaid diagram, alternative approaches, and a per-file table. Informational; there is nothing to address in it.
+2. **A review** with the inline findings attached ("Code Review by Qodo"), submitted about a minute later.
+
+Only the second carries actionable content. On PR #71 the summary arrived at 12:31 and the review at 12:35. Reading the summary and concluding "no findings" is a mistake - wait for the review.
+
+The review is always submitted as `COMMENTED`, never `CHANGES_REQUESTED`, so `reviewDecision` stays `PENDING` no matter how severe the findings. Never infer severity from review state.
+
+### Fetching Qodo findings
 
 ```bash
-# Fetch comments filtered by user
-gh api repos/{owner}/{repo}/pulls/[number]/comments \
-  --jq '.[] | select(.user.login == "gemini-code-assist") | {id, path, line, body}'
+# Inline findings - the actionable ones
+gh api repos/{owner}/{repo}/pulls/[number]/comments --paginate \
+  --jq '.[] | select(.user.login|test("qodo")) | {id, path, line, body}'
+
+# The summary + any command responses
+gh api repos/{owner}/{repo}/issues/[number]/comments --paginate \
+  --jq '.[] | select(.user.login|test("qodo")) | {id, created_at}'
 ```
 
-**Example output**:
-```json
-{
-  "id": 2707454116,
-  "path": "src/backend/claude.rs",
-  "line": 50,
-  "body": "**Severity**: high\n\nConsider using serde's tagged enum..."
-}
+### Severity
+
+Severity lives in a badge image at the top of each inline comment body, not in a `**Severity**:` line.
+
+| Badge | Priority | Action |
+|---|---|---|
+| `Action required` | High | Address before merge |
+| `Review recommended` | Medium | Address or decline with evidence |
+
+Findings are also tagged by category (`🐞 Bug`, `☼ Reliability`, `≡ Correctness`) and the review header counts them (`🐞 Bugs (3)`, `📘 Rule violations (0)`).
+
+Parse the badge with:
+
+```bash
+grep -o 'alt="[^"]*"' <<<"$BODY" | head -1
 ```
 
-### Understanding gemini-code-assist Severity Levels
+Each finding also ships an **Agent Prompt** block containing a ready-made remediation prompt with issue description, context, focus areas, and a suggested fix. It is a useful starting point, not an instruction to follow blindly.
 
-| Severity | Priority | Action |
-|----------|----------|--------|
-| `high` | Must fix | Address before merge |
-| `medium` | Should fix | Strongly recommended |
-| `low` | Optional | Nice to have |
+### Verify before you act
 
-**Parse severity from comment body**:
-- Look for `**Severity**: high/medium/low` pattern
-- Comments without severity default to `medium`
+**Qodo findings are claims, not verdicts.** It reasons from the diff without executing anything, so it cannot tell whether a command exists on the target platform, whether a flag is supported, or whether a helper elsewhere in the repo already solves the problem. Check the premise before writing code.
 
-### Workflow for gemini-code-assist Feedback
+PR #71 is the worked example - three findings, two real:
+
+| Finding | Verdict | How it was settled |
+|---|---|---|
+| Doc/workflow model prefix mismatch produced `google/google/...` | Real | Read the README line against the workflow's `--model "google/$VAR"` construction |
+| `pr-review-cycle` step 1 and step 2 gave contradictory ordering | Real | Read both sections; they could not both be followed |
+| `timeout --kill-after` is nonportable | False premise | Ran `timeout --version` and the flag itself; GNU coreutils 9.11, works. macOS ships no `timeout` at all, so every call site already required coreutils |
+
+Note the second one: Qodo found a real contradiction, and chasing it surfaced a *further* defect it had not seen - the installation probe scanned only closed PRs, so it would have reported "no bots installed" while Qodo was actively reviewing. Treat a confirmed finding as a thread to pull, not a checkbox.
+
+When a premise is wrong, decline with the evidence that disproves it - command output, `file:line`, or a config value. "Works on my machine" is not evidence; the pasted `timeout --version` output is.
+
+### Workflow for Qodo feedback
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│              gemini-code-assist Review Cycle                    │
+│                   qodo-code-review Cycle                        │
 ├─────────────────────────────────────────────────────────────────┤
-│  1. Fetch comments from gemini-code-assist                      │
-│  2. Categorize by severity (high → medium → low)                │
-│  3. Address issues (code changes)                               │
-│  4. Commit fixes with descriptive message                       │
-│  5. Push changes to branch                                      │
-│  6. Reply to EACH comment with fix details + /gemini review     │
-│  7. Gemini re-validates the changes automatically               │
+│  1. Wait for the review, not just the summary comment           │
+│  2. Fetch inline findings; read the badge for severity          │
+│  3. VERIFY each claim against the code before acting            │
+│  4. Fix what is real; gather evidence for what is not           │
+│  5. Commit and push                                             │
+│  6. Reply to every finding (@qodo only where you want an answer)│
+│  7. Post /agentic_review - it does NOT re-review on push        │
+│  8. Poll for a review whose commit_id == current head SHA       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Step-by-Step: Address gemini-code-assist Feedback
+Steps 7 and 8 are the ones people skip. See Step 9.5 for the verified trigger configuration and the polling snippet.
 
-#### 1. Fetch and Display Comments
+### Asking Qodo a question
 
-```bash
-# Get all gemini-code-assist comments with details
-gh api repos/{owner}/{repo}/pulls/[number]/comments \
-  --jq '.[] | select(.user.login == "gemini-code-assist") | {
-    id: .id,
-    file: .path,
-    line: .original_line,
-    body: .body
-  }'
-```
-
-#### 2. Analyze Each Comment
-
-For each comment, identify:
-- **File**: Which file needs changes
-- **Line**: The specific line referenced
-- **Issue**: What problem gemini found
-- **Suggestion**: The recommended fix
-
-#### 3. Make Code Changes
-
-Address all issues, then commit:
+Qodo answers only when addressed. Mention `@qodo` (or `/qodo`, or a bare `qodo`) every time you want a response, including follow-ups in a thread it is already part of. A reply without a mention is recorded but never read.
 
 ```bash
-git add [modified files]
-git commit -m "$(cat <<'EOF'
-fix(CLO-XX): address gemini-code-assist review feedback
-
-- src/audio/error.rs: Use tagged enum serialization
-- docs/design-docs: Fix documentation inconsistency
-- src/audio/capture.rs: Optimize memory allocation
-
-Resolves gemini-code-assist comments
-EOF
-)"
-```
-
-#### 4. Push Changes
-
-```bash
-git push origin feat/clo-XX-description
-```
-
-#### 5. Reply to Each Comment with Re-validation Trigger
-
-**CRITICAL**: After pushing fixes, reply to EACH comment explaining the fix AND include `/gemini review` to trigger re-validation.
-
-```bash
-# Reply to comment explaining the fix
 gh api repos/{owner}/{repo}/pulls/[number]/comments/[comment_id]/replies \
-  -X POST -f body="Fixed in [commit SHA]. [Brief explanation of change]
-
-/gemini review"
+  -X POST -f body="@qodo This assumes GNU coreutils is absent, but macOS ships no timeout at all - every call site here already depends on it. Does that change the finding?"
 ```
 
-**Example replies by severity**:
+Use this for disputed findings. For a plain "fixed in SHA", skip the mention: the re-review is what confirms the fix.
 
-| Severity | Reply Template |
-|----------|----------------|
-| High | `"Fixed in abc1234. Changed to use #[serde(tag = \"type\")] for proper tagged enum serialization.\n\n/gemini review"` |
-| Medium | `"Fixed in abc1234. Updated documentation to match implementation (SincFixedIn, not FftFixedIn).\n\n/gemini review"` |
-| Medium | `"Fixed in abc1234. Added reusable buffer to eliminate per-call allocation.\n\n/gemini review"` |
-| Low | `"Good suggestion. Implemented in abc1234.\n\n/gemini review"` |
-
-### Batch Reply Script
-
-When addressing multiple gemini-code-assist comments:
-
-```bash
-# Store comment IDs and their fix descriptions
-COMMENTS=(
-  "2707454116|Fixed AudioError serialization with tagged enum"
-  "2707454125|Updated docs to reference SincFixedIn"
-  "2707454129|Added reusable drain_buffer to avoid allocation"
-)
-
-COMMIT_SHA=$(git rev-parse --short HEAD)
-
-for item in "${COMMENTS[@]}"; do
-  ID="${item%%|*}"
-  MSG="${item#*|}"
-
-  gh api repos/{owner}/{repo}/pulls/[number]/comments/${ID}/replies \
-    -X POST -f body="Fixed in ${COMMIT_SHA}. ${MSG}
-
-/gemini review"
-done
-```
-
-### What `/gemini review` Does
-
-When you include `/gemini review` in a comment reply:
-
-1. **Triggers Re-analysis**: Gemini re-reads the updated files
-2. **Validates Fixes**: Checks if your changes address the original concern
-3. **Updates Status**: May mark the conversation as resolved
-4. **Posts Follow-up**: If issues remain, posts additional feedback
-
-### gemini-code-assist Summary Display
+### Qodo Summary Display
 
 ```
 ========================================
-GEMINI-CODE-ASSIST REVIEW: CLO-XX
+QODO CODE REVIEW: CLO-XX
 ========================================
 
 PR #[number]: [title]
+Review commit: [sha]  (MUST equal current head)
 
-Comments Found: 3
+Findings: 3  (Bugs 3 | Rule violations 0 | Skill insights 0)
 
-HIGH PRIORITY:
-1. [ID: 2707454116] src/audio/error.rs:50
-   "Consider using serde's tagged enum..."
+ACTION REQUIRED:
+1. [ID: 3699023245] .lok/workflows/pre-pr-validation.toml:117
+   "Nonportable timeout kill-after"
+   Verified: NO - GNU coreutils 9.11 present, flag works
+   Status: Decline with evidence
+
+2. [ID: 3699023248] .pi/skills/pr-review-cycle.md:45
+   "Contradictory step ordering"
+   Verified: YES - step 1 and step 2 conflict
    Status: Needs fix
 
-MEDIUM PRIORITY:
-2. [ID: 2707454125] docs/design-docs/clo-47-audio-capture.md:142
-   "Documentation says FftFixedIn but code uses SincFixedIn"
-   Status: Needs fix
-
-3. [ID: 2707454129] src/audio/capture.rs:132
-   "drain_to_storage allocates Vec on each call"
+REVIEW RECOMMENDED:
+3. [ID: 3699023250] .pi/agents/README.md:45
+   "Model prefix docs mismatch"
+   Verified: YES - produces google/google/...
    Status: Needs fix
 
 ---
 
 Options:
-1. [address-all] - Fix all issues
-2. [address-high] - Fix high priority only
-3. [details ID] - Show full comment for specific ID
-4. [skip] - Skip for now
+1. [address-all] - Fix verified findings, draft declines for the rest
+2. [address-high] - Action-required only
+3. [details ID]  - Show full finding including Agent Prompt
+4. [skip]        - Skip for now
 
 Your choice:
 ```
@@ -762,32 +753,30 @@ Your choice:
 
 ```
 ========================================
-GEMINI-CODE-ASSIST FEEDBACK ADDRESSED
+QODO FEEDBACK ADDRESSED
 ========================================
 
 PR #[number]: [title]
 
-Issues Fixed: 3/3
-Commit: cfbcd70
+Verified real: 2/3   Declined with evidence: 1/3
+Commit: 1d0f984
 
-Replies Posted:
-- Comment 2707454116: ✓ (with /gemini review)
-- Comment 2707454125: ✓ (with /gemini review)
-- Comment 2707454129: ✓ (with /gemini review)
+Replies Posted: 3/3
+- 3699023250: fixed
+- 3699023248: fixed
+- 3699023245: declined (evidence: timeout --version output)
 
-Gemini will automatically re-validate the changes.
+Re-validation: /agentic_review posted
+Re-review observed on head 1d0f984: [yes/no]
 
 Next steps:
-1. Wait for gemini re-review (~1-2 minutes)
-2. Check for new comments: /pr:review CLO-XX
+1. Confirm the new review targets the current head SHA
+2. Address any new findings: /pr:review CLO-XX
 3. After approval: merge or continue workflow
 ```
-
----
-
 ## AI Code Review: copilot-pull-request-reviewer
 
-When GitHub Copilot is configured as a PR reviewer, it leaves inline code suggestions similar to gemini-code-assist but without severity levels.
+Copilot is **not currently installed on this repo** - `qodo-code-review` is the active reviewer. This section applies only if Copilot is added later. When configured, it leaves inline code suggestions but carries no severity signal.
 
 ### Fetching copilot Comments
 
@@ -796,22 +785,24 @@ gh api repos/{owner}/{repo}/pulls/[number]/comments --paginate \
   --jq '.[] | select(.user.login == "copilot-pull-request-reviewer") | {id, path, line, body}'
 ```
 
-### Key Differences from gemini-code-assist
+### Key Differences from qodo-code-review
 
-| Aspect | gemini-code-assist | copilot-pull-request-reviewer |
-|--------|-------------------|-------------------------------|
-| Severity levels | Yes (`**Severity**: high/medium/low`) | No - treat all as medium |
-| Re-validation trigger | `/gemini review` in reply | None needed - auto re-reviews on push |
-| Suggestion format | Markdown with severity header | Markdown, often with code blocks |
-| Reply format | Must include `/gemini review` | Standard reply, no special suffix |
+| Aspect | qodo-code-review | copilot-pull-request-reviewer |
+|--------|------------------|-------------------------------|
+| Severity signal | Badge alt text (`Action required` / `Review recommended`) | None - treat all as medium |
+| Re-validation trigger | `/agentic_review` as a PR comment | None needed - auto re-reviews on push |
+| Re-review on push | No (`handle_push_trigger = False`) | Yes |
+| Suggestion format | Badge + category tags + Agent Prompt block | Markdown, often with code blocks |
+| Reply format | Mention `@qodo` only when you want an answer | Standard reply, no mention needed |
 
 ### Handling copilot Feedback
 
 1. **Fetch comments** filtered by `copilot-pull-request-reviewer`
 2. **Treat all as medium priority** (no severity parsing needed)
-3. **Address issues** the same way as other review comments
-4. **Reply to each comment** with fix details (no `/gemini review` needed)
-5. Copilot automatically re-reviews when new commits are pushed
+3. **Verify the claim** before acting, same as any bot finding
+4. **Address issues** the same way as other review comments
+5. **Reply to each comment** with fix details (no trigger suffix needed)
+6. Copilot automatically re-reviews when new commits are pushed - unlike Qodo, no explicit request is required
 
 ---
 

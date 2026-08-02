@@ -166,7 +166,20 @@ bot that did not finish is a gate failure, not a pass. Conflating the two
 is the PR #4 / PR #24 failure mode
 (`lessons/pr-review-failures.md` L1, L2, L6).
 
+`INSTALLED_BOTS` comes from 1a and `BOT_REVIEW_SEEN` from 1b. Run all
+three blocks in one shell. If this block is reached in a fresh shell -
+a resumed session, or a partial re-run - the defaults below make it fail
+closed rather than silently pass an unset `BOT_REVIEW_SEEN` off as a
+success.
+
 ```bash
+BOT_REVIEW_SEEN="${BOT_REVIEW_SEEN:-0}"
+
+if [ -z "${INSTALLED_BOTS+x}" ]; then
+  echo "GATE FAIL: INSTALLED_BOTS unset - re-run 1a in this shell before evaluating the gate"
+  exit 1
+fi
+
 if [ "$BOT_REVIEW_SEEN" -eq 0 ]; then
   echo "GATE FAIL: bots installed but no current-head bot review by 10 min deadline:"
   echo "$INSTALLED_BOTS"
@@ -376,10 +389,28 @@ REPLY_PUSH_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 ## 8 - Re-check for new comments
 
-After pushing and replying, check for new unresolved threads. Nothing
-re-reviews on demand any more, so this pass exists to catch a human
-reviewer's response and any thread left unresolved - not to wait on a
-bot re-run:
+**Request the re-review first.** Qodo does not re-review on push - its
+`handle_push_trigger` is `False`, verified by posting `/config` to
+PR #71 on 2026-08-02. Without an explicit request its findings stay
+pinned to the pre-fix commit and this pass sees nothing new.
+
+```bash
+gh api repos/${REPO}/issues/${PR}/comments -X POST -f body='/agentic_review'
+```
+
+Then poll for a review whose `commit_id` equals the current head SHA,
+reusing the 1b loop. Two behaviors to expect, both observed on PR #71:
+
+- Qodo **edits its existing "Code Review by Qodo" issue comment in
+  place** rather than posting a new one. Watching for a new comment id
+  will miss the re-review; compare `commit_id` on the review object, or
+  the comment's `updated_at`.
+- It posts a transient progress comment and then **deletes** it. A
+  comment id that 404s on fetch is normal, not an error.
+
+New findings arrive as new inline comments; the superseded ones remain
+attached to the old commit. Then check for new unresolved threads,
+including any human reviewer's response:
 
 ```bash
 gh pr view ${PR} --json reviews,reviewDecision

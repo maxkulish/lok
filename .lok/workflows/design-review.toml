@@ -4,7 +4,7 @@ description = "Multi-model design document review with output validation and fal
 # Step 1: Pre-flight health check - fast-fail if models are unreachable
 [[steps]]
 name = "health_check"
-timeout = "30s"
+timeout = "45s"
 continue_on_error = true
 shell = """
 GEMINI_OK=false

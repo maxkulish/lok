@@ -169,9 +169,20 @@ part of it inline here.
 
 Replies carry **no `/gemini review` trailer** - Gemini Code Assist is
 sunset and the marker triggers nothing. The author replies and resolves
-the thread; there is no automated validator left on the PR itself, so
-the pre-PR validation gate in `implement.md` Step 4 is the automated
-review of record.
+the thread.
+
+`qodo-code-review` (installed 2026-08-02) is the PR-side automated
+validator. It does not re-review on push: its `handle_push_trigger` is
+`False`, verified by posting `/config` to PR #71. After pushing fixes,
+post `/agentic_review` as a PR comment and poll for a review whose
+`commit_id` matches the current head SHA. Skipping that leaves Qodo's
+findings pinned to the pre-fix commit.
+
+Qodo submits as `COMMENTED`, never `CHANGES_REQUESTED`, so it cannot
+block a merge on its own, and its findings are claims to verify rather
+than verdicts to obey. The pre-PR validation gate in `implement.md`
+Step 4 therefore remains the automated review of record; Qodo is a
+second pass on top of it.
 
 The skill cites `.pi/lessons/pr-review-failures.md` for the durable
 rules behind its non-negotiables (current-head bot-review completion,

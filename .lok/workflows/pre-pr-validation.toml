@@ -25,7 +25,7 @@ description = "Multi-model pre-PR validation: health-check + Codex + Gemini + Cl
 # Step 1: Pre-flight health check - probe reviewer binaries
 [[steps]]
 name = "health_check"
-timeout = "30s"
+timeout = "45s"
 continue_on_error = true
 shell = '''
 CODEX_OK=false
