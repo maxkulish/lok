@@ -161,17 +161,33 @@ update_workflow_state({
 ## Step 3.5 - Address all PR review comments (skill: pr-review-cycle)
 
 The full procedure for waiting on bot reviewers, fetching comments,
-categorizing them, addressing them, replying with the mandatory
-`/gemini review` trailer, verifying the trailer landed, and
-re-fetching post-reply lives in
+categorizing them, addressing them, replying, and re-fetching
+post-reply lives in
 [`.pi/skills/pr-review-cycle.md`](../../skills/pr-review-cycle.md).
-Run that skill in order from step 1 to step 10. Do not reinvent any
+Run that skill in order from step 1 to step 9. Do not reinvent any
 part of it inline here.
+
+Replies carry **no `/gemini review` trailer** - Gemini Code Assist is
+sunset and the marker triggers nothing. The author replies and resolves
+the thread.
+
+`qodo-code-review` (installed 2026-08-02) is the PR-side automated
+validator. It does not re-review on push: its `handle_push_trigger` is
+`False`, verified by posting `/config` to PR #71. After pushing fixes,
+post `/agentic_review` as a PR comment and poll for a review whose
+`commit_id` matches the current head SHA. Skipping that leaves Qodo's
+findings pinned to the pre-fix commit.
+
+Qodo submits as `COMMENTED`, never `CHANGES_REQUESTED`, so it cannot
+block a merge on its own, and its findings are claims to verify rather
+than verdicts to obey. The pre-PR validation gate in `implement.md`
+Step 4 therefore remains the automated review of record; Qodo is a
+second pass on top of it.
 
 The skill cites `.pi/lessons/pr-review-failures.md` for the durable
 rules behind its non-negotiables (current-head bot-review completion,
-CI/bot independence, mandatory trailer on every reply). Read both
-before short-circuiting any step.
+CI/bot independence). Read both before short-circuiting any step. L3 in
+that file mandated the reply trailer and is superseded.
 
 Exit state on success: the skill writes `bot_review_wait_completed`
 and `review_addressed` history events with

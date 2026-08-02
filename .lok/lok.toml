@@ -25,14 +25,19 @@ timeout = 900
 [backends.gemini]
 enabled = true
 command = "opencode"
-model = "google/gemini-2.5-flash"
-args = ["run", "--model", "google/gemini-3.5-flash", "--dangerously-skip-permissions", "--format", "default"]
-timeout = 300
+model = "google/gemini-3.1-pro-preview"
+# Leave `args` empty: GeminiBackend::build_argv already emits the correct
+# opencode invocation (`run --format json`, `--agent plan|build` from the step's
+# sandbox mode, a normalized `--model`, then `--` before the prompt). Hardcoding
+# args here overrides that and produces a duplicated `--model` plus flags
+# opencode rejects.
+args = []
+timeout = 600
 
 [backends.ollama]
 enabled = true
 command = "http://localhost:11434"
-model = "glm-5:cloud"
+model = "glm-5.2:cloud"
 timeout = 300
 
 [roles.code_review]

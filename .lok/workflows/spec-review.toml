@@ -11,7 +11,7 @@ description = "Multi-model specification review with output validation, health-c
 # Step 1: Pre-flight health check - probe reviewer binaries
 [[steps]]
 name = "health_check"
-timeout = "30s"
+timeout = "45s"
 continue_on_error = true
 shell = '''
 OLLAMA_OK=false
@@ -21,7 +21,12 @@ if command -v ollama >/dev/null 2>&1; then
   OLLAMA_OK=true
 fi
 
-if timeout 15 opencode run "reply OK" --model "google/${GEMINI_MODEL:-gemini-3.5-flash}" --dangerously-skip-permissions 2>/dev/null | grep -qi "ok"; then
+# Add the `google/` transport namespace only when the caller has not already
+# supplied one, so both `gemini-3.6-flash` and `google/gemini-3.6-flash` work as
+# env overrides. Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs).
+gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
+
+if timeout 20 opencode run --model "$(gmodel "${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}")" --agent plan -- "reply OK" < /dev/null 2>/dev/null | grep -qi "ok"; then
   GEMINI_OK=true
 fi
 
@@ -31,7 +36,7 @@ echo "ollama=$OLLAMA_OK gemini=$GEMINI_OK"
 # Step 2: Gemini spec review
 [[steps]]
 name = "gemini_review"
-timeout = "5m"
+timeout = "21m"
 retries = 3
 continue_on_error = true
 depends_on = ["health_check"]
@@ -43,15 +48,23 @@ PROMPT=$(sed \
   -e 's|__LINEAR_LABELS__|{{ arg.5 }}|g' \
   .lok/prompts/spec-review-prompt.md)
 
-OUTPUT=$(timeout 300 opencode run "$PROMPT" \
-  --model "google/${GEMINI_MODEL:-gemini-3.5-flash}" \
-  --dangerously-skip-permissions \
-  --dir "$PWD" 2>/tmp/lok-opencode-spec-stderr.log)
+# Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs): prefix only
+# when the override lacks a transport namespace.
+gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
+
+PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.1-pro-preview}"
+FALLBACK_MODEL="${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}"
+
+OUTPUT=$(timeout 600 opencode run --model "$(gmodel "$PRIMARY_MODEL")" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-spec-stderr.log)
 
 if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
-  STDERR=$(head -5 /tmp/lok-opencode-spec-stderr.log 2>/dev/null || echo "no stderr")
-  echo "REVIEW_FAILED: Empty output from opencode/Gemini (stderr: $STDERR)"
-  exit 0
+  OUTPUT=$(timeout 600 opencode run --model "$(gmodel "$FALLBACK_MODEL")" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-spec-stderr.log)
+
+  if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
+    STDERR=$(head -5 /tmp/lok-opencode-spec-stderr.log 2>/dev/null || echo "no stderr")
+    echo "REVIEW_FAILED: Empty output from both $PRIMARY_MODEL and $FALLBACK_MODEL via opencode (stderr: $STDERR)"
+    exit 0
+  fi
 fi
 
 echo "$OUTPUT"
@@ -96,11 +109,11 @@ PROMPT=$(sed \
   -e 's|__LINEAR_LABELS__|{{ arg.5 }}|g' \
   .lok/prompts/spec-review-prompt.md)
 
-OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MODEL:-glm-5:cloud}" -- \
+OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MODEL:-glm-5.2:cloud}" -- \
   exec "$PROMPT" \
   --sandbox read-only \
   --oss --local-provider ollama \
-  --ephemeral 2>/tmp/lok-ollama-spec-stderr.log)
+  --ephemeral < /dev/null 2>/tmp/lok-ollama-spec-stderr.log)
 
 if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
   STDERR=$(head -5 /tmp/lok-ollama-spec-stderr.log 2>/dev/null || echo "no stderr")
@@ -225,7 +238,7 @@ cat >> docs/reviews/{{ arg.2 }}-spec-review-gemini.md << 'ENDGEMINI'
 {{ steps.gemini_review.output }}
 ENDGEMINI
 
-printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-ollama.md
+printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5.2:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-ollama.md
 cat >> docs/reviews/{{ arg.2 }}-spec-review-ollama.md << 'ENDOLLAMA'
 {{ steps.ollama_review.output }}
 ENDOLLAMA

@@ -4,13 +4,18 @@ description = "Multi-model design document review with output validation and fal
 # Step 1: Pre-flight health check - fast-fail if models are unreachable
 [[steps]]
 name = "health_check"
-timeout = "30s"
+timeout = "45s"
 continue_on_error = true
 shell = """
 GEMINI_OK=false
 OLLAMA_OK=false
 
-if timeout 15 opencode run "reply OK" --model "google/${GEMINI_MODEL:-gemini-3.5-flash}" --dangerously-skip-permissions 2>/dev/null | grep -qi "ok"; then
+# Add the `google/` transport namespace only when the caller has not already
+# supplied one, so both `gemini-3.6-flash` and `google/gemini-3.6-flash` work as
+# env overrides. Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs).
+gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
+
+if timeout 20 opencode run --model "$(gmodel "${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}")" --agent plan -- "reply OK" < /dev/null 2>/dev/null | grep -qi "ok"; then
   GEMINI_OK=true
 fi
 
@@ -24,30 +29,28 @@ echo "gemini=$GEMINI_OK ollama=$OLLAMA_OK"
 # Step 2: Gemini review with fallback model support
 [[steps]]
 name = "gemini_review"
-timeout = "5m"
+timeout = "21m"
 retries = 3
 continue_on_error = true
 depends_on = ["health_check"]
 shell = """
 if echo '{{ steps.health_check.output }}' | grep -q 'gemini=false'; then
-  echo "REVIEW_FAILED: Gemini CLI unreachable (pre-flight check failed)"
+  echo "REVIEW_FAILED: opencode unreachable for Google models (pre-flight check failed)"
   exit 0
 fi
 
-PROMPT=$(sed 's|__DOC_PATH__|{{ arg.1 }}|g' .lok/prompts/design-review-prompt.md)
-PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.5-flash}"
-FALLBACK_MODEL="${GEMINI_FALLBACK_MODEL:-gemini-2.5-pro}"
+# Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs): prefix only
+# when the override lacks a transport namespace.
+gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
 
-OUTPUT=$(timeout 300 opencode run "$PROMPT" \
-  --model "google/$PRIMARY_MODEL" \
-  --dangerously-skip-permissions \
-  --dir "$PWD" 2>/tmp/lok-opencode-stderr.log)
+PROMPT=$(sed 's|__DOC_PATH__|{{ arg.1 }}|g' .lok/prompts/design-review-prompt.md)
+PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.1-pro-preview}"
+FALLBACK_MODEL="${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}"
+
+OUTPUT=$(timeout 600 opencode run --model "$(gmodel "$PRIMARY_MODEL")" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-stderr.log)
 
 if [ -z "$OUTPUT" ] || [ ${#OUTPUT} -lt 100 ]; then
-  OUTPUT=$(timeout 300 opencode run "$PROMPT" \
-    --model "google/$FALLBACK_MODEL" \
-    --dangerously-skip-permissions \
-    --dir "$PWD" 2>/tmp/lok-opencode-stderr.log)
+  OUTPUT=$(timeout 600 opencode run --model "$(gmodel "$FALLBACK_MODEL")" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-stderr.log)
 
   if [ -z "$OUTPUT" ] || [ ${#OUTPUT} -lt 100 ]; then
     STDERR=$(head -5 /tmp/lok-opencode-stderr.log 2>/dev/null || echo "no stderr")
@@ -98,11 +101,11 @@ fi
 
 PROMPT=$(sed 's|__DOC_PATH__|{{ arg.1 }}|g' .lok/prompts/design-review-prompt.md)
 
-OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MODEL:-glm-5:cloud}" -- \
+OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MODEL:-glm-5.2:cloud}" -- \
   exec "$PROMPT" \
   --sandbox read-only \
   --oss --local-provider ollama \
-  --ephemeral 2>/tmp/lok-ollama-stderr.log)
+  --ephemeral < /dev/null 2>/tmp/lok-ollama-stderr.log)
 
 if [ -z "$OUTPUT" ] || [ ${#OUTPUT} -lt 100 ]; then
   STDERR=$(head -5 /tmp/lok-ollama-stderr.log 2>/dev/null || echo "no stderr")
@@ -297,7 +300,7 @@ cat >> docs/reviews/{{ arg.2 }}-review-gemini.md << 'ENDGEMINI'
 {{ steps.gemini_review.output }}
 ENDGEMINI
 
-printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-ollama.md
+printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5.2:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-ollama.md
 cat >> docs/reviews/{{ arg.2 }}-review-ollama.md << 'ENDOLLAMA'
 {{ steps.ollama_review.output }}
 ENDOLLAMA
@@ -310,7 +313,7 @@ if [ -n "$FALLBACK_OUTPUT" ] && ! echo "$FALLBACK_OUTPUT" | grep -q 'REVIEW_FAIL
 ENDFALLBACK
 fi
 
-printf '%s\n' '# Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Reviewers**: Gemini 3.5 Flash, Codex/Ollama (glm-5:cloud), Claude (fallback if needed)' '' '---' '' > docs/reviews/{{ arg.2 }}-review-synthesis.md
+printf '%s\n' '# Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Reviewers**: Gemini 3.1 Pro via opencode, Codex/Ollama (glm-5.2:cloud), Claude (fallback if needed)' '' '---' '' > docs/reviews/{{ arg.2 }}-review-synthesis.md
 cat >> docs/reviews/{{ arg.2 }}-review-synthesis.md << 'ENDSYNTH'
 {{ steps.synthesis.output }}
 ENDSYNTH
