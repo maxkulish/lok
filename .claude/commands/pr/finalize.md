@@ -146,10 +146,18 @@ fi
 # or this one after the local branch was deleted. Creating a fresh local branch here
 # would push into a remote that already has commits, and `git push -u` would be
 # rejected non-fast-forward.
-if git ls-remote --exit-code --heads origin "$FINALIZE_BRANCH" >/dev/null 2>&1; then
-    echo "BRANCH_EXISTS_REMOTE — stopping. Resolve via Case 7 before continuing."
-    exit 1
-fi
+#
+# Three outcomes, not two. `--exit-code` gives 0 found / 2 absent, and anything else
+# (128 for auth, DNS or network trouble) means the question went unanswered. Treating
+# an unanswered check as "absent" is a fail-open: it would branch, edit, commit, and
+# only discover the problem at push time.
+git ls-remote --exit-code --heads origin "$FINALIZE_BRANCH" >/dev/null 2>&1
+LS_REMOTE_RC=$?
+case "$LS_REMOTE_RC" in
+    0) echo "BRANCH_EXISTS_REMOTE — stopping. Resolve via Case 7 before continuing."; exit 1 ;;
+    2) : ;;   # absent, which is what we want
+    *) echo "REMOTE_CHECK_FAILED — git ls-remote exit $LS_REMOTE_RC; cannot verify. Stopping."; exit 1 ;;
+esac
 
 git checkout -b "$FINALIZE_BRANCH" || { echo "BRANCH_CREATE_FAILED"; exit 1; }
 git rev-parse --abbrev-ref HEAD   # confirm: $FINALIZE_BRANCH
@@ -687,17 +695,45 @@ Your choice:
 Do not pick for the user. `reuse` inherits whatever partial state the aborted run left, and
 `delete` discards it; which is right depends on why the earlier run stopped.
 
-**Where it exists changes what each option means.** On `BRANCH_EXISTS_REMOTE` the local clone has
-none of the commits already pushed, so `reuse` must fetch first and `delete` has to remove the
-remote branch too:
+**Where it exists changes what each option means.** Determine that first:
 
 ```bash
-# reuse (remote-only): adopt what is already there
+git show-ref --verify --quiet "refs/heads/$FINALIZE_BRANCH" && LOCAL=yes || LOCAL=no
+git ls-remote --exit-code --heads origin "$FINALIZE_BRANCH" >/dev/null 2>&1 && REMOTE=yes || REMOTE=no
+echo "local=$LOCAL remote=$REMOTE"
+```
+
+**Local only** — the abort happened in this clone and nothing was pushed:
+
+```bash
+git checkout "$FINALIZE_BRANCH"                    # reuse
+git branch -D "$FINALIZE_BRANCH"                   # delete, then re-run Step 4
+```
+
+**Remote only** — the abort happened elsewhere and this clone has none of those commits:
+
+```bash
+# reuse: adopt what is already there
 git fetch origin "$FINALIZE_BRANCH" \
   && git checkout -b "$FINALIZE_BRANCH" "origin/$FINALIZE_BRANCH"
 
-# delete (remote-only): discard it, then re-run Step 4 from the top
+# delete: discard it, then re-run Step 4
 git push origin --delete "$FINALIZE_BRANCH"
+```
+
+**Both** — reuse needs the local branch reconciled with the remote, and delete must remove *both*
+sides. Deleting only the remote leaves the local branch behind and Step 4 keeps aborting on
+`BRANCH_EXISTS_LOCAL`:
+
+```bash
+# reuse: fast-forward local onto the remote; if it refuses, the two have diverged —
+# inspect rather than force
+git checkout "$FINALIZE_BRANCH" && git merge --ff-only "origin/$FINALIZE_BRANCH"
+
+# delete: remote first, then local — both, or Step 4 aborts again
+git checkout main
+git push origin --delete "$FINALIZE_BRANCH"
+git branch -D "$FINALIZE_BRANCH"
 ```
 
 Deleting a finalize branch is safe — it only ever carries docs commits, and the ruleset's `deletion`
