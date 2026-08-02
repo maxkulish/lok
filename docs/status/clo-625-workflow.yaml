@@ -136,7 +136,10 @@ phases:
         no paths filter (so CI Gate does report on a docs-only PR), `gh pr checks` supports
         --watch/--interval/--fail-fast, `timeout` exists here only via Homebrew coreutils, and
         `gh --jq '.[0].number'` yields empty rather than the string "null" for a missing PR.
-      end_to_end: deferred to the complete phase - CLO-625 finalizes itself with the rewritten command
+      end_to_end: >-
+        Satisfied. CLO-625 finalized itself with the rewritten command against the live ruleset:
+        the local and remote branch gates, the per-path staging, the PR step and the CI Gate wait
+        all executed rather than being read. PR #74 is the artifact.
   pr:
     status: complete
     pr_url: https://github.com/maxkulish/lok/pull/73
@@ -190,8 +193,8 @@ phases:
         last is load-bearing in the opposite direction from intuition - filtering docs PRs out of CI
         would make the required check never report, which blocks the PR permanently instead of
         letting it through.
-    finalize_pr_url: PENDING
-    finalize_pr_number: PENDING
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/74
+    finalize_pr_number: 74
 history:
   - timestamp: '2026-08-02T13:45:44Z'
     action: workflow_started
