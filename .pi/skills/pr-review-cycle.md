@@ -388,8 +388,19 @@ fast local clock hide comments that arrived just after your replies:
 ```bash
 ME=$(gh api user --jq .login)
 REPLY_PUSH_TS=$(gh api repos/${REPO}/pulls/${PR}/comments --paginate --slurp \
-  | jq -r --arg me "$ME" '[.[][] | select(.user.login == $me) | .created_at] | max')
+  | jq -r --arg me "$ME" '[.[][] | select(.user.login == $me) | .created_at] | max // empty')
+
+# No replies of your own yet - scope the window to the PR instead of leaving
+# the bound empty, which would compare every timestamp against "".
+: "${REPLY_PUSH_TS:=$(gh api repos/${REPO}/pulls/${PR} --jq .created_at)}"
 ```
+
+`max` over an empty array returns JSON `null`, which `jq -r` prints as
+the literal string `null`. Left unguarded that lands in the step 8
+filter as `created_at > "null"`, and since `"2026-…" < "null"`
+lexicographically, **every** real comment is filtered out and the
+re-check reports clean while hiding all of them. `// empty` turns the
+null into an empty string so the `:=` default can fire.
 
 ## 8 - Re-check for new comments
 
