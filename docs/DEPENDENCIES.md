@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-02 (CLO-592 started)
+**Last Updated**: 2026-08-02 (CLO-592 completed)
 
 ## Current Blockers
 
@@ -13,8 +13,7 @@
 |------|------------------------|-------------|
 | - | - | - |
 
-Two items CLO-591 deliberately left open, both of which get more expensive once
-CLO-592 publishes to crates.io:
+CLO-592 is done. The two items CLO-591 left open remain relevant:
 
 - **`BACKEND_CACHE` is keyed by backend name alone**, so two consumers in one
   process with different configs share an instance. Neither fix the ticket

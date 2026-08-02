@@ -21,10 +21,10 @@ linear:
   priority: Low
   branch_actual: feat/clo-592-crates
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: active
   created_at: '2026-08-02T07:46:35.160Z'
-  updated_at: '2026-08-02T11:41:11.186Z'
+  updated_at: '2026-08-02T11:48:47.304Z'
 phases:
   discovery:
     status: complete
@@ -84,7 +84,7 @@ phases:
     validation_synthesis_report: docs/reviews/clo-592-codex-validation.md
     validation_synthesis_verdict: PASS_WITH_NOTES (fixed)
   pr:
-    status: in_progress
+    status: complete
     ci_passed: true
     pr_number: 69
     pr_url: https://github.com/maxkulish/lok/pull/69
@@ -95,6 +95,13 @@ phases:
     reviews_addressed: true
   complete:
     status: pending
+    merge_commit: bda06ee439688e3da6f2d0ec19156f5d4480c50a
+    merged_at: '2026-08-02T11:47:23Z'
+    aggregation_files_updated: true
+    lessons_file: .pi/lessons/clo-592-library-docs-and-publish-dry-run-lessons.md
+    lessons_learned:
+      - L1 - CARGO_REGISTRY_TOKEN is the variable cargo reads, not CARGO_TOKEN
+      - L2 - Cargo does not support publish = false at the [[bin]] level
 history:
   - timestamp: '2026-08-02T07:46:35.160Z'
     action: workflow_started
@@ -241,5 +248,29 @@ history:
     action: pre_merge_refetch_passed
     phase: pr
     details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads.'
+  - timestamp: '2026-08-02T11:41:48.392Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: Bot review wait completed. No bot reviewers active (Gemini Code Assist sunset). No human reviews pending.
+  - timestamp: '2026-08-02T11:41:53.909Z'
+    action: review_addressed
+    phase: pr
+    details: No review comments to address. PR has no human reviews and no unresolved threads.
+  - timestamp: '2026-08-02T11:41:55.974Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-08-02T11:47:34.353Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #69 merged. Merge commit bda06ee439688e3da6f2d0ec19156f5d4480c50a.'
+  - timestamp: '2026-08-02T11:48:28.400Z'
+    action: project_sync_complete
+    phase: complete
+    details: PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced. CLO-592 moved to completed.
+  - timestamp: '2026-08-02T11:48:47.304Z'
+    action: lessons_extracted
+    phase: complete
+    details: '2 lessons recorded. File: .pi/lessons/clo-592-library-docs-and-publish-dry-run-lessons.md'
 task_title: Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run
 task_url: https://linear.app/cloud-ai/issue/CLO-592/make-the-backend-library-consumable-from-cratesio-with-rustdoc-feature

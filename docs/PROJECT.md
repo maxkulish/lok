@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-02 (CLO-592 started)
+**Last Updated**: 2026-08-02 (CLO-592 completed)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | In Progress | Discovery | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -19,7 +19,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
-| [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | 2026-08-01 | Library warnings route through `log` (silent with no logger installed), and eight binary-only crates sit behind a `cli` feature so `default-features = false` gives a clean tree. Public surface shrunk then documented: 101 missing-doc items to zero, held by `#![deny(missing_docs)]`. Two of the ticket's own divergence rows were factually wrong and were corrected. Global cache semantics deferred with a written reason: both proposed fixes are blocked by `is_backend_available`'s name-only lookup. PR #65, merged `284b646`. |
+| [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | 2026-08-02 | Crate-level rustdoc with working example, feature docs, backend cache and versioning notes. Public type documentation with "when to reach for it" context for all 16+ re-exported types. README library section. Publish workflow: CARGO_REGISTRY_TOKEN assertion moved after dry-run step. silence_probe decision documented. Workspace-split decision record. All validation checks pass. PR #69, merged `bda06ee`. |
 | [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | 2026-08-01 | Dispatch was already fixed at intake; this made the gate trustworthy. Killed the ETXTBSY race in `write_exec_script` (proved by a red control run against a green treatment), rewrote all three workflows against gcm's, and made `CI Gate` a required check on main via ruleset 20153405. PRs #64 and #66. |
 | [CLO-593](https://linear.app/cloud-ai/issue/CLO-593) | Extract lok's Backend abstraction into a consumable library target | 2026-07-26 | `[lib]` target added alongside the binaries; `backend::config` split out, orchestration reparented into `engine.rs`, external-consumer test added. Merged as `ee28f3c` (PR #61), superseding CLO-590. Six divergences from the CLO-589 ADR were recorded rather than silently absorbed; CLO-591 closes them. |
 | [CLO-589](https://linear.app/cloud-ai/issue/CLO-589) | Record the crate-shape ADR for extracting the backend abstraction as a library | 2026-07-26 | Boundary contract for backend library extraction recorded; extraction implementation landed in CLO-593 (CLO-590 was canceled as superseded). |
