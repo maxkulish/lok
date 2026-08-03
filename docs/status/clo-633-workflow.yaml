@@ -32,10 +32,10 @@ linear:
     - AFK
     - Bug
 workflow:
-  current_phase: pr
-  status: in_progress
+  current_phase: complete
+  status: complete
   created_at: '2026-08-03T12:39:31Z'
-  updated_at: '2026-08-03T14:20:00Z'
+  updated_at: '2026-08-03T14:35:00Z'
 entry_findings:
   wip_at_start: 0/3 - Active Work table in docs/PROJECT.md is empty
   blockers: >-
@@ -363,7 +363,43 @@ phases:
     reviewers_expected:
       - qodo-code-review (requires /agentic_review; handle_push_trigger is False)
   complete:
-    status: pending
+    status: complete
+    aggregation_files_updated: true
+    merged_at: '2026-08-03T14:03:05Z'
+    merge_commit: a8f84d8
+    pr_number: 80
+    final_state:
+      defect_sites_fixed: 7
+      helpers_added: 3
+      tests_added: 27
+      unit_tests: 564
+      total_tests: 715
+      files_changed: 6
+    follow_ups_filed:
+      - "commit_file ignores `git rev-parse HEAD` exit status, returning \"\" as a successful SHA on an unborn HEAD"
+      - 'extract_file_references / FILE_REF_RE duplicated verbatim across context.rs and fix.rs'
+      - 'No CI job builds against the declared rust-version = 1.80'
+      - >-
+        /pr:review Step 9.5's re-review poll can never fire against Qodo - it waits for a review
+        object on the new head SHA, but Qodo edits its existing review comment in place. Found by
+        the poll timing out on PR #80 against a re-review that had already succeeded.
+    lessons:
+      discriminating_tests: >-
+        The recurring failure across all four review rounds was tests that pass against the broken
+        baseline. It bit the spec (two eval rows exercised an already-correct helper), then bit the
+        implementation twice - the AC10 test called the helper instead of the changed call site, and
+        two head-truncation inputs used 2-byte "é" at even cut points so they never crossed a
+        character boundary at all. Running each defect's pre-fix expression before writing its test
+        is what caught the second one; it costs a scratch program and settles the question.
+      reviewers_disagreed_usefully: >-
+        Opencode asked whether the panics were gone and said PASS. Codex asked whether the tests
+        proved it and said FAIL, twice. Both were right about different questions. Qodo then found
+        the thing both had missed: a doc comment asserting coverage that did not exist.
+      spec_defects_are_defects: >-
+        Two of the most valuable findings were errors in the spec rather than the code - AC7
+        claiming byte-identical output for an input where the change deliberately differs, and AC10
+        banning byte slices in a file that legitimately keeps one. Recording the carve-out was the
+        fix, not changing the code to match an overclaiming criterion.
 history:
   - timestamp: '2026-08-03T12:39:31Z'
     action: workflow_started
@@ -451,3 +487,19 @@ history:
     details: >-
       PR #80 opened against main. Four commits: the fix, the task docs, the discriminating-test
       pass, and the grep correction. Awaiting the CI Gate required check and qodo-code-review.
+  - timestamp: '2026-08-03T14:03:05Z'
+    action: pr_merged
+    phase: pr
+    details: >-
+      PR #80 squashed to main as a8f84d8. CI Gate passed on head 0903322; Qodo's re-review returned
+      zero findings in all four categories. One merge conflict resolved en route - main moved three
+      commits ahead and the three aggregation "Last Updated" headers collided, with git merging the
+      substance of both sides correctly.
+  - timestamp: '2026-08-03T14:35:00Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      PROJECT.md: CLO-633 moved to Recently Completed, Active Work back to 0/3, CLO-634 and CLO-635
+      retargeted from "After CLO-633" to "Next". ROADMAP.md: status Done, Phase 15 at 1 of 5.
+      DEPENDENCIES.md: CLO-633 blocked nothing so nothing became ready, and the four follow-ups it
+      filed are recorded there.
