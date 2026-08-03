@@ -396,4 +396,62 @@ mod tests {
             ""
         );
     }
+
+    fn issue(title: &str, body: &str) -> GitHubIssue {
+        GitHubIssue {
+            number: 1,
+            title: title.to_string(),
+            body: Some(body.to_string()),
+            labels: vec![],
+            state: "OPEN".to_string(),
+        }
+    }
+
+    /// Drives the real `gather_code_context` rather than inferring from the
+    /// builder's return value: the fallback gate is `context.is_empty()`, so a
+    /// bare heading pushed before it silently disables keyword search.
+    #[tokio::test]
+    async fn stale_reference_still_reaches_the_keyword_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(tmp.path().join("src/main.rs"), "one\ntwo\nthree\n").unwrap();
+
+        // The file exists and reads fine; only the line number is out of range.
+        let issue = issue(
+            "Slicing panics during truncation helpers",
+            "Broken at src/main.rs:99999 after the refactor",
+        );
+
+        let context = gather_code_context(tmp.path(), &issue).await.unwrap();
+
+        assert!(
+            !context.contains("## Referenced files from issue:"),
+            "a heading with no sections under it must not be emitted"
+        );
+        assert!(
+            context.contains("## Potentially relevant code (from keyword search):"),
+            "keyword fallback must fire when every reference collapses to empty, got: {context:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn valid_reference_suppresses_the_keyword_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+        std::fs::write(tmp.path().join("src/main.rs"), "one\ntwo\nthree\n").unwrap();
+
+        let issue = issue(
+            "Slicing panics during truncation helpers",
+            "Broken at src/main.rs:2 after the refactor",
+        );
+
+        let context = gather_code_context(tmp.path(), &issue).await.unwrap();
+
+        assert!(context.contains("## Referenced files from issue:"));
+        assert!(context.contains(">>>    2: two"));
+        assert!(
+            !context.contains("## Potentially relevant code"),
+            "fallback must stay suppressed when a real section rendered"
+        );
+    }
 }

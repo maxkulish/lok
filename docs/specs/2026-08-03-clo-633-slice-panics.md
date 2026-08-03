@@ -163,9 +163,15 @@ section 5.
       "fixed".
 - [ ] AC6: `src/tasks/context.rs` and `src/tasks/fix.rs` both render their numbered-line body
       through one shared helper. Neither file computes its own `start`/`end` any more.
-- [ ] AC7: For every input where the current code does not panic, the rendered body is
-      byte-identical to what it produces today. Proven by differential comparison against a
-      test-local copy of the current renderer over a bounded sweep, not by spot examples.
+- [ ] AC7: For every input where the current code produces a **non-empty** body, the rendered
+      output is byte-identical to what it produces today. Proven by differential comparison against
+      a test-local copy of the current renderer over a bounded sweep including a 200-line file, not
+      by spot examples.
+- [ ] AC7a: Where the current code produces an **empty** body without panicking - an existing but
+      empty file, or a line far enough past EOF that `start == end` - the new behavior deliberately
+      differs: today both callers still emit a `### path` heading and an empty fenced block, and
+      after this change they emit nothing at all. This is the carve-out that makes AC4 and AC8
+      possible; AC7 is scoped around it rather than contradicting it.
 - [ ] AC8: When no file section renders, the parent heading is not emitted either, and in
       `src/tasks/fix.rs` the keyword-search fallback runs as if no references had been found.
       Covered for three cases: all references invalid, a mix of valid and invalid, and a reference
@@ -196,10 +202,11 @@ negative ones. AC12 is the existing CI Gate.
 - Put the new general-purpose helpers in `src/utils.rs`, beside the existing `truncate_utf8`
   (`src/utils.rs:235`), and test them in that file's existing `#[cfg(test)] mod tests`. The
   codebase already keeps exactly this kind of helper there.
-- Keep the rendered body byte-identical for all currently-working inputs (AC7). This is a panic
-  fix, not a formatting change; the off-by-one asymmetry in the existing window (`start` is
-  `line - context_lines` as a 0-based index, so the window opens at displayed line
-  `line - context_lines + 1`) is behavior to preserve, not a bug to correct in this task.
+- Keep the rendered body byte-identical wherever the current code produces a non-empty body (AC7,
+  and see the AC7a carve-out for empty ones). This is a panic fix, not a formatting change; the
+  off-by-one asymmetry in the existing window (`start` is `line - context_lines` as a 0-based
+  index, so the window opens at displayed line `line - context_lines + 1`) is behavior to preserve,
+  not a bug to correct in this task.
 - Use `str::is_char_boundary` for the boundary walk. Stable since Rust 1.9, so it works regardless
   of what MSRV this crate settles on.
 - Use `saturating_add` for the `line + context_lines` arithmetic.

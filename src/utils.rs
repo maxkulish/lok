@@ -657,14 +657,19 @@ mod tests {
 
     #[test]
     fn test_render_line_window_matches_legacy_where_legacy_worked() {
-        let corpus: Vec<&str> = vec!["a", "b", "c", "d", "e"];
-        let sizes = [0usize, 1, 5];
+        // 200 lines matters: without it the sweep never reaches a near-EOF
+        // window that is non-empty, so lines 199/200/201 would only ever
+        // exercise the `None` branch and prove nothing about the body.
+        let corpus: Vec<String> = (1..=200).map(|i| format!("line {i}")).collect();
+        let corpus: Vec<&str> = corpus.iter().map(String::as_str).collect();
+        let sizes = [0usize, 1, 5, 200];
         // Both production context sizes: fix.rs uses 10, context.rs uses 15.
         let contexts = [10usize, 15];
 
+        let mut compared_non_empty = 0;
         for &n in &sizes {
             let lines = &corpus[..n.min(corpus.len())];
-            for line in [0usize, 1, 2, 5, 199, 200, 201] {
+            for line in [0usize, 1, 2, 5, 195, 199, 200, 201] {
                 for &ctx in &contexts {
                     let (start, end) = line_window(lines.len(), line, ctx);
                     let new = render_line_window(lines, line, ctx);
@@ -675,12 +680,19 @@ mod tests {
                             Some(legacy_render(lines, line, ctx).as_str()),
                             "divergence at n={n} line={line} ctx={ctx}"
                         );
+                        compared_non_empty += 1;
                     } else {
                         assert_eq!(new, None, "expected empty window at n={n} line={line}");
                     }
                 }
             }
         }
+        // Guard the guard: a sweep that only ever hit empty windows would pass
+        // every assertion above while comparing nothing.
+        assert!(
+            compared_non_empty >= 20,
+            "sweep compared only {compared_non_empty} non-empty bodies"
+        );
     }
 
     #[test]

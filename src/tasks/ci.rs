@@ -129,6 +129,23 @@ struct FailedCheck {
     log: String,
 }
 
+/// Cap a CI log at its last 15000 bytes, appending `notice` when it was cut.
+///
+/// The budget is bytes, not characters, so the split has to be moved to a
+/// character boundary; `&log[log.len() - 15000..]` panics on the box-drawing
+/// characters and non-ASCII test names that ordinary CI logs contain.
+fn truncate_log(log_text: String, notice: &str) -> String {
+    const MAX_LOG_BYTES: usize = 15000;
+    if log_text.len() <= MAX_LOG_BYTES {
+        return log_text;
+    }
+    format!(
+        "{}...\n{}",
+        crate::utils::tail_utf8(&log_text, MAX_LOG_BYTES),
+        notice
+    )
+}
+
 fn get_github_ci_status(dir: &Path, pr: &str) -> Result<(String, Vec<FailedCheck>)> {
     // Get check status
     let status_output = Command::new("gh")
@@ -191,15 +208,7 @@ fn get_github_ci_status(dir: &Path, pr: &str) -> Result<(String, Vec<FailedCheck
             if let Ok(log) = log_output {
                 if log.status.success() {
                     let log_text = String::from_utf8_lossy(&log.stdout).to_string();
-                    // Truncate very long logs
-                    let truncated = if log_text.len() > 15000 {
-                        format!(
-                            "{}...\n[truncated, showing last 15000 bytes]",
-                            crate::utils::tail_utf8(&log_text, 15000)
-                        )
-                    } else {
-                        log_text
-                    };
+                    let truncated = truncate_log(log_text, "[truncated, showing last 15000 bytes]");
 
                     failed_logs.push(FailedCheck {
                         name: name.clone(),
@@ -270,14 +279,7 @@ fn get_gitlab_ci_status(dir: &Path, mr: &str) -> Result<(String, Vec<FailedCheck
                                     if trace.status.success() {
                                         let log_text =
                                             String::from_utf8_lossy(&trace.stdout).to_string();
-                                        let truncated = if log_text.len() > 15000 {
-                                            format!(
-                                                "{}...\n[truncated]",
-                                                crate::utils::tail_utf8(&log_text, 15000)
-                                            )
-                                        } else {
-                                            log_text
-                                        };
+                                        let truncated = truncate_log(log_text, "[truncated]");
 
                                         failed_logs.push(FailedCheck {
                                             name,
@@ -324,4 +326,28 @@ fn build_analysis_prompt(failed_checks: &[FailedCheck]) -> String {
     }
 
     prompt
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_log_leaves_short_logs_alone() {
+        assert_eq!(truncate_log("short".to_string(), "[cut]"), "short");
+    }
+
+    #[test]
+    fn truncate_log_splits_inside_a_multibyte_char_without_panicking() {
+        // 5000 four-byte emoji plus one ASCII byte = 20001 bytes, so the naive
+        // split at 20001 - 15000 = 5001 lands one byte into an emoji.
+        let log = "😀".repeat(5000) + "x";
+        assert!(!log.is_char_boundary(log.len() - 15000));
+
+        let out = truncate_log(log, "[cut]");
+        assert!(out.ends_with("...\n[cut]"));
+        let body = out.trim_end_matches("...\n[cut]");
+        assert!(body.len() <= 15000);
+        assert!(body.starts_with('😀'), "must not begin mid-character");
+    }
 }

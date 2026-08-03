@@ -542,13 +542,7 @@ pub async fn run(
                 let commit_msg = format!("implement: {}", subtask.what);
                 match commit_file(dir, &target_file, &commit_msg).await {
                     Ok(sha) => {
-                        // `commit_file` returns `git rev-parse HEAD` without checking its
-                        // exit status, so on an unborn HEAD this is the empty string.
-                        println!(
-                            "      {} Committed {}",
-                            "●".green(),
-                            crate::utils::truncate_utf8(&sha, 8)
-                        );
+                        println!("      {} Committed {}", "●".green(), short_sha(&sha));
                     }
                     Err(e) => {
                         println!("      {} Failed to commit: {}", "!".yellow(), e);
@@ -566,6 +560,15 @@ pub async fn run(
     );
 
     Ok(())
+}
+
+/// Abbreviate a commit SHA for display without assuming it is 8 bytes long.
+///
+/// `commit_file` builds its return value from `git rev-parse HEAD` without
+/// checking the exit status, so on an unborn HEAD this receives the empty
+/// string and `&sha[..8]` would panic.
+fn short_sha(sha: &str) -> &str {
+    crate::utils::truncate_utf8(sha, 8)
 }
 
 fn clean_code_output(code: &str) -> Option<String> {
@@ -803,13 +806,13 @@ mod tests {
     }
 
     #[test]
-    fn short_sha_rendering_never_panics() {
-        // `commit_file` returns `git rev-parse HEAD` without checking its exit
-        // status, so an unborn HEAD yields an empty string here.
-        assert_eq!(crate::utils::truncate_utf8("", 8), "");
-        assert_eq!(crate::utils::truncate_utf8("abc", 8), "abc");
+    fn short_sha_never_panics_on_an_unborn_head() {
+        // Tests the display path itself, not the helper behind it: reverting the
+        // call site to `&sha[..8]` has to fail this.
+        assert_eq!(short_sha(""), "");
+        assert_eq!(short_sha("abc"), "abc");
         assert_eq!(
-            crate::utils::truncate_utf8("0123456789abcdef0123456789abcdef01234567", 8),
+            short_sha("0123456789abcdef0123456789abcdef01234567"),
             "01234567"
         );
     }
