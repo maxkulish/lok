@@ -1,5 +1,5 @@
 name = "pre-pr-validation"
-description = "Multi-model pre-PR validation: health-check + Codex + Gemini + Claude fallback + synthesis"
+description = "Pre-PR validation: health-check + Codex + Claude fallback + synthesis"
 
 # Args:
 #   {{ arg.1 }}  design doc path, e.g. "docs/designs/clo-371-migrate-backendquery-to-stepcontext.md"
@@ -8,19 +8,9 @@ description = "Multi-model pre-PR validation: health-check + Codex + Gemini + Cl
 #
 # Environment overrides (documented in .pi/orchestrator/phases/implement.md):
 #   CODEX_MODEL              default "gpt-5.6-sol"
-#   GEMINI_MODEL             default "gemini-3.1-pro-preview"
-#   GEMINI_FALLBACK_MODEL    default "gemini-3.6-flash"
 #
-# The GEMINI_* values may be bare ("gemini-3.6-flash") or namespaced
-# ("google/gemini-3.6-flash"); the `gmodel` helper below adds `google/` only when
-# it is missing, so neither form produces a doubled prefix.
-#
-# The "gemini" reviewer runs Google models through the `opencode` CLI, not the
-# retired `gemini` CLI. Canonical invocation:
-#   opencode run --model "google/<model>" --agent plan -- "$PROMPT" < /dev/null
-# `--agent plan` is opencode's read-only mode (the analogue of `codex -s read-only`);
-# `--` guards prompts starting with `-`; `< /dev/null` stops opencode waiting on stdin.
-# opencode rejects unknown flags by printing help to stderr and running nothing.
+# Codex is the external reviewer of record. Claude backs it up when Codex fails,
+# and the synthesis step produces the binding verdict either way.
 
 # Step 1: Pre-flight health check - probe reviewer binaries
 [[steps]]
@@ -29,22 +19,12 @@ timeout = "45s"
 continue_on_error = true
 shell = '''
 CODEX_OK=false
-GEMINI_OK=false
 
 if command -v codex >/dev/null 2>&1; then
   CODEX_OK=true
 fi
 
-# Add the `google/` transport namespace only when the caller has not already
-# supplied one, so both `gemini-3.6-flash` and `google/gemini-3.6-flash` work as
-# env overrides. Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs).
-gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
-
-if timeout 20 opencode run --model "$(gmodel "${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}")" --agent plan -- "reply OK" < /dev/null 2>/dev/null | grep -qi "ok"; then
-  GEMINI_OK=true
-fi
-
-echo "codex=$CODEX_OK gemini=$GEMINI_OK"
+echo "codex=$CODEX_OK"
 
 # Don't fail the gate here - downstream reviewers gate individually via `when`.
 '''
@@ -103,84 +83,18 @@ Respond with a JSON object on a single line:
 - If not valid: {"status": "fail", "reason": "<one-line reason>"}
 """
 
-# Step 3: Gemini pre-PR review with primary + fallback model
-[[steps]]
-name = "gemini_review"
-timeout = "21m"
-retries = 3
-continue_on_error = true
-depends_on = ["health_check"]
-shell = '''
-# Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs): prefix only
-# when the override lacks a transport namespace.
-gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
-
-PRIMARY_MODEL="${GEMINI_MODEL:-gemini-3.1-pro-preview}"
-FALLBACK_MODEL="${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}"
-
-PROMPT=$(sed \
-  -e 's|__DESIGN_DOC__|{{ arg.1 }}|g' \
-  -e 's|__PLAN_FILE__|{{ arg.2 }}|g' \
-  -e 's|__CLO_ID__|{{ arg.3 }}|g' \
-  .lok/prompts/pre-pr-validation-prompt.md)
-
-OUTPUT=$(timeout --kill-after=15s 600s opencode run \
-  --model "$(gmodel "$PRIMARY_MODEL")" \
-  --agent plan \
-  --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-prepr-stderr.log)
-
-if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
-  OUTPUT=$(timeout --kill-after=15s 600s opencode run \
-    --model "$(gmodel "$FALLBACK_MODEL")" \
-    --agent plan \
-    --dir "$PWD" -- "$PROMPT" < /dev/null 2>/tmp/lok-opencode-prepr-stderr.log)
-
-  if [ -z "$OUTPUT" ] || [ $(printf '%s' "$OUTPUT" | wc -c) -lt 100 ]; then
-    STDERR=$(head -5 /tmp/lok-opencode-prepr-stderr.log 2>/dev/null || echo "no stderr")
-    echo "REVIEW_FAILED: Empty output from both $PRIMARY_MODEL and $FALLBACK_MODEL (stderr: $STDERR)"
-    exit 0
-  fi
-fi
-
-echo "$OUTPUT"
-'''
-
-[steps.validate]
-check = "min_length(200)"
-backend = "claude"
-model = "haiku"
-replace_output = true
-max_input_length = 100000
-timeout_ms = 60000
-on_error = "pass"
-prompt = """
-{{ output }}
-
----
-
-You are a validation output validator. Determine whether the text ABOVE contains an actual structured code validation report.
-
-VALID report: contains a Verdict line (PASS / PASS_WITH_NOTES / FAIL or approve / approve_with_changes / rework), findings with severity levels, and actionable content.
-
-NOISE: empty content, error messages, timestamps only, MCP noise, partial output without verdict, lines starting with REVIEW_FAILED.
-
-Respond with a JSON object on a single line:
-- If valid: {"status": "pass", "output": "<the cleaned report, with leading/trailing noise stripped>"}
-- If not valid: {"status": "fail", "reason": "<one-line reason>"}
-"""
-
-# Step 4: Claude fallback - runs only when both external reviewers failed
+# Step 3: Claude fallback - runs only when the Codex review failed
 [[steps]]
 name = "claude_fallback"
 backend = "claude"
 timeout = "10m"
 retries = 2
 continue_on_error = true
-depends_on = ["codex_review", "gemini_review"]
+depends_on = ["codex_review"]
 min_deps_success = 0
-when = "(not steps.codex_review.success or 'REVIEW_FAILED' in steps.codex_review.output) and (not steps.gemini_review.success or 'REVIEW_FAILED' in steps.gemini_review.output)"
+when = "not steps.codex_review.success or 'REVIEW_FAILED' in steps.codex_review.output"
 prompt = """
-Both external reviewers (Codex and Gemini) failed. You are the fallback pre-PR validator for **lok** - a Rust CLI workflow orchestrator (single crate `lokomotiv`, edition 2024, binaries `lok` + `lokomotiv`).
+The Codex reviewer failed. You are the fallback pre-PR validator for **lok** - a Rust CLI workflow orchestrator (single crate `lokomotiv`, edition 2024, binaries `lok` + `lokomotiv`).
 
 Read these files:
 1. {{ arg.1 }} - the design doc
@@ -212,27 +126,24 @@ OUTPUT FORMAT:
 [Specific actionable improvements]
 """
 
-# Step 5: Synthesize validation results into the binding verdict
+# Step 4: Synthesize validation results into the binding verdict
 [[steps]]
 name = "synthesis"
 backend = "claude"
 retries = 3
-depends_on = ["codex_review", "gemini_review", "claude_fallback"]
+depends_on = ["codex_review", "claude_fallback"]
 min_deps_success = 0
-when = "steps.codex_review.success or steps.gemini_review.success or steps.claude_fallback.success"
+when = "steps.codex_review.success or steps.claude_fallback.success"
 prompt = """
 You are the validation synthesis reviewer for lok task {{ arg.3 }}.
 
-Combine the Codex and Gemini reports below. The synthesis verdict is binding for the orchestrator's PR transition decision.
+Consolidate the reports below. The synthesis verdict is binding for the orchestrator's PR transition decision.
 
 CODEX REPORT (success={{ steps.codex_review.success }}):
 {{ steps.codex_review.output }}
 
-GEMINI REPORT (success={{ steps.gemini_review.success }}):
-{{ steps.gemini_review.output }}
-
 CLAUDE FALLBACK:
-{% if steps.claude_fallback is defined %}{{ steps.claude_fallback.output }}{% else %}SKIPPED - at least one external reviewer succeeded{% endif %}
+{% if steps.claude_fallback is defined %}{{ steps.claude_fallback.output }}{% else %}SKIPPED - the Codex review succeeded{% endif %}
 
 Read these for grounding:
 - {{ arg.1 }} (design doc)
@@ -247,7 +158,7 @@ INSTRUCTIONS:
 | Reviewer | Status | Detail |
 |----------|--------|--------|
 
-For each reviewer (Codex, Gemini, Claude fallback), show: OK, REVIEW_FAILED (with reason), or SKIPPED.
+For each reviewer (Codex, Claude fallback), show: OK, REVIEW_FAILED (with reason), or SKIPPED.
 
 **Then classify every finding into exactly one of:**
 
@@ -284,16 +195,12 @@ Verdict rules:
 One paragraph: PROCEED, PROCEED_WITH_FIXES (list the bounded fixes), or STOP_FOR_USER (state the decision needed).
 """
 
-# Step 6: Write review files at the exact paths phases/implement.md Step 4.2 expects
+# Step 5: Write review files at the exact paths phases/implement.md Step 4.2 expects
 [[steps]]
 name = "write_reports"
-depends_on = ["codex_review", "gemini_review", "claude_fallback", "synthesis"]
+depends_on = ["codex_review", "claude_fallback", "synthesis"]
 min_deps_success = 0
 shell = '''
-# Mirrors GeminiBackend::normalize_model (src/backend/gemini.rs): prefix only
-# when the override lacks a transport namespace.
-gmodel() { case "$1" in */*) printf '%s' "$1" ;; *) printf 'google/%s' "$1" ;; esac; }
-
 mkdir -p docs/reviews
 TASK="{{ arg.3 }}"
 TASK_LC=$(printf '%s' "$TASK" | tr '[:upper:]' '[:lower:]')
@@ -303,10 +210,6 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 cat <<'LOK_WF_CODEX_OUTPUT_EOF' > "$TMP_DIR/codex.md"
 {{ steps.codex_review.output }}
 LOK_WF_CODEX_OUTPUT_EOF
-
-cat <<'LOK_WF_GEMINI_OUTPUT_EOF' > "$TMP_DIR/gemini.md"
-{{ steps.gemini_review.output }}
-LOK_WF_GEMINI_OUTPUT_EOF
 
 cat <<'LOK_WF_SYNTH_OUTPUT_EOF' > "$TMP_DIR/synthesis.md"
 {{ steps.synthesis.output }}
@@ -364,11 +267,6 @@ write_review \
   "docs/reviews/${TASK_LC}-codex-validation.md" \
   "Codex (${CODEX_MODEL:-gpt-5.6-sol})"
 
-write_review \
-  "$TMP_DIR/gemini.md" \
-  "docs/reviews/${TASK_LC}-gemini-validation.md" \
-  "Gemini via opencode ($(gmodel "${GEMINI_MODEL:-gemini-3.1-pro-preview}"))"
-
 {% if steps.claude_fallback is defined %}
 cat <<'LOK_WF_FALLBACK_OUTPUT_EOF' > "$TMP_DIR/fallback.md"
 {{ steps.claude_fallback.output }}
@@ -378,7 +276,7 @@ write_review \
   "$TMP_DIR/fallback.md" \
   "docs/reviews/${TASK_LC}-claude-fallback-validation.md" \
   "Claude (fallback)" \
-  "Both external reviewers failed; this is the fallback review"
+  "The Codex review failed; this is the fallback review"
 {% endif %}
 
 write_review \
@@ -386,22 +284,27 @@ write_review \
   "docs/reviews/${TASK_LC}-validation-synthesis.md" \
   "Synthesis (Claude)"
 
-# Final hard check: the three files implement.md Step 4.2 requires
+# Final hard check: the files implement.md Step 4.2 requires. The synthesis is
+# always required. The reviewer report may come from Codex or, when Codex
+# produced nothing at all, from the Claude fallback - requiring the Codex file
+# unconditionally would fail the gate on exactly the runs the fallback exists to
+# rescue.
 GATE_FAIL=0
-for f in \
-  docs/reviews/${TASK_LC}-codex-validation.md \
-  docs/reviews/${TASK_LC}-gemini-validation.md \
-  docs/reviews/${TASK_LC}-validation-synthesis.md
-do
-  if [ ! -s "$f" ]; then
-    echo "GATE FAIL: missing or empty $f"
-    GATE_FAIL=1
-  fi
-done
+
+if [ ! -s "docs/reviews/${TASK_LC}-validation-synthesis.md" ]; then
+  echo "GATE FAIL: missing or empty docs/reviews/${TASK_LC}-validation-synthesis.md"
+  GATE_FAIL=1
+fi
+
+if [ ! -s "docs/reviews/${TASK_LC}-codex-validation.md" ] \
+   && [ ! -s "docs/reviews/${TASK_LC}-claude-fallback-validation.md" ]; then
+  echo "GATE FAIL: no reviewer report - neither docs/reviews/${TASK_LC}-codex-validation.md nor docs/reviews/${TASK_LC}-claude-fallback-validation.md was written"
+  GATE_FAIL=1
+fi
 
 if [ "$GATE_FAIL" -eq 1 ]; then
   exit 1
 fi
 
-echo "GATE OK: all required validation reports present at docs/reviews/${TASK_LC}-{codex,gemini,validation-synthesis}.md"
+echo "GATE OK: validation synthesis plus a reviewer report present under docs/reviews/${TASK_LC}-*"
 '''

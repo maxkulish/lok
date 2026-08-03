@@ -20,8 +20,8 @@ phases:
         confidence: "high" | "medium" | "low"
         verification: "<how/when this gets verified, or 'unverified'>"
     review_completed: true
-    review_gemini: "docs/reviews/clo-XX-design-gemini.md"   # optional
-    review_synthesis: "docs/reviews/clo-XX-design-synthesis.md"   # optional
+    review_ollama: "docs/reviews/clo-XX-review-ollama.md"   # optional
+    review_synthesis: "docs/reviews/clo-XX-review-synthesis.md"   # optional
     review_verdict: "approve" | "approve_with_changes" | "rework"  # optional
     applied_suggestions: []                      # optional
     flagged_suggestions: []                      # optional
@@ -30,8 +30,8 @@ phases:
     finalized: true
     token_usage:                                              # optional, observational
       - recorded_at: "2026-05-16T12:00:00Z"
-        provider: "gemini"
-        model: "google/gemini-3.1-pro-preview"
+        provider: "ollama"
+        model: "glm-5.2:cloud"
         prompt_tokens: 0
         completion_tokens: 0
         task_label: "design-review"
@@ -70,13 +70,18 @@ and finish the remaining steps, not to retry the same call.
 
 ## Step 0 - Consult prior lessons
 
-Before drafting, grep `.pi/lessons/` for rules that apply to the
+Before drafting, grep **both lesson stores** for rules that apply to the
 modules / subsystems this task will touch:
 
 ```bash
-ls .pi/lessons/ 2>/dev/null
-grep -l -i -e backend -e workflow -e conductor -e tasks -e apply_verify -e role .pi/lessons/ 2>/dev/null
+ls .pi/lessons/ docs/lessons/ 2>/dev/null
+grep -rl -i -e backend -e workflow -e conductor -e tasks -e apply_verify -e role \
+  .pi/lessons/ docs/lessons/ 2>/dev/null
 ```
+
+`.pi/lessons/` holds topic files written by the complete phase;
+`docs/lessons/` holds per-lesson files written by `/session:wrap`. Both
+are live - searching only one silently drops half the corpus.
 
 Adjust the keyword list to match what this task is about. Read every
 matching file end-to-end. Hits become inputs to:
@@ -175,8 +180,8 @@ workflow YAML field `phases.design.assumptions`. The two MUST agree;
 the synthesis review will fail the design otherwise.
 
 Why this exists: most design rework after `implement` traces back to
-an unstated assumption. Surfacing them here lets Gemini and the human
-reviewer flag the wrong ones cheaply, before code lands.
+an unstated assumption. Surfacing them here lets the AI reviewer and the
+human reviewer flag the wrong ones cheaply, before code lands.
 
 When the list is genuinely empty (small, isolated change), record:
 
@@ -216,10 +221,13 @@ lok run .lok/workflows/design-review.toml \
   --dir . --verbose
 ```
 
-This produces gemini + synthesis review files in `docs/reviews/`.
+This produces ollama + synthesis review files in `docs/reviews/`. When
+the Ollama leg fails, the workflow substitutes a Claude fallback review
+and writes `docs/reviews/clo-XX-review-claude-fallback.md`; the synthesis
+still runs.
 
 If lok tooling is unavailable in this repo, you may invoke the persona
-directly via the agent: `pi run gemini-architect --input
+directly via the agent: `pi run ollama-rust-reviewer --input
 docs/designs/clo-XX-<slug>.md`. If neither path works, set:
 
 ```yaml
@@ -245,14 +253,14 @@ update_workflow_state({
   details: "Review verdict: approve_with_changes. <n> applied, <m> flagged.",
   phase_updates: {
     review_completed: true,
-    review_gemini: "docs/reviews/clo-XX-design-gemini.md",
-    review_synthesis: "docs/reviews/clo-XX-design-synthesis.md",
+    review_ollama: "docs/reviews/clo-XX-review-ollama.md",
+    review_synthesis: "docs/reviews/clo-XX-review-synthesis.md",
     review_verdict: "approve_with_changes",
     applied_suggestions: ["..."],
     flagged_suggestions: [{ id: "...", reason: "..." }]
   },
   token_usage: [
-    { provider: "gemini", model: "google/gemini-3.1-pro-preview", prompt_tokens: <p>, completion_tokens: <c>, task_label: "design-review-gemini" },
+    { provider: "ollama", model: "glm-5.2:cloud", prompt_tokens: <p>, completion_tokens: <c>, task_label: "design-review-ollama" },
     { provider: "claude", model: "claude-opus-5", prompt_tokens: <p>, completion_tokens: <c>, task_label: "design-review-synthesis" }
   ]
 })
@@ -390,7 +398,7 @@ transition_phase({
 
 ## Notes
 
-- lok has no separate `review` phase. The codex+gemini validation
+- lok has no separate `review` phase. The codex+synthesis validation
   gate runs inside `implement.md` step 5 - that gate is for *code*, this
   step is for *design*. Both are required.
 - If the design fundamentally changes scope, return to `discovery` via

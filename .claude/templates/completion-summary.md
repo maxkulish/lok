@@ -31,7 +31,7 @@ Every field below is read from `docs/status/clo-XX-workflow.yaml`. **Do not inve
 | Flagged suggestions | `len(phases.design.flagged_suggestions)` | `0` |
 | Plan file | `phases.plan.plan_file` | `(none)` |
 | Commits | `len(phases.implement.commits)` + first 7 chars of each SHA, comma-joined | `0` |
-| Validation verdicts | `phases.implement.codex_verdict` · `gemini_validation_report` presence · `validation_synthesis_verdict` | `(not run)` |
+| Validation verdicts | `phases.implement.codex_verdict` · `codex_report` presence · `validation_synthesis_verdict` | `(not run)` |
 | Fix passes | `phases.implement.validation_fix_iteration_count` | `0` |
 | Review threads resolved | `phases.pr.review_comment_threads_resolved` | `0` |
 | Reviews addressed flag | `phases.pr.reviews_addressed` → ✅ / ❌ | ❌ |
@@ -94,13 +94,13 @@ Render exactly this layout. Preserve the box-drawing characters, indentation (3-
 📐 Design
    Document:     {{design_doc}}
    Assumptions:  {{n_surfaced}} surfaced → {{n_held}} held · {{n_violated}} violated · {{n_untested}} untested
-   Review:       Gemini → {{review_verdict}}
+   Review:       Ollama → {{review_verdict}}
    Suggestions:  {{n_applied}} applied · {{n_flagged}} flagged (deferred)
 
 ⚙️  Implementation
    Plan:         {{plan_file}}
    Commits:      {{n_commits}}  ({{commit_shorts}})
-   Validation:   Codex {{codex_verdict}} · Gemini {{gemini_verdict}} · Synthesis {{synthesis_verdict}}
+   Validation:   Codex {{codex_verdict}} · Synthesis {{synthesis_verdict}}
    Fix passes:   {{validation_fix_iteration_count}}
 
 🛠️  Pull Request Review

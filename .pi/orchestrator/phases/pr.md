@@ -15,14 +15,21 @@ phases:
     bot_review_wait_completed: true
     bot_review_wait_completed_at: "<ISO-8601>"
     reviews_addressed: true
+    bot_rereview_head_sha: "<sha>"    # "none" only when no reviewer bots are installed
+    bot_rereview_at: "<ISO-8601>"
     pre_merge_refetch_passed: true
     pre_merge_refetch_at: "<ISO-8601>"
     merged_at: "<ISO-8601>"   # optional
     merge_commit: "<sha>"     # optional
 ```
 
-History events required: `pre_flight_checks_passed`, `pr_created`, `ci_passed`, `bot_review_wait_completed`, `review_addressed`, `pre_merge_refetch_passed`.
+History events required: `pre_flight_checks_passed`, `pr_created`, `ci_passed`, `bot_review_wait_completed`, `review_addressed`, `bot_rereview_verified`, `pre_merge_refetch_passed`.
 Optional: `pr_merged`.
+
+`bot_rereview_head_sha` is the commit the last bot review was observed
+on. It exists so the pre-merge gate can prove the bot reviewed the code
+being merged, rather than an earlier commit - the skill's step 8 is prose
+and prose is not a gate.
 
 ## Step 4.0 - Pre-flight checks (MANDATORY)
 
@@ -97,7 +104,7 @@ gh pr create \
 
 ## Validation
 - Codex: docs/reviews/clo-XX-codex-validation.md (verdict: approve)
-- Gemini: docs/reviews/clo-XX-gemini-validation.md (verdict: approve)
+- Synthesis: docs/reviews/clo-XX-validation-synthesis.md (verdict: PASS)
 - Pre-merge gate green locally (fmt + clippy + test)
 
 Closes CLO-XX
@@ -167,32 +174,34 @@ post-reply lives in
 Run that skill in order from step 1 to step 9. Do not reinvent any
 part of it inline here.
 
-Replies carry **no `/gemini review` trailer** - Gemini Code Assist is
-sunset and the marker triggers nothing. The author replies and resolves
-the thread.
+Replies carry **no trailer**. The author replies and resolves the
+thread. Mention `@qodo` only in a reply you want Qodo to read - a
+decline or a question; it ignores replies that do not address it.
 
 `qodo-code-review` (installed 2026-08-02) is the PR-side automated
 validator. It does not re-review on push: its `handle_push_trigger` is
-`False`, verified by posting `/config` to PR #71. After pushing fixes,
-post `/agentic_review` as a PR comment and poll for a review whose
-`commit_id` matches the current head SHA. Skipping that leaves Qodo's
-findings pinned to the pre-fix commit.
+`False`, verified by posting `/config` to PR #71. Every wait in the
+skill therefore ends by posting `/agentic_review` and polling for a
+review whose `commit_id` matches the **current** head SHA. This matters
+twice: after Step 3 pushes a CI fix (the PR-open review is now stale),
+and after the fix commits in the skill's step 6.
 
 Qodo submits as `COMMENTED`, never `CHANGES_REQUESTED`, so it cannot
 block a merge on its own, and its findings are claims to verify rather
-than verdicts to obey. The pre-PR validation gate in `implement.md`
-Step 4 therefore remains the automated review of record; Qodo is a
-second pass on top of it.
+than verdicts to obey. Decline with evidence, not assertion. The pre-PR
+validation gate in `implement.md` Step 4 remains the automated review of
+record; Qodo is a second pass on top of it.
 
 The skill cites `.pi/lessons/pr-review-failures.md` for the durable
 rules behind its non-negotiables (current-head bot-review completion,
 CI/bot independence). Read both before short-circuiting any step. L3 in
 that file mandated the reply trailer and is superseded.
 
-Exit state on success: the skill writes `bot_review_wait_completed`
-and `review_addressed` history events with
+Exit state on success: the skill writes `bot_review_wait_completed`,
+`review_addressed` and `bot_rereview_verified` history events with
 `phase_updates: { bot_review_wait_completed: true,
-bot_review_wait_completed_at: "<ISO-8601>", reviews_addressed: true }`.
+bot_review_wait_completed_at: "<ISO-8601>", reviews_addressed: true,
+bot_rereview_head_sha: "<sha>", bot_rereview_at: "<ISO-8601>" }`.
 If any verification step in the skill fails, the workflow goes to
 `blocked` and pauses for user guidance - do NOT proceed to Step 4.
 
@@ -235,10 +244,26 @@ PR=<n>
 REPO=maxkulish/lok
 OWNER=maxkulish
 NAME=lok
+YAML=docs/status/clo-XX-workflow.yaml
 
 # Timestamp of the most recent review_addressed event in the workflow YAML.
 LAST_ADDRESSED=$(yq '.history[] | select(.action == "review_addressed") | .timestamp' \
-  docs/status/clo-XX-workflow.yaml | tail -1)
+  "$YAML" | tail -1)
+
+# The bot must have reviewed the commit being merged, not an earlier one.
+HEAD_SHA=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
+REREVIEWED=$(yq -r '.phases.pr.bot_rereview_head_sha // ""' "$YAML")
+
+if [ -z "$REREVIEWED" ]; then
+  echo "GATE FAIL: phases.pr.bot_rereview_head_sha is unset - the skill's step 8 never ran"
+  exit 1
+fi
+
+if [ "$REREVIEWED" != "none" ] && [ "$REREVIEWED" != "$HEAD_SHA" ]; then
+  echo "GATE FAIL: last bot review was on ${REREVIEWED:0:7}, head is ${HEAD_SHA:0:7}"
+  echo "Re-run the skill's step 8 (/agentic_review + poll) against the current head."
+  exit 1
+fi
 
 NEW=$(gh api repos/${REPO}/pulls/${PR}/comments --paginate --slurp \
   | jq -c --arg since "$LAST_ADDRESSED" '
@@ -269,23 +294,25 @@ query($owner:String!, $repo:String!, $pr:Int!) {
 if [ -n "$NEW" ]; then
   echo "GATE FAIL: new inline comments since ${LAST_ADDRESSED}:"
   echo "$NEW"
-  # Return to 3.5.3 - do NOT transition to complete.
+  # Return to the skill's step 4 - do NOT transition to complete.
   exit 1
 fi
 
 if [ -n "$UNRESOLVED" ]; then
   echo "GATE FAIL: unresolved review threads remain:"
   echo "$UNRESOLVED"
-  # Return to 3.5.3 - do NOT transition to complete.
+  # Return to the skill's step 4 - do NOT transition to complete.
   exit 1
 fi
 
-echo "GATE OK: no new inline comments and no unresolved review threads"
+echo "GATE OK: bot reviewed the current head, no new inline comments, no unresolved threads"
 ```
 
-If the gate fails, return to Step 3.5.3 and address the new comments.
-Log the iteration as `review_addressed` again with the updated count,
-then re-run Step 5.0. Only when the gate passes may Step 6 fire.
+If the gate fails, re-enter `pr-review-cycle` at the step it names - step
+8 for a stale `bot_rereview_head_sha`, step 4 for new comments or
+unresolved threads. Log the iteration as `review_addressed` again with
+the updated count, then re-run Step 5.0. Only when the gate passes may
+Step 6 fire.
 
 When the gate passes, record the explicit runtime gate:
 

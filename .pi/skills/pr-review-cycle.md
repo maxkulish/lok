@@ -1,6 +1,6 @@
 ---
 name: pr-review-cycle
-description: Bot-review wait, fetch, address, reply, re-fetch - the 9-step PR review procedure owned by the pi `pr` phase. Enforces current-head bot-review completion, CI/bot independence, and one-reply-per-thread. Recognizes qodo-code-review and copilot-pull-request-reviewer. No `/gemini review` trailer - Gemini Code Assist is sunset.
+description: Bot-review wait, fetch, address, reply, re-fetch - the 9-step PR review procedure owned by the pi `pr` phase. Enforces current-head bot-review completion, CI/bot independence, and one-reply-per-thread. Recognizes qodo-code-review and copilot-pull-request-reviewer. Qodo never re-reviews on push, so every wait ends in an explicit `/agentic_review` request when the head has moved.
 ---
 
 # Skill: pr-review-cycle
@@ -20,18 +20,17 @@ This skill expects:
 - The author has push access and `gh` is authenticated as the PR
   author.
 
-It writes `bot_review_wait_completed` and `review_addressed` history events on success.
+It writes `bot_review_wait_completed`, `review_addressed` and
+`bot_rereview_verified` history events on success.
 
 ---
 
 ## 1 - Probe for installed bots, then wait for their review
 
-> **Gemini Code Assist is sunset.** The consumer GitHub app has ceased
-> all code review activity; on this repo its last review was PR #55
-> (2026-05-26). There is no `/gemini review` trigger and no automated
-> validator from it. Recognized reviewers are now
-> `qodo-code-review` (installed 2026-08-02, first review on PR #71) and
-> `copilot-pull-request-reviewer` (not currently installed here).
+> Recognized reviewers are `qodo-code-review` (installed 2026-08-02,
+> first review on PR #71) and `copilot-pull-request-reviewer` (not
+> currently installed here). The former `gemini-code-assist` app is
+> sunset and reviews nothing; no trigger of any kind reaches it.
 
 Bot reviewers post a GitHub review on the current head commit when their
 pass finishes. Poll for that observable review, not merely for elapsed
@@ -98,7 +97,7 @@ update_workflow_state({
   task_id: "CLO-XX",
   phase: "pr",
   action: "bot_review_wait_completed",
-  details: "No reviewer bots installed (no qodo-code-review or copilot-pull-request-reviewer activity on the last 10 PRs or this PR's comments; Gemini Code Assist is sunset); zero inline comments expected.",
+  details: "No reviewer bots installed (no qodo-code-review or copilot-pull-request-reviewer activity on the last 10 PRs or this PR's comments); zero inline comments expected.",
   phase_updates: {
     bot_review_wait_completed: true,
     bot_review_wait_completed_at: "<ISO-8601>"
@@ -110,36 +109,61 @@ update_workflow_state({
 
 Only run when 1a found at least one installed bot.
 
+Define the poll once - step 8 reuses it verbatim. It matches on the head
+SHA **and** a lower bound on `submitted_at`, so it can never mistake an
+older pass on the same commit for a fresh one:
+
 ```bash
-DEADLINE=$(date -u -j -v+600S -f "%Y-%m-%dT%H:%M:%SZ" "$PR_CREATED_AT" "+%s" 2>/dev/null \
-           || date -u -d "$PR_CREATED_AT + 600 seconds" "+%s")
-BOT_REVIEW_SEEN=0
-
-for i in $(seq 1 60); do
-  BOT_REVIEW=$(gh api repos/${REPO}/pulls/${PR}/reviews --paginate --slurp \
-    | jq -c --arg head "$HEAD_SHA" --arg re "$BOT_RE" '
-      [.[][]
-       | select(.commit_id == $head)
-       | select(.user.login | test($re))
-       | {user:.user.login,state,submitted_at,commit_id}]
-      | last // empty
-    ')
-
-  if [ -n "$BOT_REVIEW" ]; then
-    echo "Current-head bot review observed: ${BOT_REVIEW}"
-    BOT_REVIEW_SEEN=1
-    break
-  fi
-
-  now=$(date -u +%s)
-  if [ "$now" -ge "$DEADLINE" ]; then
-    echo "10 min elapsed with no current-head bot review; go to step 2 (gate failure)"
-    break
-  fi
-
-  sleep 10
-done
+# wait_for_bot_review <head_sha> <since_iso8601> [timeout_seconds]
+# Echoes the review's submitted_at and returns 0; returns 1 on timeout.
+wait_for_bot_review() {
+  head="$1"; since="$2"; limit="${3:-600}"
+  deadline=$(( $(date -u +%s) + limit ))
+  while :; do
+    seen=$(gh api repos/${REPO}/pulls/${PR}/reviews --paginate --slurp \
+      | jq -r --arg h "$head" --arg since "$since" --arg re "$BOT_RE" '
+          [.[][]
+           | select(.commit_id == $h)
+           | select(.user.login | test($re))
+           | select(.submitted_at >= $since)
+           | .submitted_at] | last // empty')
+    [ -n "$seen" ] && { printf '%s\n' "$seen"; return 0; }
+    [ "$(date -u +%s)" -ge "$deadline" ] && return 1
+    sleep 10
+  done
+}
 ```
+
+Both timestamps are ISO-8601 UTC with the same `Z` suffix, so the `>=`
+string comparison in jq is a valid chronological one.
+
+```bash
+BOT_REVIEW_SEEN=0
+BOT_REVIEW_AT=$(wait_for_bot_review "$HEAD_SHA" "$PR_CREATED_AT" 600) && BOT_REVIEW_SEEN=1
+```
+
+**If that timed out, ask for a pass before calling it a failure.** Qodo
+reviews on PR open (`pr_commands`) and never on push
+(`handle_push_trigger = False`). Step 3 of `phases/pr.md` waits for CI
+*before* this skill runs, so any CI fix pushed there moved the head past
+the commit Qodo reviewed - and the poll above would then be waiting for a
+review that is never coming. One explicit request is the only exit:
+
+```bash
+if [ "$BOT_REVIEW_SEEN" -eq 0 ] && printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo; then
+  REQUESTED_AT=$(gh api repos/${REPO}/issues/${PR}/comments \
+    -X POST -f body='/agentic_review' --jq .created_at)
+  echo "No review on ${HEAD_SHA:0:7}; requested /agentic_review at ${REQUESTED_AT}"
+  BOT_REVIEW_AT=$(wait_for_bot_review "$HEAD_SHA" "$REQUESTED_AT" 600) && BOT_REVIEW_SEEN=1
+fi
+```
+
+Take `REQUESTED_AT` from the POST response, never from local `date` -
+`submitted_at` comes from GitHub's clock, and a fast local clock would
+exclude the very review it is waiting for. Expect 3-4 minutes.
+
+If `BOT_REVIEW_SEEN` is still 0 after the requested pass, that is a real
+gate failure - go to step 2.
 
 If `BOT_REVIEW_SEEN=1`, immediately record the wait gate, then proceed
 to step 3:
@@ -159,11 +183,12 @@ update_workflow_state({
 
 ## 2 - Block when an installed bot misses the deadline
 
-Only reached when 1a found installed bots and the 1b loop hit the
-deadline without a current-head review. The absence case was already
-settled in 1a, so there is nothing left to distinguish here: an installed
-bot that did not finish is a gate failure, not a pass. Conflating the two
-is the PR #4 / PR #24 failure mode
+Only reached when 1a found installed bots and 1b hit the deadline
+without a current-head review **including after the explicit
+`/agentic_review` request**. The absence case was already settled in 1a
+and the stale-head case in 1b, so there is nothing left to distinguish
+here: an installed bot that did not finish is a gate failure, not a pass.
+Conflating the two is the PR #4 / PR #24 failure mode
 (`lessons/pr-review-failures.md` L1, L2, L6).
 
 `INSTALLED_BOTS` comes from 1a and `BOT_REVIEW_SEEN` from 1b. Run all
@@ -196,6 +221,8 @@ L6):
 - `"No CI configured."`
 - `"No CI or bot reviewers configured."`
 - `"Waited 180 seconds; no comments."`
+- `"Qodo reviewed an earlier commit."` - that is the stale pass, and 1b
+  already gave it a chance to produce a fresh one.
 - Any success rationale when installed bots have not produced a
   current-head review and the 10-minute timeout path was hit.
 
@@ -251,6 +278,19 @@ inline comment body instead. It posts twice per PR: a summary issue
 comment first, then the review carrying the inline findings. Only the
 second one matters here.
 
+**The badge is an image, not a `**Severity**:` line.** Severity lives in
+the alt text at the top of each inline comment body:
+
+```bash
+grep -o 'alt="[^"]*"' <<<"$BODY" | head -1
+```
+
+`Action required` is high, `Review recommended` is medium. Findings also
+carry category tags (`🐞 Bug`, `☼ Reliability`, `≡ Correctness`) and the
+review header counts them (`🐞 Bugs (3)`, `📘 Rule violations (0)`). Each
+finding ships an **Agent Prompt** block with a ready-made remediation
+prompt - a useful starting point, not an instruction to follow blindly.
+
 **Qodo findings are claims, not verdicts.** Verify each against the code
 before acting; it reasons from the diff without running anything. On
 PR #71 it filed three bugs, of which two were real and one rested on a
@@ -259,9 +299,9 @@ way - see step 7.
 
 **Human `CHANGES_REQUESTED` remains the only externally blocking
 signal.** The pre-PR validation gate in `phases/implement.md` (Codex +
-Gemini-via-opencode + synthesis) is still the primary automated review
-for this repo; it runs before the PR exists. Do not treat a quiet PR as
-an unreviewed one - check that the gate ran.
+synthesis) is still the primary automated review for this repo; it runs
+before the PR exists. Do not treat a quiet PR as an unreviewed one -
+check that the gate ran.
 
 High-severity and `CHANGES_REQUESTED` comments are blocking. Medium /
 low may be addressed or declined with rationale.
@@ -322,19 +362,27 @@ query($owner:String!, $repo:String!, $pr:Int!) {
 }' -f owner=maxkulish -f repo=lok -F pr=<n>
 ```
 
-### No reply trailer
+### No reply trailer, but Qodo must be addressed to answer
 
-Replies carry **no trailer**. `/gemini review` is deleted: Gemini Code
-Assist is sunset, so the marker triggers nothing and only adds noise to
-the thread. `lessons/pr-review-failures.md` L3, which mandated it, is
-superseded - see that entry for what still applies.
+Replies carry **no trailer**. Nothing re-reviews on reply;
+re-validation is requested once, in step 8.
+`lessons/pr-review-failures.md` L3, which mandated a `/gemini review`
+trailer, is superseded - see that entry for what still applies.
 
-No bot re-reviews on demand. Copilot never did, and Gemini no longer
-exists to act as the universal validator. **The author is now the
-closer**: state the fix, then resolve the thread yourself. What L3 was
-protecting against - threads resolved without the rationale being
-recorded - is now guarded by writing the reasoning into the reply
-before resolving, not by a trailer.
+**The author is the closer**: state the fix, then resolve the thread
+yourself. What L3 was protecting against - threads resolved without the
+rationale being recorded - is now guarded by writing the reasoning into
+the reply before resolving.
+
+**Qodo only reads a reply that mentions it.** Observed on PR #71 and
+consistent with Qodo's documented command model: a mention (`@qodo`, or a
+bare `qodo`) is what routes a comment to the bot. A plain reply is
+recorded on the thread and never read.
+
+Mention `@qodo` only where you actually want an answer - a finding you
+are declining, or a question about its reasoning. For a plain "fixed in
+SHA", leave the mention off: the re-review in step 8 is what confirms the
+fix, not a thread reply.
 
 ### Decision per thread (reviewer-agnostic)
 
@@ -373,12 +421,24 @@ gh api repos/${REPO}/pulls/${PR}/comments/<comment_id>/replies \
   -X POST -f body="Fixed in ${COMMIT_SHA}. <one-line explanation>"
 ```
 
-Reply for declined suggestions:
+Reply for declined suggestions. **Declining a bot finding requires
+evidence, not assertion** - paste the command output, `file:line`, or
+config value that disproves the premise. Qodo reasons from the diff
+without running anything, so its premises are the thing to check first:
 
 ```bash
+# Human or Copilot - no mention needed.
 gh api repos/${REPO}/pulls/${PR}/comments/<comment_id>/replies \
   -X POST -f body="Intentionally kept as-is: <rationale>."
+
+# Qodo - mention it so the decline actually reaches it.
+gh api repos/${REPO}/pulls/${PR}/comments/<comment_id>/replies \
+  -X POST -f body="@qodo Keeping as-is. <evidence: command output / file:line / config value>."
 ```
+
+The PR #71 worked example: the `timeout --kill-after` finding was
+declined with pasted `timeout --version` output (GNU coreutils 9.11),
+not with "works on my machine".
 
 Record the timestamp of your most recent reply so step 8 can scope its
 re-check window. Take it from GitHub, not local `date` - it is compared
@@ -406,55 +466,69 @@ null into an empty string so the `:=` default can fire.
 
 **Request the re-review first.** Qodo does not re-review on push - its
 `handle_push_trigger` is `False`, verified by posting `/config` to
-PR #71 on 2026-08-02. Without an explicit request its findings stay
-pinned to the pre-fix commit and this pass sees nothing new.
+PR #71 on 2026-08-02 and consistent with Qodo's documented default.
+Without an explicit request its findings stay pinned to the pre-fix
+commit and this pass sees nothing new. `/agentic_review` is the
+configured command; `/review` is the legacy PR-Agent name and is not
+wired up here.
 
-Post the request and keep the timestamp **GitHub** assigns to it:
+**Skip this whole request-and-poll when 1a found no installed bots.**
+There is nothing to ask and nothing to wait for; posting
+`/agentic_review` into a repo with no Qodo app just leaves a stray
+comment and then fails the gate ten minutes later. Jump to the new-
+comment check at the end of this step.
+
+Run this in the **same shell as step 1** - it needs `INSTALLED_BOTS` and
+the `wait_for_bot_review` helper. The guard below is what keeps a
+resumed session or a partial re-run from failing open: with
+`INSTALLED_BOTS` merely unset, the `grep` finds nothing, the else-branch
+fires, and the run records `bot_rereview_head_sha: "none"` - a clean
+gate for a re-review that never happened.
 
 ```bash
-REQUESTED_AT=$(gh api repos/${REPO}/issues/${PR}/comments \
-  -X POST -f body='/agentic_review' --jq .created_at)
+if [ -z "${INSTALLED_BOTS+x}" ]; then
+  echo "GATE FAIL: INSTALLED_BOTS unset - re-run 1a in this shell before requesting the re-review"
+  exit 1
+fi
+
+BOT_REREVIEW_SHA=""
+BOT_REREVIEW_AT=""
+
+if printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo; then
+  NEW_HEAD=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
+
+  REQUESTED_AT=$(gh api repos/${REPO}/issues/${PR}/comments \
+    -X POST -f body='/agentic_review' --jq .created_at)
+
+  if BOT_REREVIEW_AT=$(wait_for_bot_review "$NEW_HEAD" "$REQUESTED_AT" 600); then
+    BOT_REREVIEW_SHA="$NEW_HEAD"
+    echo "Re-review on ${NEW_HEAD:0:7} at ${BOT_REREVIEW_AT}"
+  else
+    echo "GATE FAIL: no re-review on ${NEW_HEAD:0:7} since ${REQUESTED_AT}"
+    exit 1
+  fi
+else
+  BOT_REREVIEW_SHA="none"
+  BOT_REREVIEW_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+fi
 ```
 
-Take the timestamp from the POST response rather than from local
-`date`. `submitted_at` on the review comes from GitHub's clock, so a
-locally generated bound compares across two clock domains: a local clock
-running fast would exclude the very re-review it is waiting for and time
-the gate out. Reading `created_at` off the response keeps both sides in
-GitHub's domain and costs no extra call.
+`wait_for_bot_review` is the helper defined in step 1b. Both of its
+conditions are load-bearing here:
 
-Then poll for a review whose `commit_id` equals the **post-push** head
-SHA **and** whose `submitted_at` is at or after `REQUESTED_AT`. Both
-conditions are load-bearing:
-
-- Do not reuse the 1b loop. Its `HEAD_SHA` predates the push and its
-  `DEADLINE` is `PR_CREATED_AT + 600s`, already in the past by step 8.
+- The SHA must be the **post-push** head. A review whose `commit_id` is
+  the old SHA is the stale pass.
 - SHA alone is not proof of a fresh pass. Re-running step 8 without an
   intervening push, or running it after the `/agentic_review` post
   failed, would match the *previous* run's review on the same SHA and
-  report re-validation that never happened. The timestamp is what makes
-  the poll observe this run rather than any run.
+  report re-validation that never happened. `REQUESTED_AT` is what makes
+  the poll observe this run rather than any run - and it comes from the
+  POST response, not local `date`, so both sides stay in GitHub's clock
+  domain.
 
-```bash
-NEW_HEAD=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
-DEADLINE=$(( $(date -u +%s) + 600 ))
-
-while :; do
-  REREVIEW=$(gh api repos/${REPO}/pulls/${PR}/reviews --paginate --slurp \
-    | jq -r --arg h "$NEW_HEAD" --arg since "$REQUESTED_AT" '.[][]
-        | select(.commit_id == $h)
-        | select(.user.login | test("qodo"))
-        | select(.submitted_at >= $since)
-        | .submitted_at' | tail -1)
-
-  [ -n "$REREVIEW" ] && { echo "Re-review on ${NEW_HEAD:0:7} at ${REREVIEW}"; break; }
-  [ "$(date -u +%s)" -ge "$DEADLINE" ] && { echo "GATE FAIL: no re-review on ${NEW_HEAD:0:7} since ${REQUESTED_AT}"; exit 1; }
-  sleep 20
-done
-```
-
-Both timestamps are ISO-8601 UTC with the same `Z` suffix, so the `>=`
-string comparison in jq is a valid chronological one.
+Carry `BOT_REREVIEW_SHA` and `BOT_REREVIEW_AT` into step 9; they are
+what the workflow YAML records and what the pre-merge gate in
+`phases/pr.md` §5.0 re-checks against the head being merged.
 
 Observed latency on PR #71 was 3-4 minutes per pass.
 
@@ -510,12 +584,33 @@ repeat. Threads already resolved can be skipped.
 
 ## 9 - Log state
 
+Two events. The first records what was addressed, the second records the
+re-validation - keep them separate so a run that addressed comments but
+never got a fresh pass cannot look like a complete one.
+
 ```ts
 update_workflow_state({
   task_id: "CLO-XX",
   phase: "pr",
   action: "review_addressed",
-  details: "<N> threads resolved; replies posted N/N; unresolved-thread re-check clean. No bot validator (Gemini Code Assist sunset); pre-PR validation gate carried automated review.",
+  details: "<N> threads resolved (<n> qodo, <m> human); replies posted N/N; <k> declined with evidence; unresolved-thread re-check clean.",
   phase_updates: { reviews_addressed: true }
 })
+
+update_workflow_state({
+  task_id: "CLO-XX",
+  phase: "pr",
+  action: "bot_rereview_verified",
+  details: "qodo-code-review re-reviewed <BOT_REREVIEW_SHA> at <BOT_REREVIEW_AT> after /agentic_review; <j> new findings.",
+  phase_updates: {
+    bot_rereview_head_sha: "<BOT_REREVIEW_SHA>",
+    bot_rereview_at: "<BOT_REREVIEW_AT>"
+  }
+})
 ```
+
+Write what actually happened. `details` is the record a later reader
+trusts: if the re-review produced new findings you looped back to step 4
+for, say so; if 1a confirmed no bots are installed, record
+`bot_rereview_head_sha: "none"` and give the absence rationale rather
+than implying a pass that never ran.

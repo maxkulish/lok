@@ -42,14 +42,14 @@ will drift and resume will break.
 | plan | `phases/plan.md` | Decompose into testable sub-tasks |
 | spec | `phases/spec.md` | Specification path (skips discovery / design / plan) |
 | operational | `phases/operational.md` | Operational task path (audits, migrations) |
-| implement | `phases/implement.md` | Land sub-tasks + codex+gemini validation gate |
+| implement | `phases/implement.md` | Land sub-tasks + codex validation gate |
 | pr | `phases/pr.md` | Pre-flight checks, open PR, address reviews |
 | complete | `phases/complete.md` | Merge, sync project files, finalize |
 | status | `phases/status.md` | Read-only display |
 | blocked | `phases/blocked.md` | Pseudo-phase: workflow.status = blocked |
 
-There is intentionally **no `review` phase**. The codex+gemini
-validation gate runs inside `implement.md` step 5, before transitioning
+There is intentionally **no `review` phase**. The codex+synthesis
+validation gate runs inside `implement.md` step 4, before transitioning
 to `pr`.
 
 ## Allowed transitions (mirror of `index.ts`)

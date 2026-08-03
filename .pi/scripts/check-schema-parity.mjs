@@ -18,8 +18,14 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PI_ROOT = join(SCRIPT_DIR, "..");
+const REPO_ROOT = join(PI_ROOT, "..");
 const INDEX_TS = join(PI_ROOT, "extensions/orchestrate/index.ts");
 const PHASES_DIR = join(PI_ROOT, "orchestrator/phases");
+// The Claude mirror writes the same workflow YAML and is gated by the same
+// PHASE_CONFIG, so it is the third place a required-field change has to land.
+// Only its files that declare a "Required exit state" section are checked;
+// the others simply have not been brought under the gate yet.
+const CLAUDE_PHASES_DIR = join(REPO_ROOT, ".claude/commands/task/phases");
 
 const VERBOSE = process.argv.includes("--verbose");
 
@@ -81,6 +87,7 @@ function main() {
 
   const drifts = [];
   const summaries = [];
+  const undeclared = [];
 
   for (const phase of Object.keys(codeConfig)) {
     const mdPath = join(PHASES_DIR, `${phase}.md`);
@@ -113,6 +120,30 @@ function main() {
     if (eventsOnlyInCode.length || eventsOnlyInMd.length) {
       drifts.push({ phase, kind: "events", onlyInCode: eventsOnlyInCode, onlyInMd: eventsOnlyInMd });
     }
+
+    // Third place: the Claude mirror, when it declares an exit state.
+    let claudeSrc;
+    try {
+      claudeSrc = readFileSync(join(CLAUDE_PHASES_DIR, `${phase}.md`), "utf8");
+    } catch {
+      continue;
+    }
+    if (!claudeSrc.includes("Required exit state")) {
+      undeclared.push(phase);
+      continue;
+    }
+    const claude = parsePhaseMd(phase, claudeSrc);
+    const fieldsOnlyInClaude = diff(claude.fields, code.fields);
+    const fieldsMissingInClaude = diff(code.fields, claude.fields);
+    const eventsOnlyInClaude = diff(claude.events, code.events);
+    const eventsMissingInClaude = diff(code.events, claude.events);
+
+    if (fieldsOnlyInClaude.length || fieldsMissingInClaude.length) {
+      drifts.push({ phase, kind: "fields (claude mirror)", onlyInCode: fieldsMissingInClaude, onlyInMd: fieldsOnlyInClaude });
+    }
+    if (eventsOnlyInClaude.length || eventsMissingInClaude.length) {
+      drifts.push({ phase, kind: "events (claude mirror)", onlyInCode: eventsMissingInClaude, onlyInMd: eventsOnlyInClaude });
+    }
   }
 
   if (VERBOSE) {
@@ -120,15 +151,22 @@ function main() {
     for (const s of summaries) {
       console.log(`  ${s.phase.padEnd(12)} fields code=${s.codeFields} md=${s.mdFields}  events code=${s.codeEvents} md=${s.mdEvents}`);
     }
+    if (undeclared.length) {
+      console.log("");
+      console.log(`Claude mirror without a "Required exit state" section (not checked): ${undeclared.join(", ")}`);
+    }
     console.log("");
   }
 
   if (drifts.length === 0) {
-    console.log("OK: PHASE_CONFIG agrees with phase markdown on required fields and history events.");
+    const scope = undeclared.length
+      ? `phase markdown (Claude mirror unchecked for: ${undeclared.join(", ")})`
+      : "phase markdown";
+    console.log(`OK: PHASE_CONFIG agrees with ${scope} on required fields and history events.`);
     process.exit(0);
   }
 
-  console.error("DRIFT detected between PHASE_CONFIG (index.ts) and .pi/orchestrator/phases/*.md:");
+  console.error("DRIFT detected between PHASE_CONFIG (index.ts) and the phase markdown:");
   for (const d of drifts) {
     if (d.kind === "missing-md") {
       console.error(`  [${d.phase}] phase markdown missing at ${d.detail}`);

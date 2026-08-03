@@ -74,7 +74,7 @@ directly to `complete` instead.
 
 ## Notes
 
-- The codex+gemini validation gate is **not** required for `execute`
+- The codex validation gate is **not** required for `execute`
   unless code under `src/` changed; in that case open a `pr` after
   `document`.
 - Never paste credentials, API keys, or vault content into the report

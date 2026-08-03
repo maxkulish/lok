@@ -121,7 +121,7 @@ mcp__linear-server__list_comments(issueId="CLO-XX")
 
 ### Prior Research
 
-[If `--probe` flag was used: Include discovery probe results from `/tmp/clo-XX-probe-gemini.md` and Perplexity output. Summarize key approaches, risks, and edge cases identified during the multi-model discovery probe. If no `--probe` flag: omit this subsection.]
+[If `--probe` flag was used: Include discovery probe results from `/tmp/clo-XX-probe-ollama.md` and Perplexity output. Summarize key approaches, risks, and edge cases identified during the discovery probe. If no `--probe` flag: omit this subsection.]
 
 ---
 

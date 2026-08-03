@@ -1,6 +1,6 @@
 # Review Synthesis Template
 
-**Purpose**: Consolidate findings from multiple AI reviewers (Gemini, Ollama, Claude fallback, optional personas) into a single actionable document. Adapts format based on how many reviewers succeeded.
+**Purpose**: Consolidate findings from the AI reviewers (Ollama, Claude fallback, optional personas) into a single actionable document. Adapts format based on how many reviewers succeeded.
 
 ---
 
@@ -17,9 +17,9 @@ Always include this table first. Shows which reviewers ran, succeeded, or failed
 
 | Reviewer | Status | Detail |
 |----------|--------|--------|
-| Gemini 3.1 Pro | [OK / REVIEW_FAILED / SKIPPED] | [If failed: reason from REVIEW_FAILED line. If skipped: "Pre-flight check failed"] |
-| Codex/Ollama (glm-5:cloud) | [OK / REVIEW_FAILED / SKIPPED] | [Same] |
-| Claude (fallback) | [OK / SKIPPED] | [If OK: "Both external models failed, fallback activated". If skipped: "External reviewers succeeded"] |
+| Codex/Ollama (glm-5.2:cloud) | [OK / REVIEW_FAILED / SKIPPED] | [If failed: reason from REVIEW_FAILED line. If skipped: "Pre-flight check failed"] |
+| Claude (fallback) | [OK / SKIPPED] | [If OK: "External reviewer failed, fallback activated". If skipped: "External reviewer succeeded"] |
+| [Persona name] (if --persona used) | [OK / SKIPPED] | [Same] |
 
 ---
 
@@ -33,7 +33,7 @@ Items where 2+ reviewers independently identified the same concern or strength. 
 
 | # | Finding | Reviewers | Severity |
 |---|---------|-----------|----------|
-| 1 | [finding] | Gemini, Ollama | [CRITICAL/HIGH/MEDIUM/LOW] |
+| 1 | [finding] | Ollama, Security persona | [CRITICAL/HIGH/MEDIUM/LOW] |
 
 ### Disagreement (Needs Human Decision)
 
@@ -41,7 +41,7 @@ Items where reviewers hold divergent positions. Present both sides for the user 
 
 | # | Topic | Position A (Reviewer) | Position B (Reviewer) |
 |---|-------|----------------------|----------------------|
-| 1 | [topic] | [position] (Gemini) | [position] (Ollama) |
+| 1 | [topic] | [position] (Ollama) | [position] (Security persona) |
 
 ### Novel Insights (Single Reviewer)
 
@@ -49,7 +49,7 @@ Items found by only one reviewer. Lower confidence but may surface blind spots t
 
 | # | Finding | Reviewer | Severity |
 |---|---------|----------|----------|
-| 1 | [finding] | Gemini | [severity] |
+| 1 | [finding] | Ollama | [severity] |
 
 ---
 

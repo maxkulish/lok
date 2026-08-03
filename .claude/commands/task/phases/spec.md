@@ -1,6 +1,6 @@
 # Phase: Specification (Specification Tasks Only)
 
-**Purpose**: Run the `/spec` skill to produce a lean 5-section specification, run AI review (Gemini + Ollama in parallel), apply feedback, and checkpoint for approval or upgrade to full design-doc workflow.
+**Purpose**: Run the `/spec` skill to produce a lean 5-section specification, run AI review (Ollama + synthesis, with a Claude fallback), apply feedback, and checkpoint for approval or upgrade to full design-doc workflow.
 
 **Entry conditions**: `current_phase: spec` (task_type: specification)
 
@@ -20,9 +20,9 @@
 
 ## Status: reviewing
 
-### Step 2: AI Review of Specification (Gemini + Ollama in parallel)
+### Step 2: AI Review of Specification (Ollama + synthesis)
 
-Before presenting the spec to the user for approval, run the same dual-model review pattern used in the design phase - adapted for spec documents.
+Before presenting the spec to the user for approval, run the same review pattern used in the design phase - adapted for spec documents. A Claude fallback covers the case where the Ollama leg fails.
 
 **2a. Gather context for reviewers**
 
@@ -52,9 +52,9 @@ lok run .lok/workflows/spec-review.toml \
 ```
 
 This produces:
-- `docs/reviews/clo-[XX]-spec-review-gemini.md`
 - `docs/reviews/clo-[XX]-spec-review-ollama.md`
 - `docs/reviews/clo-[XX]-spec-review-synthesis.md`
+- `docs/reviews/clo-[XX]-spec-review-claude-fallback.md` (only when the Ollama leg failed)
 
 **2c-post. Check review results**
 
@@ -65,7 +65,6 @@ Read `docs/reviews/clo-[XX]-spec-review-synthesis.md`.
 - If both valid: Proceed with full synthesis.
 
 Update workflow state:
-- `phases.spec.review_gemini: docs/reviews/clo-[XX]-spec-review-gemini.md`
 - `phases.spec.review_ollama: docs/reviews/clo-[XX]-spec-review-ollama.md`
 - `phases.spec.review_synthesis: docs/reviews/clo-[XX]-spec-review-synthesis.md`
 
@@ -89,7 +88,7 @@ Follow the same pattern as design phase feedback application:
    ```
    REVIEW CONFLICT - Item [N of M]
 
-   Suggestion (from [Gemini|Ollama|both]):
+   Suggestion (from [Ollama|Claude fallback|synthesis]):
      "[exact suggestion text]"
 
    This conflicts with a prior decision:
@@ -128,9 +127,8 @@ Update state: `phases.spec.status: checkpoint`, `workflow.status: checkpoint`
    ---
    AI REVIEW RESULTS
 
-   Gemini verdict:  [APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION]
-   Ollama verdict:  [APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION]
-   Consensus:       [strictest of both]
+   Ollama verdict:    [APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION]
+   Synthesis verdict: [APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION]
 
    Auto-applied [N] suggestions:
    - [brief description of each applied change]
@@ -151,8 +149,8 @@ Update state: `phases.spec.status: checkpoint`, `workflow.status: checkpoint`
    Options:
    1. [approve]  - Spec is approved, start implementation directly
    2. [revise]   - I have feedback (will re-invoke /spec)
-   3. [view-gemini] - View full Gemini review
-   4. [view-ollama] - View full Ollama review
+   3. [view-ollama] - View full Ollama review
+   4. [view-synthesis] - View the review synthesis
    5. [upgrade]  - This is more complex than expected, switch to full design-doc workflow
    6. [pause]    - Pause workflow, continue later
 
@@ -174,8 +172,8 @@ Update state: `phases.spec.status: checkpoint`, `workflow.status: checkpoint`
    - Re-run AI review (return to `status: reviewing`)
    - Return to checkpoint
 
-5. **If view-gemini**: Display `docs/reviews/clo-XX-spec-review-gemini.md`, return to options
-6. **If view-ollama**: Display `docs/reviews/clo-XX-spec-review-ollama.md`, return to options
+5. **If view-ollama**: Display `docs/reviews/clo-XX-spec-review-ollama.md`, return to options
+6. **If view-synthesis**: Display `docs/reviews/clo-XX-spec-review-synthesis.md`, return to options
 
 7. **If upgrade**:
    - Update state: `task_type: development`
@@ -197,8 +195,8 @@ Before signaling completion to the dispatcher, verify:
 phases.spec.spec_file: <path>                    # non-null
 phases.spec.approved: true
 phases.spec.status: complete
-phases.spec.review_gemini: <path|null>           # null if review failed/timed out
 phases.spec.review_ollama: <path|null>           # null if review failed/timed out
+phases.spec.review_synthesis: <path|null>        # null if review failed/timed out
 phases.spec.review_verdict: <verdict|null>       # null if review failed/timed out
 phases.spec.review_completed: <true|false>       # false if reviews failed/timed out
 phases.spec.review_applied: <true|false>         # false if no reviews or nothing to apply
