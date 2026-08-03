@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-03 (CLO-609 completed; Phase 13 at 1 of 2)
+**Last Updated**: 2026-08-03 (CLO-609 completed, Phase 13 at 1 of 2; CLO-633 started, Phase 15 opened for the five codex-security scan findings)
 
 ## Summary
 
@@ -20,6 +20,7 @@
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
 | Phase 13: Release Readiness | 2 | 1 | In progress |
 | Phase 14: Orchestration Tooling Hardening | 4 | 0 | Not started |
+| Phase 15: Security Scan Remediation | 5 | 0 | In Progress |
 
 ## Phase 11: Health Checks
 
@@ -62,6 +63,18 @@ Four defects in the markdown-defined orchestration commands, all found by runnin
 | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | Distinguish a bad reviewer invocation from an empty model response | Not started | - |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | complete.md edits the aggregation files, then checks out main with them uncommitted | Not started | - |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | gh pr merge --delete-branch silently skips the remote deletion when its local checkout fails | Not started | - |
+
+## Phase 15: Security Scan Remediation
+
+Five findings from the codex-security scan of `6ac4694` (2026-08-03). They share an origin, not a mechanism, so none of them blocks another and they can land in any order. Two are trust-boundary work that wants a human in the loop (CLO-631, CLO-632); the other three are contained code changes. CLO-633 is first because it is the only one that already fires on ordinary input with no attacker involved.
+
+| Task | Title | Status | Dependencies |
+|------|-------|--------|--------------|
+| [CLO-633](https://linear.app/cloud-ai/issue/CLO-633) | Fix slice panics on CI log truncation and out-of-range file:line references | In Progress | - |
+| [CLO-631](https://linear.app/cloud-ai/issue/CLO-631) | Escape or remove step output interpolated into workflow shell fields | Not started | - |
+| [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | Gate project-layer lok.toml backend commands behind a trust boundary | Not started | - |
+| [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | Add one path-confinement helper and use it in every worktree writer and reader | Not started | - |
+| [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | Default the Gemini backend to the plan agent when no sandbox is requested | Not started | - |
 
 ## Phase 2: Validation Pipeline
 

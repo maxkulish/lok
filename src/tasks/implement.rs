@@ -542,7 +542,7 @@ pub async fn run(
                 let commit_msg = format!("implement: {}", subtask.what);
                 match commit_file(dir, &target_file, &commit_msg).await {
                     Ok(sha) => {
-                        println!("      {} Committed {}", "●".green(), &sha[..8]);
+                        println!("      {} Committed {}", "●".green(), short_sha(&sha));
                     }
                     Err(e) => {
                         println!("      {} Failed to commit: {}", "!".yellow(), e);
@@ -560,6 +560,15 @@ pub async fn run(
     );
 
     Ok(())
+}
+
+/// Abbreviate a commit SHA for display without assuming it is 8 bytes long.
+///
+/// `commit_file` builds its return value from `git rev-parse HEAD` without
+/// checking the exit status, so on an unborn HEAD this receives the empty
+/// string and `&sha[..8]` would panic.
+fn short_sha(sha: &str) -> &str {
+    crate::utils::truncate_utf8(sha, 8)
 }
 
 fn clean_code_output(code: &str) -> Option<String> {
@@ -580,7 +589,7 @@ fn clean_code_output(code: &str) -> Option<String> {
         "The file is ready",
     ];
 
-    let first_150 = &code[..code.len().min(150)].to_lowercase();
+    let first_150 = crate::utils::truncate_utf8(code, 150).to_lowercase();
     for pattern in bad_patterns {
         if first_150.contains(&pattern.to_lowercase()) {
             return None; // Backend didn't output code
@@ -765,4 +774,49 @@ async fn commit_file(dir: &Path, file: &str, message: &str) -> Result<String> {
         .await?;
 
     Ok(String::from_utf8_lossy(&sha.stdout).trim().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_code_output_handles_multibyte_char_across_the_sniff_window() {
+        // 4-byte chars: 150 = 4*37 + 2, so byte 150 sits inside a character and
+        // `&code[..code.len().min(150)]` panics.
+        let code = "😀".repeat(50);
+        assert_eq!(code.len(), 200);
+        assert!(!code.is_char_boundary(150));
+
+        assert_eq!(clean_code_output(&code), Some(code.clone()));
+    }
+
+    #[test]
+    fn clean_code_output_still_rejects_preamble() {
+        assert_eq!(clean_code_output("Here's the file you asked for"), None);
+        assert_eq!(clean_code_output("I cannot do that"), None);
+    }
+
+    #[test]
+    fn clean_code_output_still_strips_fences() {
+        assert_eq!(
+            clean_code_output("```rust\nfn main() {}\n```"),
+            Some("fn main() {}".to_string())
+        );
+    }
+
+    #[test]
+    fn short_sha_never_panics_on_an_unborn_head() {
+        // Scope: this covers `short_sha` only. It does NOT execute the
+        // `println!(..., short_sha(&sha))` call site, so reverting that line to
+        // `&sha[..8]` would leave this test green. A unit test can pin what a
+        // function does, not that a particular line calls it; the wiring is
+        // checked by the grep in the spec's evaluation table instead.
+        assert_eq!(short_sha(""), "");
+        assert_eq!(short_sha("abc"), "abc");
+        assert_eq!(
+            short_sha("0123456789abcdef0123456789abcdef01234567"),
+            "01234567"
+        );
+    }
 }

@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-03 (CLO-609 completed, PR #78)
+**Last Updated**: 2026-08-03 (CLO-609 completed via PR #78; CLO-633 started, the five codex-security scan findings added as Phase 15)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-633](https://linear.app/cloud-ai/issue/CLO-633) | Fix slice panics on CI log truncation and out-of-range file:line references | In Progress | Phase 15 | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -16,7 +16,11 @@
 | Medium | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624/distinguish-a-bad-reviewer-invocation-from-an-empty-model-response) | Distinguish a bad reviewer invocation from an empty model response — `REVIEW_FAILED` on empty stdout regardless of cause is what hid the retired-gemini-CLI breakage for weeks | None — PR #71 merged | Next |
 | Medium | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627/completemd-edits-the-aggregation-files-then-checks-out-main-with-them) | `complete.md` edits the aggregation files at Step 3, then checks out main at Step 4 with them uncommitted — in worktree mode the same three files get edited twice in two places | None — CLO-625 merged | Next |
 | Medium | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628/gh-pr-merge-delete-branch-silently-skips-the-remote-deletion-when-its) | `gh pr merge --delete-branch` abandons the remote deletion when its local checkout fails, without failing the command — it bit PR #73 and the branch had to be removed via the API | None — CLO-625 merged | Next |
-| Low | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610/attest-release-binaries-so-their-checksums-prove-origin-not-only) | Attest release binaries so their checksums prove origin, not only transfer — re-running a tag replaces the archive and its `.sha256` together, so a matching digest proves the pair is self-consistent and nothing more | None — standalone `release.yml` change | After CLO-609 |
+| High | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields) | Escape or remove step output interpolated into workflow shell fields — `shell_escape` is registered as a filter and used nowhere, so model output reaches `sh -c` as source | None — codex-security scan finding | Next (HITL) |
+| High | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632/gate-project-layer-loktoml-backend-commands-behind-a-trust-boundary) | Gate project-layer `lok.toml` backend commands behind a trust boundary — a cloned repo's `./lok.toml` is the highest-precedence config layer and can replace a backend executable | None — codex-security scan finding | Next (HITL) |
+| Medium | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634/add-one-path-confinement-helper-and-use-it-in-every-worktree-writer) | Add one path-confinement helper and use it in every worktree writer and reader — `apply_verify` holds the only check in the codebase, and it is symlink-blind | None — codex-security scan finding | After CLO-633 |
+| Medium | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635/default-the-gemini-backend-to-the-plan-agent-when-no-sandbox-is) | Default the Gemini backend to the plan agent when no sandbox is requested — an omitted sandbox currently picks the write-capable `build` agent | None — codex-security scan finding | After CLO-633 |
+| Low | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610/attest-release-binaries-so-their-checksums-prove-origin-not-only) | Attest release binaries so their checksums prove origin, not only transfer — re-running a tag replaces the archive and its `.sha256` together, so a matching digest proves the pair is self-consistent and nothing more | None — standalone `release.yml` change | Next (CLO-609 landed 2026-08-03) |
 
 ## Recently Completed
 

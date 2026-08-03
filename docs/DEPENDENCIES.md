@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-03 (CLO-609 completed; five open tasks, none blocked)
+**Last Updated**: 2026-08-03 (CLO-609 completed, CLO-633 started; the five codex-security scan findings added, ten open tasks, none blocked)
 
 ## Current Blockers
 
@@ -18,6 +18,10 @@ Nothing is blocked. The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-591 -> CLO-592
 | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | PR #71 merged | 2026-08-02 |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | CLO-625 merged | 2026-08-02 |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | CLO-625 merged | 2026-08-02 |
+| [CLO-631](https://linear.app/cloud-ai/issue/CLO-631) | None. Independent codex-security scan finding | 2026-08-03 |
+| [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | None. Independent codex-security scan finding | 2026-08-03 |
+| [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | None. Independent codex-security scan finding | 2026-08-03 |
+| [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | None. Independent codex-security scan finding | 2026-08-03 |
 
 CLO-609 landed on 2026-08-03 (PR #78, `8b96821`), so the pre-publish metadata deadline is cleared.
 

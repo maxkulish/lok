@@ -243,6 +243,77 @@ pub fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
         .unwrap_or("")
 }
 
+/// Keep the last `max_bytes` of a string, moving the split forward to the next
+/// UTF-8 character boundary. Returns the original string if already within limit.
+///
+/// The tail counterpart of [`truncate_utf8`]. Slicing at a raw `len() - max_bytes`
+/// offset panics whenever a multi-byte character straddles it.
+pub fn tail_utf8(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut start = s.len() - max_bytes;
+    // Terminates: `is_char_boundary(s.len())` is always true, and a UTF-8
+    // character is at most 4 bytes, so this advances at most 3 times.
+    while !s.is_char_boundary(start) {
+        start += 1;
+    }
+    &s[start..]
+}
+
+/// Compute a non-inverted `[start, end)` slice range around `line` within a file
+/// of `total_lines`.
+///
+/// Guarantees `start <= end <= total_lines` for every input, including line
+/// numbers past the end of the file and `usize::MAX` for either argument.
+///
+/// # Semantics, which are deliberately not symmetric
+///
+/// `line` is a 1-based line number but `start` and `end` are 0-based slice
+/// indices, and the conversion is not applied: `start` is `line - context_lines`
+/// and `end` is `line + context_lines`, both taken directly as indices. The
+/// window therefore sits one line *after* where a symmetric reading suggests -
+/// `line_window(5, 3, 1)` returns `(2, 4)`, which displays lines 3 and 4 rather
+/// than 2 through 4.
+///
+/// This is preserved from the code these helpers replaced so that output stays
+/// byte-identical (CLO-633). Do not "correct" it without changing the callers'
+/// expected output and their tests.
+///
+/// `line == 0` is a real input, not a bug: `extract_file_references` parses line
+/// numbers with `unwrap_or(0)`, so a reference whose digits overflow `usize`
+/// arrives as 0 and renders the head of the file with no marker.
+pub fn line_window(total_lines: usize, line: usize, context_lines: usize) -> (usize, usize) {
+    let end = line.saturating_add(context_lines).min(total_lines);
+    // Clamping `start` against `end` rather than `total_lines` is what keeps the
+    // range from inverting when `line` is past the end of the file.
+    let start = line.saturating_sub(context_lines).min(end);
+    (start, end)
+}
+
+/// Render numbered source lines around `line`, marking `line` itself with `>>>`.
+///
+/// Returns `None` when the window is empty, so callers cannot emit a heading or
+/// a fenced block with nothing inside it.
+///
+/// The window comes from [`line_window`] and inherits its asymmetry - read that
+/// function's docs before using this one, and note that `line == 0` renders the
+/// head of the file with no `>>>` marker anywhere.
+pub fn render_line_window(lines: &[&str], line: usize, context_lines: usize) -> Option<String> {
+    let (start, end) = line_window(lines.len(), line, context_lines);
+    if start == end {
+        return None;
+    }
+
+    let mut output = String::new();
+    for (i, l) in lines[start..end].iter().enumerate() {
+        let line_num = start + i + 1;
+        let marker = if line_num == line { ">>>" } else { "   " };
+        output.push_str(&format!("{} {:4}: {}\n", marker, line_num, l));
+    }
+    Some(output)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -509,5 +580,167 @@ mod tests {
             summarize_backend_error(&err),
             "rate limited (try again later or use fewer backends)"
         );
+    }
+
+    #[test]
+    fn test_tail_utf8_shorter_than_limit() {
+        assert_eq!(tail_utf8("hello", 15000), "hello");
+        assert_eq!(tail_utf8("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_tail_utf8_splits_inside_multibyte_char() {
+        // 5000 four-byte emoji plus one ASCII byte = 20001 bytes. The naive
+        // split at 20001 - 15000 = 5001 lands one byte into an emoji, which is
+        // what `&s[s.len() - 15000..]` panics on.
+        let s = "😀".repeat(5000) + "x";
+        assert_eq!(s.len(), 20001);
+        assert!(!s.is_char_boundary(s.len() - 15000));
+
+        let out = tail_utf8(&s, 15000);
+        assert!(out.len() <= 15000);
+        assert!(out.starts_with('😀'), "must not begin mid-character");
+        assert!(out.ends_with('x'));
+    }
+
+    #[test]
+    fn test_tail_utf8_split_already_on_boundary() {
+        // 20000 - 15000 = 5000, divisible by 4, so this case never exercises the
+        // boundary walk. Kept to pin the aligned path, not as proof of the fix.
+        let s = "😀".repeat(5000);
+        assert_eq!(s.len(), 20000);
+        assert!(s.is_char_boundary(s.len() - 15000));
+        assert_eq!(tail_utf8(&s, 15000).len(), 15000);
+    }
+
+    #[test]
+    fn test_tail_utf8_degenerate_inputs() {
+        assert_eq!(tail_utf8("hello", 0), "");
+        assert_eq!(tail_utf8("", 15000), "");
+        // A string that is one multi-byte character, truncated below its width.
+        assert_eq!(tail_utf8("😀", 2), "");
+    }
+
+    #[test]
+    fn test_line_window_line_past_end_of_file() {
+        // The panic from the ticket: start=99989, end=200 inverts the range.
+        assert_eq!(line_window(200, 99999, 10), (200, 200));
+    }
+
+    #[test]
+    fn test_line_window_no_overflow_on_max_line() {
+        assert_eq!(line_window(200, usize::MAX, 10), (200, 200));
+    }
+
+    #[test]
+    fn test_line_window_no_overflow_on_max_context() {
+        assert_eq!(line_window(200, 10, usize::MAX), (0, 200));
+    }
+
+    #[test]
+    fn test_line_window_empty_file() {
+        assert_eq!(line_window(0, 1, 15), (0, 0));
+        assert_eq!(line_window(0, 0, 0), (0, 0));
+    }
+
+    #[test]
+    fn test_line_window_invariant_sweep() {
+        let totals = [0usize, 1, 2, 10, 15, 199, 200, usize::MAX - 1, usize::MAX];
+        let lines = [0usize, 1, 2, 10, 15, 199, 200, usize::MAX - 1, usize::MAX];
+        let contexts = [0usize, 1, 2, 10, 15, 199, 200, usize::MAX - 1, usize::MAX];
+
+        for &total in &totals {
+            for &line in &lines {
+                for &ctx in &contexts {
+                    let (start, end) = line_window(total, line, ctx);
+                    assert!(
+                        start <= end && end <= total,
+                        "invariant broken for total={total} line={line} ctx={ctx}: ({start}, {end})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// A verbatim copy of the renderer as it stood before this fix, used to prove
+    /// the replacement is byte-identical wherever the original did not panic.
+    fn legacy_render(lines: &[&str], line: usize, context_lines: usize) -> String {
+        let start = line.saturating_sub(context_lines);
+        let end = (line + context_lines).min(lines.len());
+        let mut output = String::new();
+        for (i, l) in lines[start..end].iter().enumerate() {
+            let line_num = start + i + 1;
+            let marker = if line_num == line { ">>>" } else { "   " };
+            output.push_str(&format!("{} {:4}: {}\n", marker, line_num, l));
+        }
+        output
+    }
+
+    #[test]
+    fn test_render_line_window_matches_legacy_where_legacy_worked() {
+        // 200 lines matters: without it the sweep never reaches a near-EOF
+        // window that is non-empty, so lines 199/200/201 would only ever
+        // exercise the `None` branch and prove nothing about the body.
+        let corpus: Vec<String> = (1..=200).map(|i| format!("line {i}")).collect();
+        let corpus: Vec<&str> = corpus.iter().map(String::as_str).collect();
+        let sizes = [0usize, 1, 5, 200];
+        // Both production context sizes: fix.rs uses 10, context.rs uses 15.
+        let contexts = [10usize, 15];
+
+        let mut compared_non_empty = 0;
+        for &n in &sizes {
+            let lines = &corpus[..n.min(corpus.len())];
+            for line in [0usize, 1, 2, 5, 195, 199, 200, 201] {
+                for &ctx in &contexts {
+                    let (start, end) = line_window(lines.len(), line, ctx);
+                    let new = render_line_window(lines, line, ctx);
+                    if start < end {
+                        // Legacy produced the same non-empty body here.
+                        assert_eq!(
+                            new.as_deref(),
+                            Some(legacy_render(lines, line, ctx).as_str()),
+                            "divergence at n={n} line={line} ctx={ctx}"
+                        );
+                        compared_non_empty += 1;
+                    } else {
+                        assert_eq!(new, None, "expected empty window at n={n} line={line}");
+                    }
+                }
+            }
+        }
+        // Guard the guard: a sweep that only ever hit empty windows would pass
+        // every assertion above while comparing nothing.
+        assert!(
+            compared_non_empty >= 20,
+            "sweep compared only {compared_non_empty} non-empty bodies"
+        );
+    }
+
+    #[test]
+    fn test_render_line_window_format_unchanged() {
+        // A non-marker prefix is "   " + space + {:4}, so seven leading spaces.
+        assert_eq!(
+            render_line_window(&["a", "b", "c", "d", "e"], 3, 1).as_deref(),
+            Some(">>>    3: c\n       4: d\n")
+        );
+    }
+
+    #[test]
+    fn test_render_line_window_out_of_range_is_none() {
+        assert_eq!(
+            render_line_window(&["a", "b", "c", "d", "e"], 99999, 10),
+            None
+        );
+        assert_eq!(render_line_window(&["a"], usize::MAX, 15), None);
+        assert_eq!(render_line_window(&[], 1, 15), None);
+    }
+
+    #[test]
+    fn test_render_line_window_line_zero_renders_head_without_marker() {
+        // `extract_file_references` yields line 0 when the digits do not fit a
+        // usize (its `unwrap_or(0)`). That must keep rendering the file head.
+        let out = render_line_window(&["a", "b", "c"], 0, 1).unwrap();
+        assert_eq!(out, "       1: a\n");
+        assert!(!out.contains(">>>"));
     }
 }

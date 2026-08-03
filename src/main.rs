@@ -1794,6 +1794,14 @@ Be concise and specific. Reference line numbers when possible.
     Ok(())
 }
 
+/// Cut a diff down to `max_bytes` for the review prompt, on a character boundary.
+///
+/// Extracted so the PR-review path's truncation is testable on its own; slicing
+/// `&diff[..max_bytes]` panics whenever byte `max_bytes` falls inside a character.
+fn truncate_diff_for_review(diff: &str, max_bytes: usize) -> &str {
+    utils::truncate_utf8(diff, max_bytes)
+}
+
 async fn run_pr_review(
     pr: &str,
     repo: Option<&str>,
@@ -1888,18 +1896,18 @@ async fn run_pr_review(
     }
 
     // Truncate diff if too large (LLMs have context limits)
-    let max_diff_chars = 50000;
-    let diff_for_review = if diff.len() > max_diff_chars {
+    let max_diff_bytes = 50000;
+    let diff_for_review = if diff.len() > max_diff_bytes {
         println!(
             "{}",
             format!(
-                "Note: Diff truncated from {} to {} chars",
+                "Note: Diff truncated from {} to {} bytes",
                 diff.len(),
-                max_diff_chars
+                max_diff_bytes
             )
             .yellow()
         );
-        &diff[..max_diff_chars]
+        truncate_diff_for_review(&diff, max_diff_bytes)
     } else {
         &diff
     };
@@ -2266,6 +2274,25 @@ fn parse_pr_identifier(pr: &str, repo: Option<&str>) -> Result<(String, String)>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_truncate_diff_for_review_splits_inside_multibyte_char() {
+        // 3-byte chars: 50000 = 3*16666 + 2, so byte 50000 sits inside a
+        // character and `&diff[..50000]` panics.
+        let diff = "€".repeat(20000);
+        assert_eq!(diff.len(), 60000);
+        assert!(!diff.is_char_boundary(50000));
+
+        let out = truncate_diff_for_review(&diff, 50000);
+        assert!(out.len() <= 50000);
+        assert_eq!(out.len() % 3, 0, "must end on a character boundary");
+    }
+
+    #[test]
+    fn test_truncate_diff_for_review_leaves_small_diffs_alone() {
+        let diff = "a\nb\n";
+        assert_eq!(truncate_diff_for_review(diff, 50000), diff);
+    }
 
     #[test]
     fn test_parse_pr_github_standard() {
