@@ -32,10 +32,10 @@ linear:
     - AFK
     - Bug
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
   created_at: '2026-08-03T12:39:31Z'
-  updated_at: '2026-08-03T13:10:00Z'
+  updated_at: '2026-08-03T14:20:00Z'
 entry_findings:
   wip_at_start: 0/3 - Active Work table in docs/PROJECT.md is empty
   blockers: >-
@@ -313,9 +313,14 @@ phases:
           in ci.rs, 1 render_line_window in each of context.rs and fix.rs, truncate_utf8 present in
           main.rs and implement.rs.
   pr:
-    status: pending
-    pr_url: null
-    pr_number: null
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/80
+    pr_number: 80
+    base: main
+    head: fix/clo-633-slice-panics
+    ci_gate: pending
+    reviewers_expected:
+      - qodo-code-review (requires /agentic_review; handle_push_trigger is False)
   complete:
     status: pending
 history:
@@ -391,3 +396,17 @@ history:
     action: pushed_to_remote
     phase: implement
     details: Branch fix/clo-633-slice-panics pushed to origin, tracking set.
+  - timestamp: '2026-08-03T14:05:00Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Two rounds. Opencode PASS both on substance. Codex FAIL then FAIL - both times on the proof
+      plan rather than the fix. Seven findings, six acted on, one declined with reasoning. Round 2
+      caught a regression introduced by round 1's own fix: the helper extractions made the row-24
+      wiring greps point at the helper bodies instead of the call sites.
+  - timestamp: '2026-08-03T14:20:00Z'
+    action: pr_created
+    phase: pr
+    details: >-
+      PR #80 opened against main. Four commits: the fix, the task docs, the discriminating-test
+      pass, and the grep correction. Awaiting the CI Gate required check and qodo-code-review.
