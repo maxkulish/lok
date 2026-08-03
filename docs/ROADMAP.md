@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-03 (CLO-609 completed, Phase 13 at 1 of 2; CLO-633 started, Phase 15 opened for the five codex-security scan findings)
+**Last Updated**: 2026-08-03 (CLO-633 completed, Phase 15 at 1 of 5; Phase 13 at 1 of 2)
 
 ## Summary
 
@@ -20,7 +20,7 @@
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
 | Phase 13: Release Readiness | 2 | 1 | In progress |
 | Phase 14: Orchestration Tooling Hardening | 4 | 0 | Not started |
-| Phase 15: Security Scan Remediation | 5 | 0 | In Progress |
+| Phase 15: Security Scan Remediation | 5 | 1 | In Progress |
 
 ## Phase 11: Health Checks
 
@@ -70,7 +70,7 @@ Five findings from the codex-security scan of `6ac4694` (2026-08-03). They share
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-633](https://linear.app/cloud-ai/issue/CLO-633) | Fix slice panics on CI log truncation and out-of-range file:line references | In Progress | - |
+| [CLO-633](https://linear.app/cloud-ai/issue/CLO-633) | Fix slice panics on CI log truncation and out-of-range file:line references | Done | - |
 | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631) | Escape or remove step output interpolated into workflow shell fields | Not started | - |
 | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | Gate project-layer lok.toml backend commands behind a trust boundary | Not started | - |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | Add one path-confinement helper and use it in every worktree writer and reader | Not started | - |
