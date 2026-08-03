@@ -1,0 +1,261 @@
+task_id: clo-633
+task_type: specification
+classification_reason: >-
+  The Linear description already fixes the shape of every change: four named slicing sites, the
+  defect mechanism for each, the prescribed fix for each (`floor_char_boundary`/`char_indices`,
+  clamp `start` to `end`, `saturating_add`), and four acceptance criteria. No architecture decision
+  is open. The one judgement left - whether to extract the duplicated `read_file_around_line` into
+  a shared helper - is a local refactor question the spec can settle, not a design-doc question.
+  Three files, one module (`src/tasks/`), S size -> specification workflow.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: true
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Todo
+  blocks: []
+  blocked_by: []
+  related_to:
+    - CLO-631
+    - CLO-632
+    - CLO-634
+    - CLO-635
+  branch_suggested: kmamemo/clo-633-fix-slice-panics-on-ci-log-truncation-and-out-of-range
+  branch_actual: fix/clo-633-slice-panics
+  priority: High
+  labels:
+    - AFK
+    - Bug
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-08-03T12:39:31Z'
+  updated_at: '2026-08-03T13:10:00Z'
+entry_findings:
+  wip_at_start: 0/3 - Active Work table in docs/PROJECT.md is empty
+  blockers: >-
+    None. docs/DEPENDENCIES.md lists no blockers and does not yet mention CLO-633; Linear reports no
+    `blockedBy` relations. The four related tasks (CLO-631, 632, 634, 635) are independent siblings
+    from the same codex-security scan, not dependencies.
+  branch_note: >-
+    A branch `feat/clo-633-slice-panics` already existed locally, clean and with no commits ahead of
+    main. Renamed to `fix/clo-633-slice-panics` at entry to match the convention that the branch
+    type mirrors the conventional commit type; this task ships `fix:` commits. Never pushed, so the
+    rename cost nothing.
+  defects_verified_at_entry: >-
+    All four sites read and confirmed against the working tree before writing the spec. The line
+    numbers in the Linear description have drifted slightly; the actual locations are recorded
+    below.
+  sites:
+    - 'src/tasks/ci.rs:196 - GitHub `--log-failed` path. `&log_text[log_text.len() - 15000..]` on a byte offset. Confirmed.'
+    - 'src/tasks/ci.rs:273 - GitLab `ci trace` path. Same byte-offset slice, different truncation suffix. Confirmed.'
+    - 'src/tasks/context.rs:329-333 - `read_file_around_line`. `start` clamped only at 0, `end` only at `lines.len()`; `line + context_lines` unguarded. Confirmed.'
+    - 'src/tasks/fix.rs:189-198 - inline near-duplicate of the same logic with `context_lines` hardcoded to 10. Confirmed.'
+  duplication: >-
+    `src/tasks/fix.rs` does not call `read_file_around_line`; it inlines the same start/end/marker
+    loop with a hardcoded window of 10. The two copies differ in output framing (fix.rs wraps in a
+    fenced block and prints a `### path (around line N)` heading), so a shared helper has to return
+    the numbered-line body only and leave framing to each caller.
+phases:
+  discovery:
+    status: skipped
+    skip_reason: Specification task
+    approved: true
+  design:
+    status: skipped
+    reason: Specification task - using /spec instead
+  spec:
+    status: complete
+    spec_file: docs/specs/2026-08-03-clo-633-slice-panics.md
+    approved: true
+    review_completed: true
+    review_gemini: docs/reviews/clo-633-spec-review-gemini.md
+    review_ollama: docs/reviews/clo-633-spec-review-ollama.md
+    review_synthesis: docs/reviews/clo-633-spec-review-synthesis.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_applied: true
+    review_notes: >-
+      Ollama leg returned REVIEW_FAILED - empty output, process died after the workdir/model banner
+      with "Reading additional input from stdin...". That is the exact failure mode CLO-624 exists
+      to disambiguate, and it looks like a missing `< /dev/null` on the invocation rather than an
+      unreachable model. Not blocking here; the Gemini leg and the synthesis both returned usable
+      output.
+    applied_suggestions:
+      - >-
+        Expanded the panic surface from four sites to six. AI review found `src/main.rs:1902`
+        (`&diff[..50000]` in the PR-review path) and `src/tasks/implement.rs:583`
+        (`&code[..code.len().min(150)]` sniffing model output). Both verified by reading. Both
+        truncate from the head, so both are one-line swaps to the existing `utils::truncate_utf8` -
+        no new helper. Added as sub-task 4, AC9, AC10, and eval rows 17-19.
+      - >-
+        Corrected eval row 10. The expected string was wrong twice over: wrong window (the spec said
+        3 lines where `line_window(5,3,1)` yields `(2,4)`, i.e. 2 lines) and wrong padding (5 spaces
+        where the `"   "` + space + `{:4}` format gives 7). Verified by compiling and running the
+        actual format string; correct value is `">>>    3: c\n       4: d\n"`. Row 12 made concrete
+        with the same verification.
+    flagged_suggestions:
+      - >-
+        DECLINED - fold the duplicated `extract_file_references` / `FILE_REF_RE` pair
+        (`src/tasks/context.rs:16,256`, `src/tasks/fix.rs:12,243`) into `src/utils.rs`. The
+        duplication is real and confirmed, and it is the same drift hazard that turned one defect
+        into two here. But it is a parser, not a panic, and consolidating it widens the diff of a
+        fix that should stay reviewable. Recorded as a Must-not in the spec and to be filed as a
+        follow-up at completion. The synthesis itself rated it optional.
+      - >-
+        REJECTED ON FACT - Gemini claimed `str::floor_char_boundary` stabilized in 1.77.0 and that
+        the spec's MSRV constraint was therefore unnecessary. The sysroot says
+        `#[stable(feature = "round_char_boundary", since = "1.91.0")]` at `core/src/str/mod.rs:423`.
+        Against a declared `rust-version = "1.80"` the method is genuinely unavailable. Constraint
+        kept and strengthened with the verified version.
+    scope: S/M
+    sub_tasks: 4
+    revision_2:
+      trigger: User review of the spec, six findings, each validated against the source before acting.
+      upheld: 6 of 6
+      outcome: >-
+        Site count went from six to seven and the proof plan was rebuilt. The substance of the fix
+        (tail_utf8, line_window, render_line_window) was unchanged - every finding was about what
+        the spec failed to prove or failed to notice, not about the design.
+      findings:
+        - >-
+          CONFIRMED (High) - empty windows leave a bare parent heading, and in fix.rs that
+          suppresses the keyword fallback. context.rs:117 and fix.rs:180 push the heading before the
+          loop that may render nothing, and fix.rs:214 gates the fallback on `context.is_empty()`.
+          An issue whose references are all stale therefore yields a prompt with one empty section
+          and no code. Already true today for nonexistent files; the clamp would extend it to
+          out-of-range lines. Now Defect 5, AC8, and sub-task 3's section builders. Verified that
+          context.rs does NOT gate its keyword search this way - the reviewer scoped this to fix.rs
+          correctly.
+        - >-
+          CONFIRMED (High) - utility-only tests do not prove caller-level ACs, and eval rows 17-18
+          tested `truncate_utf8`, which is already correct, so they passed on the broken baseline.
+          Non-discriminative. Added a discriminating-test rule to the spec, marked every eval row
+          (D) or (R), and moved the proof to extracted pure functions: section builders in
+          context.rs/fix.rs, `truncate_diff_for_review` in main.rs, and `clean_code_output` which
+          was already a pure fn(&str) -> Option<String>.
+        - >-
+          CONFIRMED (High) - AC10 as written was unsatisfiable: it banned raw byte slices in
+          implement.rs while implement.rs:545 keeps `&sha[..8]`, and eval row 19 grepped only for
+          `diff[..` and `code[..`, so it would have passed with the AC false. Investigating the
+          site made it a scope inclusion rather than a narrowing: `commit_file` builds its return
+          from `git rev-parse HEAD` without checking `head.status`, so on an unborn HEAD `sha` is
+          "" and the slice panics. Now Defect 4 and AC10; AC11 narrowed to exactly the seven sites;
+          positive wiring assertions added as eval row 24.
+        - >-
+          CONFIRMED (Medium) - the 15000-byte emoji test never crossed a character boundary.
+          20000 - 15000 = 5000, divisible by 4, so the split was already aligned. Replaced with
+          "😀".repeat(5000) + "x" (length 20001, split at 5001, mid-emoji), and kept the aligned
+          case as an explicitly-labelled regression row.
+        - >-
+          CONFIRMED (Medium) - AC7's "byte-identical" claim rested on one spot example. Replaced
+          with a differential sweep against a test-local copy of the current renderer across both
+          production context sizes (10 and 15) and the line-0 / last-line / past-EOF / empty-file
+          boundaries.
+        - >-
+          CONFIRMED (Low) - the MSRV constraint is correct but unverified; oldest local toolchain is
+          1.94 and ci.yml uses runner-stable. Kept the constraint (it is about not making MSRV
+          worse), added the 64-bit clarification as AC5a - on 32-bit, 18446744073709551615 fails to
+          parse and unwrap_or(0) renders the file head - and filed the missing MSRV job as a
+          follow-up rather than widening this task.
+      follow_ups_recorded:
+        - commit_file ignores `git rev-parse HEAD` exit status, returning "" as a successful SHA
+        - extract_file_references / FILE_REF_RE duplicated across context.rs and fix.rs
+        - no CI job builds against the declared rust-version 1.80
+    decisions:
+      msrv: >-
+        Rejected the `floor_char_boundary` fix the Linear description proposes. Cargo.toml:5
+        declares rust-version 1.80, those methods stabilized later, and nothing verifies the claim:
+        no MSRV job in .github/workflows/ci.yml and no 1.80 toolchain installed locally. A
+        violation would first surface as a build failure for a crates.io consumer after Phase 13
+        publishes. `is_char_boundary` has been stable since 1.9 and costs three lines.
+      helper_location: >-
+        src/utils.rs, next to the existing `truncate_utf8` (src/utils.rs:235) and inside its
+        existing `#[cfg(test)] mod tests`. The codebase already keeps exactly this kind of helper
+        there, so no new module is needed.
+      extraction: >-
+        Extract, rather than fix in place. The Linear scope only says "consider" it, but the two
+        rendering loops (context.rs:333-339, fix.rs:198-206) are identical character for character
+        apart from variable names - which is how one defect became two. Split into a pure
+        `line_window` returning (start, end) plus a `render_line_window` built on it, so the
+        clamping can be tested exhaustively with no filesystem.
+      out_of_range_behavior: >-
+        An out-of-range line yields an empty window and the caller skips its section entirely. The
+        Linear AC sanctions "the available lines or an empty result"; empty avoids emitting an
+        empty fenced block into the prompt.
+      preserve_output: >-
+        Byte-identical output for every currently-working input, including the asymmetric window
+        (start = line - context_lines as a 0-based index). This is a panic fix; the off-by-one is
+        behavior to preserve, not to correct here.
+  implement:
+    status: pending
+  pr:
+    status: pending
+    pr_url: null
+    pr_number: null
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-08-03T12:39:31Z'
+    action: workflow_started
+    phase: entry
+    details: >-
+      Workflow created for CLO-633 (Fix slice panics on CI log truncation and out-of-range
+      file:line references). Classified as a specification task. WIP 0/3, no blockers.
+  - timestamp: '2026-08-03T12:39:31Z'
+    action: workflow_started
+    phase: entry
+    details: >-
+      All four defect sites read and confirmed in the working tree before any spec text was
+      written. Linear's line numbers have drifted; entry_findings.sites carries the actual ones.
+      Local branch renamed feat/clo-633-slice-panics -> fix/clo-633-slice-panics.
+  - timestamp: '2026-08-03T12:45:00Z'
+    action: project_sync_start
+    phase: entry
+    details: >-
+      PROJECT.md: CLO-633 added to Active Work (1/3). ROADMAP.md: Phase 15 "Security Scan
+      Remediation" opened with all five codex-security findings, CLO-633 In Progress.
+      DEPENDENCIES.md: CLO-631/632/634/635 added to Unblocked & Ready. The four siblings were
+      filed today and were in none of the three files, so adding CLO-633 alone would have left
+      four tasks invisible to the dashboard; the phase was opened for all five rather than a
+      single orphan row.
+  - timestamp: '2026-08-03T12:49:00Z'
+    action: spec_review_complete
+    phase: spec
+    details: >-
+      Gemini APPROVE_WITH_SUGGESTIONS; Ollama REVIEW_FAILED (empty output, CLO-624 shape).
+      Synthesis verdict APPROVE_WITH_SUGGESTIONS - diagnosis, decomposition and constraints
+      correct, two fixes needed before the spec was an accurate blueprint.
+  - timestamp: '2026-08-03T12:52:00Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      Two suggestions applied, both verified independently before applying: the panic surface grew
+      from four sites to six (src/main.rs:1902 and src/tasks/implement.rs:583, both head
+      truncations handled by the existing utils::truncate_utf8), and eval row 10's expected string
+      was corrected after compiling the real format. Two items not applied: the
+      extract_file_references consolidation was declined as out of scope and will be filed as a
+      follow-up, and Gemini's 1.77.0 stabilization claim for floor_char_boundary was rejected
+      against the sysroot's 1.91.0.
+  - timestamp: '2026-08-03T13:05:00Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      Second review pass, from the user. Six findings, all six validated against the source and all
+      six upheld. Seventh defect site added (implement.rs:545 `&sha[..8]`, reachable via unborn
+      HEAD because commit_file never checks `git rev-parse` exit status). Proof plan rebuilt around
+      a discriminating-test rule after two eval rows were shown to pass on the broken baseline.
+      Empty-window handling extended from "no empty fence" to "no parent heading, and the fix.rs
+      keyword fallback still fires". Design unchanged: tail_utf8, line_window and
+      render_line_window all survive as specified.
+  - timestamp: '2026-08-03T13:10:00Z'
+    action: spec_approved
+    phase: spec
+    details: >-
+      User approved the revised spec after the second review pass. Seven defect sites, four
+      sub-tasks, three follow-ups deferred to completion. Proceeding to implement; the spec
+      decomposition is the plan, so the plan phase is skipped.
