@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-03 (aggregation sync; Phases 13 and 14 opened for the six tasks left after Phase 12 closed)
+**Last Updated**: 2026-08-03 (CLO-609 completed; Phase 13 at 1 of 2)
 
 ## Summary
 
@@ -18,7 +18,7 @@
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
-| Phase 13: Release Readiness | 2 | 0 | Not started |
+| Phase 13: Release Readiness | 2 | 1 | In progress |
 | Phase 14: Orchestration Tooling Hardening | 4 | 0 | Not started |
 
 ## Phase 11: Health Checks
@@ -49,7 +49,7 @@ What still stands between the crate as it is now and a release someone outside t
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-609](https://linear.app/cloud-ai/issue/CLO-609) | Point the crate's repository and homepage metadata at maxkulish/lok | Not started | - |
+| [CLO-609](https://linear.app/cloud-ai/issue/CLO-609) | Point the crate's repository and homepage metadata at maxkulish/lok | Done | - |
 | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610) | Attest release binaries so their checksums prove origin, not only transfer | Not started | - |
 
 ## Phase 14: Orchestration Tooling Hardening
