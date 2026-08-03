@@ -41,9 +41,9 @@ phases:
     probe_completed: false
     probe_decision: null  # design | ops | pivot | skip
     # AI review tracking (per-model)
-    review_gemini: null     # Path to Gemini review file
     review_ollama: null     # Path to Ollama review file
-    review_verdict: null    # APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION (strictest of both)
+    review_synthesis: null  # Path to the review synthesis
+    review_verdict: null    # APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION (synthesis verdict)
     review_completed: false # Whether AI review ran successfully
     # Review feedback application tracking
     review_applied: false
@@ -73,11 +73,12 @@ phases:
     commits: []
     # Name of last completed implementation phase
     last_phase_completed: null
-    # Codex/Gemini validation gate tracking
+    # Validation gate tracking (Codex + synthesis)
     codex_validated: false
     codex_verdict: null       # PASS | PASS_WITH_NOTES | FAIL
-    codex_report: null        # Path to Codex validation report
-    gemini_validation_report: null  # Path to Gemini validation report
+    codex_report: null        # Path to the reviewer report (Claude fallback's when Codex failed)
+    validation_synthesis_report: null   # Path to the synthesis report
+    validation_synthesis_verdict: null  # PASS | PASS_WITH_NOTES | FAIL - binding
 
   pr:
     status: pending
@@ -85,12 +86,21 @@ phases:
     pr_url: null
     # GitHub PR number
     pr_number: null
-    # Count of review rounds addressed
-    reviews_addressed: 0
+    # Whether every review thread was addressed
+    reviews_addressed: false
     # Whether PR has final approval
     approved: false
-    # Pre-flight CI check tracking
+    # Remote CI tracking
     ci_passed: false
+    # Bot-review wait gate
+    bot_review_wait_completed: false
+    bot_review_wait_completed_at: null
+    # Bot re-review after fixes: the commit the bot actually reviewed
+    bot_rereview_head_sha: null   # "none" when no reviewer bots are installed
+    bot_rereview_at: null
+    # Mandatory pre-merge re-fetch
+    pre_merge_refetch_passed: false
+    pre_merge_refetch_at: null
 
   complete:
     status: pending
@@ -118,10 +128,10 @@ history:
 #   discovery_probe_complete  - Multi-model discovery probe finished
 #   design_started            - Design doc creation began
 #   design_draft_ready        - Design doc draft completed
-#   design_review_started     - AI review (Gemini + Ollama) launched
-#   design_review_complete    - Both reviews completed with verdicts
-#   design_review_timeout     - One or both reviews timed out
-#   design_review_failed      - One or both reviews encountered an error
+#   design_review_started     - AI review (Ollama + Claude fallback) launched
+#   design_review_complete    - Review and synthesis completed with verdicts
+#   design_review_timeout     - The review timed out
+#   design_review_failed      - The review encountered an error
 #   review_applied            - Non-contradicting suggestions auto-applied
 #   review_conflicts_resolved - User resolved contradicting suggestions
 #   design_finalized          - Design doc approved and finalized
@@ -130,7 +140,7 @@ history:
 #   plan_approved             - Plan approved for implementation
 #   phase_completed           - Implementation phase finished
 #   implementation_complete   - All plan tasks done
-#   codex_validation_complete - Codex + Gemini pre-PR validation finished
+#   codex_validation_complete - Codex + synthesis pre-PR validation finished
 #   commit_created            - Git commit made
 #   pushed_to_remote          - Branch pushed to origin
 #   pre_flight_checks_passed  - All local CI checks passed

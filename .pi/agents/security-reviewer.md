@@ -86,7 +86,7 @@ Score in this order. Stop and flag the moment you see a `blocker`.
 Out of scope (do NOT flag here):
 
 - Rust idiom, lifetime, generic, or naming feedback (see
-  `gemini-architect.md`).
+  `ollama-rust-reviewer.md` and `codex-pre-pr.md`).
 - Test coverage for happy paths (see `codex-pre-pr.md`).
 - Release packaging / install paths (see `ops-reviewer.md`).
 

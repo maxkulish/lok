@@ -28,63 +28,28 @@
 
 ---
 
-## Step 5: Codex + Gemini Validation Gate
+## Step 5: Validation Gate (Codex + synthesis)
 
 **After implementation is complete, before creating a PR**, run external model validation to catch issues Claude may have blind spots for.
 
-### Build Unified Validation Prompt
+### Run the gate through `lok`
 
-```
-You are a senior code reviewer. Review all changes on this branch against the design
-document and implementation plan.
-
-FILES TO READ:
-1. The design document: [path from phases.design.design_doc]
-2. The implementation plan: [path from phases.plan.plan_file]
-3. Run: git diff main...HEAD (to see all changes)
-4. Read any new or significantly modified source files
-
-CHECK FOR:
-1. CORRECTNESS: Do the changes implement what the design doc specifies?
-2. COMPLETENESS: Are all acceptance criteria from the design doc covered?
-3. REGRESSIONS: Could any changes break existing functionality?
-4. CODE QUALITY: Clean interfaces, proper error handling, no dead code
-5. SECURITY: No hardcoded secrets, proper input validation, safe FFI usage
-
-OUTPUT FORMAT:
-## Verdict: [PASS | PASS_WITH_NOTES | FAIL]
-
-## Findings
-[List each finding with severity: CRITICAL / HIGH / MEDIUM / LOW]
-
-## Missing Items
-[Any acceptance criteria not yet implemented]
-
-## Recommendations
-[Specific actionable improvements]
-```
-
-### Run Validation in Parallel
+The pipeline lives in `.lok/workflows/pre-pr-validation.toml`. Do **not** reinvent it inline:
 
 ```bash
-# Codex validation (background) - 10 minute timeout
-timeout 600 codex exec -m gpt-5.4 \
-  -c reasoning.effort='"high"' \
-  -s read-only \
-  -o docs/reviews/clo-XX-codex-validation.md \
-  "[VALIDATION_PROMPT]" &
-
-# Gemini validation (background) - 5 minute timeout
-(
-  timeout 300 gemini --model gemini-3.1-pro-preview -y --sandbox \
-    --include-directories docs,src \
-    -p "[VALIDATION_PROMPT]" -o text \
-    > docs/reviews/clo-XX-gemini-validation.md 2>&1
-) &
-
-# Wait for both
-wait
+# arg.1 = design doc, arg.2 = plan file, arg.3 = Linear task ID
+lok workflow run pre-pr-validation docs/design-docs/clo-XX-design.md docs/plans/clo-XX-plan.md CLO-XX
 ```
+
+**Anti-pattern**: hand-rolling `codex exec` in a shell block here. That bypasses the workflow's output validators, its Claude fallback, and the synthesis step, and it hardcodes models that drift. `CODEX_MODEL` (default `gpt-5.6-sol`) is the only override.
+
+The workflow writes:
+
+- `docs/reviews/clo-XX-codex-validation.md`
+- `docs/reviews/clo-XX-validation-synthesis.md`
+- `docs/reviews/clo-XX-claude-fallback-validation.md` (only when Codex fails)
+
+Google models were removed from every review leg on 2026-08-03. The `gemini` backend still ships in lok; it is simply not part of this repo's review tooling.
 
 ### Display Results
 
@@ -92,44 +57,45 @@ wait
 VALIDATION GATE RESULTS (CLO-XX)
 =================================
 
-Codex (GPT-5.4):
+Codex (gpt-5.6-sol):
   Verdict: [PASS | PASS_WITH_NOTES | FAIL]
   Report: docs/reviews/clo-XX-codex-validation.md
   Key Findings: [top 3 findings]
 
-Gemini (3.1 Pro):
+Synthesis (binding):
   Verdict: [PASS | PASS_WITH_NOTES | FAIL]
-  Report: docs/reviews/clo-XX-gemini-validation.md
-  Key Findings: [top 3 findings]
+  Report: docs/reviews/clo-XX-validation-synthesis.md
+  Must Fix Before PR: [count]
 
 Options:
 1. [proceed]  - Continue to PR creation
-2. [fix]      - Address findings before PR (recommended if FAIL)
-3. [override] - Skip validation and proceed (not recommended)
-4. [pause]    - Pause workflow
+2. [fix]      - Address findings before PR (required if FAIL)
+3. [pause]    - Pause workflow
 
 Your choice:
 ```
 
 ### Decision Handling
 
-- **If proceed**: Update state and continue to PR phase
-- **If fix**: Address findings, re-commit, re-run validation
-- **If override**: Log override in history, proceed with warning
-- **If pause**: Save state, exit
+The **synthesis** verdict is the binding one, not the raw reviewer's:
+
+- `PASS`: proceed to the PR phase
+- `PASS_WITH_NOTES`: apply the `Must Fix Before PR` items in **one** bounded fix iteration, re-run the pre-merge gate, then proceed
+- `FAIL`: stop and escalate to the user. Do not transition to PR
+
+Maximum validation fix iterations: **1**. If fixes reveal more issues, record them and ask the user.
 
 ### Fallback
 
-- If Codex is unavailable: Warn and run Gemini only
-- If Gemini is unavailable: Warn and run Codex only
-- If both unavailable: Warn and let user decide (proceed or pause)
+If the Codex leg fails, the workflow runs a Claude fallback reviewer and the synthesis still produces a verdict. If the workflow itself exits non-zero or the synthesis report is missing, treat the gate as failed - do not transition phases and do not hand-write review files.
 
 ### Update State
 
 - `phases.implement.codex_validated: true`
 - `phases.implement.codex_verdict: [verdict]`
-- `phases.implement.codex_report: docs/reviews/clo-XX-codex-validation.md`
-- `phases.implement.gemini_validation_report: docs/reviews/clo-XX-gemini-validation.md`
+- `phases.implement.codex_report: docs/reviews/clo-XX-codex-validation.md` (the fallback report when Codex failed)
+- `phases.implement.validation_synthesis_report: docs/reviews/clo-XX-validation-synthesis.md`
+- `phases.implement.validation_synthesis_verdict: [verdict]`
 - Add history entry: `codex_validation_complete`
 
 ### Transition to PR

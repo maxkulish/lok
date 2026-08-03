@@ -20,7 +20,7 @@ Focus EXCLUSIVELY on these security concerns:
 - Check: Does the design introduce new secret material? Is it wrapped in SecretString?
 
 ### 2. Subprocess Execution Safety
-- lok spawns external processes extensively (claude, codex, gemini CLI, git, gh)
+- lok spawns external processes extensively (claude, codex, opencode, ollama, git, gh)
 - Safe pattern: `Command::new("binary").args(["arg1", "arg2"])` - array-style args prevent injection
 - Dangerous pattern: `Command::new("sh").arg("-c").arg(interpolated_string)` - shell injection risk
 - The Gemini backend and workflow shell steps currently use `sh -c` with string interpolation

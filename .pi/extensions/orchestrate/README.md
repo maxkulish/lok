@@ -102,7 +102,7 @@ phases:
   spec: { status, spec_file, approved, review_completed, ... }
   design: { status, design_doc, draft_ready, finalized, review_completed, ... }
   plan: { status, plan_file, approved }
-  implement: { status, commits[], codex_validated, codex_verdict, codex_report, gemini_validation_report }
+  implement: { status, commits[], codex_validated, codex_verdict, codex_report, validation_synthesis_report, validation_synthesis_verdict }
   pr: { status, pr_url, pr_number, ci_passed, reviews_addressed, merged_at, merge_commit }
   complete: { status, aggregation_files_updated, merged_at }
 
@@ -177,14 +177,14 @@ complete -> (terminal)
 ```
 
 Note: there is intentionally **no `review` phase** in lok. The
-codex+gemini validation gate runs inside `implement.md` step 4 before
+codex validation gate runs inside `implement.md` step 4 before
 transitioning to `pr`.
 
 ## Phase files
 
 `.pi/orchestrator/phases/`:
 - `init.md`, `discovery.md`, `design.md`, `plan.md`
-- `implement.md` (includes the codex+gemini validation gate)
+- `implement.md` (includes the codex validation gate)
 - `pr.md`, `complete.md`
 - `spec.md`, `operational.md`
 - `status.md`, `blocked.md`

@@ -30,7 +30,7 @@ freely between Claude and pi.
 │       ├── discovery.md
 │       ├── design.md
 │       ├── plan.md
-│       ├── implement.md               (embedded codex+gemini gate)
+│       ├── implement.md               (embedded codex validation gate)
 │       ├── pr.md
 │       ├── complete.md
 │       ├── spec.md
@@ -39,7 +39,6 @@ freely between Claude and pi.
 │       └── blocked.md
 ├── agents/
 │   ├── claude-designer.md             draft design docs
-│   ├── gemini-architect.md            design / impl architecture review
 │   ├── codex-pre-pr.md                pre-PR validation gate
 │   ├── ollama-rust-reviewer.md        local-only Rust footgun pass
 │   ├── security-reviewer.md           conditional security audit
@@ -108,7 +107,7 @@ phases:
   spec: { status, spec_file, approved, review_completed, ... }
   design: { status, design_doc, draft_ready, finalized, review_completed, ... }
   plan: { status, plan_file, approved }
-  implement: { status, commits[], codex_validated, codex_verdict, codex_report, gemini_validation_report }
+  implement: { status, commits[], codex_validated, codex_verdict, codex_report, validation_synthesis_report, validation_synthesis_verdict }
   pr: { status, pr_url, pr_number, ci_passed, reviews_addressed, merged_at, merge_commit }
   complete: { status, aggregation_files_updated, merged_at }
 
@@ -136,7 +135,7 @@ lok version diverges in these places:
 | Pre-merge gate | `cargo fmt --manifest-path src-tauri/...` | `cargo fmt --check && cargo clippy -- -D warnings && cargo test` |
 | Aggregation files | per-mentis layout | `PROJECT.md`, `ROADMAP.md`, `DEPENDENCIES.md` synced via `/project:sync` |
 
-The "no review phase" choice keeps the codex+gemini gate close to the
+The "no review phase" choice keeps the codex validation gate close to the
 code it validates and matches the Claude flow this `.pi/` tree mirrors.
 
 ## The pre-PR validation gate
@@ -157,29 +156,24 @@ Arguments:
 Outputs (written to `docs/reviews/`):
 
 - `docs/reviews/clo-XX-codex-validation.md`
-- `docs/reviews/clo-XX-gemini-validation.md`
 - `docs/reviews/clo-XX-validation-synthesis.md`
-- `docs/reviews/clo-XX-claude-fallback-validation.md` (only when both Codex and Gemini fail)
+- `docs/reviews/clo-XX-claude-fallback-validation.md` (only when Codex fails)
 
 Optional environment overrides:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `CODEX_MODEL` | `gpt-5.6-sol` | Codex reviewer model (via `codex exec`) |
-| `GEMINI_MODEL` | `gemini-3.1-pro-preview` | Primary Google model (via `opencode`, prefixed `google/`) |
-| `GEMINI_FALLBACK_MODEL` | `gemini-3.6-flash` | Secondary Google model if primary returns empty; also the health-check probe |
 | `OLLAMA_MODEL` | `glm-5.2:cloud` | Local/cloud Ollama reviewer model (`design-review`, `spec-review`) |
 
-The Gemini reviewer leg runs through `opencode`, not the retired `gemini`
-CLI: `opencode run --model "google/<model>" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null`.
-`--agent plan` is opencode's read-only mode. opencode rejects unknown flags
-by printing help to stderr and running nothing, so a wrong flag degrades the
-whole leg to `REVIEW_FAILED` silently.
+Pipeline shape: `health_check` -> `codex_review` -> `claude_fallback`
+(only when Codex failed) -> `synthesis` -> `write_reports` (with a hard
+`GATE FAIL` check that the synthesis report plus at least one reviewer
+report exist and are non-empty).
 
-Pipeline shape: `health_check` -> `codex_review` + `gemini_review`
-(parallel) -> `claude_fallback` (only when both external reviewers
-failed) -> `synthesis` -> `write_reports` (with hard `GATE FAIL`
-check that the three required review files exist and are non-empty).
+Google models were removed from every review leg on 2026-08-03. The
+`gemini` backend itself (`src/backend/gemini.rs`, `[backends.gemini]`)
+still ships - it is simply not wired into this repo's review tooling.
 
 Verdict vocabulary used by the workflow: `PASS`, `PASS_WITH_NOTES`,
 `FAIL`. `implement.md` maps these onto its YAML

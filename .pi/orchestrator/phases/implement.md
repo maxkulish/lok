@@ -1,6 +1,6 @@
 # Phase: implement
 
-Land the plan's sub-tasks one by one. Run the codex+gemini validation
+Land the plan's sub-tasks one by one. Run the codex+synthesis validation
 gate as the final pre-PR step. The validation gate is **embedded in this
 phase** - lok has no separate `review` phase.
 
@@ -9,7 +9,7 @@ Mirrors `.claude/commands/task/phases/implement.md`.
 ## Required exit state
 
 **Every field below is mandatory.** `status: complete` is only legal once
-the validation gate (Step 4) has produced all three review files AND the
+the validation gate (Step 4) has produced its review files AND the
 synthesis verdict is `PASS` or `PASS_WITH_NOTES` (legacy: `approve` /
 `approve_with_changes`) with the single fix iteration applied. See Step
 4.6 for the hard checklist that gates Step 5.
@@ -27,7 +27,6 @@ phases:
     codex_validated: true
     codex_verdict: "PASS" | "PASS_WITH_NOTES" | "FAIL"   # optional - legacy synonyms: approve | approve_with_changes | rework
     codex_report: "docs/reviews/clo-XX-codex-validation.md"
-    gemini_validation_report: "docs/reviews/clo-XX-gemini-validation.md"
     validation_synthesis_report: "docs/reviews/clo-XX-validation-synthesis.md"
     validation_synthesis_verdict: "PASS" | "PASS_WITH_NOTES" | "FAIL"   # legacy synonyms: approve | approve_with_changes | pivot | rework
     validation_fix_iteration_count: 0 | 1   # optional
@@ -51,17 +50,23 @@ History events required: `implementation_complete`,
 **Anti-pattern:** opening the PR before Step 4.6 passes. If you find
 yourself thinking "I'll just push the PR and address validation comments
 in review", stop. That is the failure mode this gate exists to prevent.
-Codex/Gemini findings are pre-PR blockers, not review-cycle suggestions.
+Validation-gate findings are pre-PR blockers, not review-cycle suggestions.
 
 ## Step 0 - Consult prior lessons
 
-Before landing the first sub-task, grep `.pi/lessons/` for rules that
-apply to the modules this task will touch:
+Before landing the first sub-task, grep **both lesson stores** for rules
+that apply to the modules this task will touch:
 
 ```bash
-ls .pi/lessons/ 2>/dev/null
-grep -l -i -e backend -e workflow -e conductor -e tasks -e apply_verify -e role -e pr-review .pi/lessons/ 2>/dev/null
+ls .pi/lessons/ docs/lessons/ 2>/dev/null
+grep -rl -i -e backend -e workflow -e conductor -e tasks -e apply_verify -e role -e pr-review \
+  .pi/lessons/ docs/lessons/ 2>/dev/null
 ```
+
+Two stores exist and both are live: `.pi/lessons/` holds topic files
+written by the complete phase, `docs/lessons/` holds the per-lesson
+files written by `/session:wrap`. Searching only one silently drops
+half the corpus.
 
 Adjust the keyword list to match the touched modules. Read every
 matching file end-to-end. Hits become test-plan inputs:
@@ -165,43 +170,44 @@ update_workflow_state({
 ```
 
 Note: `status` is `validating`, NOT `complete`. The phase only completes
-after Step 4 produces all three review files and the synthesis verdict
+after Step 4 produces its review files and the synthesis verdict
 permits it (Step 4.5). Setting `status: complete` here would let an agent
 open a PR while skipping the validation gate - that is the bug this
 ordering prevents. Do NOT call `transition_phase` until Step 4.6 passes.
 
-## Step 4 - Two-reviewer validation + synthesis gate (MANDATORY)
+## Step 4 - Reviewer validation + synthesis gate (MANDATORY)
 
 This is the lok equivalent of the mentis `review` phase. It is a
 **bounded** gate:
 
-1. Run Codex and Gemini concurrently as independent raw reviewers.
-2. Save both raw reports.
-3. Run a third model to synthesize the two reports, classify scope, and
+1. Run Codex as the independent raw reviewer.
+2. Save the raw report. If Codex fails, the workflow runs a Claude
+   fallback reviewer in its place.
+3. Run a second model to synthesize the report, classify scope, and
    decide what (if anything) must be fixed.
 4. Apply at most **one** synthesis-approved fix iteration.
 5. If the synthesis recommends a pivot or fundamental rework, stop and ask
    the user instead of auto-fixing.
 
-The roster is intentionally asymmetric: design-review uses Gemini + Ollama + Claude
-fallback during iteration, while `pre-pr-validation` uses Codex + Gemini for final PR
-decisions.
+The roster is intentionally asymmetric: design-review uses Ollama +
+Claude fallback during iteration, while `pre-pr-validation` uses Codex
+for final PR decisions.
 
 Never loop indefinitely on reviewer suggestions. Raw reviewer reports are
 inputs; only the synthesis report drives fixes.
 
 ### 4.1 Run the validation gate via `lok`
 
-The codex+gemini+synthesis pipeline lives in
+The codex+synthesis pipeline lives in
 `.lok/workflows/pre-pr-validation.toml`. Do **not** reinvent it inline.
 The LLM running this phase MUST invoke `lok` and let the workflow engine
-manage prompt assembly, parallel reviewer dispatch, output validation,
+manage prompt assembly, reviewer dispatch, output validation,
 and review-file writes.
 
 Anti-pattern (do not do this): writing a `/tmp/run_validation.sh` that
-shells out to `codex exec` and `opencode run` directly. That bypasses the
-workflow's output validators, fallback logic, and synthesis step, and it
-hardcodes models that drift over time. Always go through `lok`.
+shells out to `codex exec` directly. That bypasses the workflow's output
+validators, fallback logic, and synthesis step, and it hardcodes models
+that drift over time. Always go through `lok`.
 
 ### 4.2 Invoke the `pre-pr-validation` workflow
 
@@ -215,36 +221,17 @@ Optional environment overrides:
 | Variable | Default | Purpose |
 |---|---|---|
 | `CODEX_MODEL` | `gpt-5.6-sol` | Codex model used for the codex reviewer |
-| `GEMINI_MODEL` | `gemini-3.1-pro-preview` | Primary Google model (opencode prefixes `google/`) |
-| `GEMINI_FALLBACK_MODEL` | `gemini-3.6-flash` | Used if the primary returns empty; also the health-check probe |
-
-The "gemini" reviewer is a **role name**, not a CLI. It runs Google models
-through `opencode`; the retired `gemini` CLI is no longer used anywhere in
-the gate. The canonical invocation is:
-
-```bash
-opencode run --model "google/$MODEL" --agent plan --dir "$PWD" -- "$PROMPT" < /dev/null
-```
-
-- `--agent plan` is opencode's read-only mode - the analogue of `codex -s read-only`.
-- `--` guards prompts that begin with `-`.
-- `< /dev/null` stops opencode blocking on stdin in a non-interactive step.
-- opencode **rejects unknown flags**: it prints help to stderr and runs nothing,
-  leaving stdout empty. Never pass Claude Code flags such as
-  `--dangerously-skip-permissions`; the reviewer leg silently degrades to
-  `REVIEW_FAILED` on every run.
-- opencode writes its progress banner and tool trace to stderr, so stdout is
-  clean Markdown and needs no post-processing.
 
 The workflow writes (and the rest of this phase reads):
 
 - `docs/reviews/clo-XX-codex-validation.md`
-- `docs/reviews/clo-XX-gemini-validation.md`
 - `docs/reviews/clo-XX-validation-synthesis.md`
 
-If both external reviewers fail, the workflow runs a Claude fallback and
+If the Codex reviewer fails, the workflow runs a Claude fallback and
 writes `docs/reviews/clo-XX-claude-fallback-validation.md`. The synthesis
-step still runs and produces the binding verdict.
+step still runs and produces the binding verdict. The workflow's own gate
+requires the synthesis report plus at least one of the two reviewer
+reports, so a run rescued by the fallback still passes.
 
 If `lok workflow run` exits non-zero or any of the three required files
 is missing/empty, treat the gate as failed: do **not** transition phases.
@@ -262,7 +249,7 @@ update_workflow_state({
 
 Then investigate the failure (re-run with `--verbose`, inspect the
 reviewer report files), fix the root cause, and re-run the workflow.
-Only after a clean run produces all three review files may the workflow
+Only after a clean run produces the required review files may the workflow
 status return to `active` and the phase resume. Never patch around the
 failure by hand-writing review files. Do **not** call `transition_phase`
 while the gate is failed - the state machine in
@@ -309,24 +296,27 @@ update_workflow_state({
   task_id: "CLO-XX",
   phase: "implement",
   action: "codex_validation_complete",
-  details: "Codex: <verdict>. Gemini: <verdict>. Synthesis: <verdict>. <fixes> applied.",
+  details: "Codex: <verdict>. Synthesis: <verdict>. <fixes> applied.",
   phase_updates: {
     status: "complete",   // ONLY for PASS / PASS_WITH_NOTES (after fix)
     codex_validated: true,
     codex_verdict: "<PASS|PASS_WITH_NOTES|FAIL>",
     codex_report: "docs/reviews/clo-XX-codex-validation.md",
-    gemini_validation_report: "docs/reviews/clo-XX-gemini-validation.md",
     validation_synthesis_report: "docs/reviews/clo-XX-validation-synthesis.md",
     validation_synthesis_verdict: "<PASS|PASS_WITH_NOTES|FAIL>",
     validation_fix_iteration_count: 0 | 1
   },
   token_usage: [
     { provider: "codex", model: "gpt-5.6-sol", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-codex" },
-    { provider: "gemini", model: "google/gemini-3.1-pro-preview", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-gemini" },
     { provider: "claude", model: "claude-opus-5", prompt_tokens: <p>, completion_tokens: <c>, task_label: "pre-pr-validation-synthesis" }
   ]
 })
 ```
+
+When Codex failed and the Claude fallback produced the review, point
+`codex_report` at `docs/reviews/clo-XX-claude-fallback-validation.md` and
+say so in `details`. The field name is the schema's, not a claim about
+which model ran.
 
 If `validation_fix_iteration_count` was `1`, append a second `token_usage`
 record for the fix-iteration dispatches via a follow-up
@@ -347,17 +337,19 @@ Run the file-existence check verbatim:
 
 ```bash
 TASK=clo-XX
-for f in \
-  docs/reviews/${TASK}-codex-validation.md \
-  docs/reviews/${TASK}-gemini-validation.md \
-  docs/reviews/${TASK}-validation-synthesis.md
-do
-  if [ ! -s "$f" ]; then
-    echo "GATE FAIL: missing or empty $f"
-    exit 1
-  fi
-done
-echo "GATE OK: all three validation reports present"
+
+if [ ! -s "docs/reviews/${TASK}-validation-synthesis.md" ]; then
+  echo "GATE FAIL: missing or empty docs/reviews/${TASK}-validation-synthesis.md"
+  exit 1
+fi
+
+if [ ! -s "docs/reviews/${TASK}-codex-validation.md" ] \
+   && [ ! -s "docs/reviews/${TASK}-claude-fallback-validation.md" ]; then
+  echo "GATE FAIL: no reviewer report (neither codex nor claude-fallback)"
+  exit 1
+fi
+
+echo "GATE OK: synthesis plus a reviewer report present"
 ```
 
 Then verify each item by reading the workflow YAML and the synthesis
@@ -367,9 +359,8 @@ report:
       `in_progress`, or unset).
 - [ ] `phases.implement.codex_validated == true`.
 - [ ] `phases.implement.codex_report` points to an existing,
-      non-empty file with a final `## Verdict` section.
-- [ ] `phases.implement.gemini_validation_report` points to an existing,
-      non-empty file with a final `## Verdict` section.
+      non-empty file with a final `## Verdict` section (the Claude
+      fallback report when Codex failed).
 - [ ] `phases.implement.validation_synthesis_report` points to an
       existing, non-empty file.
 - [ ] `phases.implement.validation_synthesis_verdict` is `PASS` or
@@ -385,8 +376,8 @@ report:
       `codex_validation_complete` events.
 
 If any synthesis "Must Fix" item is unaddressed, the gate fails -
-returning to it later as PR-review feedback is not acceptable. Codex and
-Gemini are pre-PR reviewers; the human and bot reviewers in Step 3.5 of
+returning to it later as PR-review feedback is not acceptable. This gate
+reviews before the PR exists; the human and bot reviewers in Step 3.5 of
 `pr.md` are not a substitute.
 
 ## Step 5 - Transition to PR
