@@ -192,7 +192,11 @@ phases:
         (start = line - context_lines as a 0-based index). This is a panic fix; the off-by-one is
         behavior to preserve, not to correct here.
   implement:
-    status: in_progress
+    status: complete
+    codex_validated: true
+    codex_verdict: FAIL_ROUND_1_THEN_FAIL_ROUND_2_ONE_ITEM_DECLINED
+    codex_report: docs/reviews/clo-633-codex-validation-2.md
+    opencode_validation_report: docs/reviews/clo-633-opencode-validation.md
     commits:
       - sha: 9db27fc
         summary: 'fix(tasks): stop seven slice sites panicking on ordinary input'
