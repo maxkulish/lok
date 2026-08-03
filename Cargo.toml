@@ -6,8 +6,8 @@ rust-version = "1.80"
 description = "Local orchestration layer for coordinating multiple LLM backends"
 authors = ["ducks"]
 license = "MIT"
-repository = "https://github.com/ducks/lok"
-homepage = "https://github.com/ducks/lok"
+repository = "https://github.com/maxkulish/lok"
+homepage = "https://github.com/maxkulish/lok"
 documentation = "https://docs.rs/lokomotiv"
 
 readme = "README.md"
