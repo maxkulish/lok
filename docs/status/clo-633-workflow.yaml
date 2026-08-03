@@ -365,6 +365,8 @@ phases:
   complete:
     status: complete
     aggregation_files_updated: true
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/82
+    finalize_pr_number: 82
     merged_at: '2026-08-03T14:03:05Z'
     merge_commit: a8f84d8
     pr_number: 80
