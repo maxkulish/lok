@@ -176,39 +176,14 @@ async fn gather_code_context(dir: &Path, issue: &GitHubIssue) -> Result<String> 
     // Look for file:line patterns like "src/main.rs:42" or "main.rs line 42"
     let file_refs = extract_file_references(&all_text);
 
-    if !file_refs.is_empty() {
-        context.push_str("## Referenced files from issue:\n\n");
-
-        for file_ref in &file_refs {
-            // Try to read the file - if it doesn't exist, just skip it
-            let file_path = dir.join(&file_ref.path);
-            if let Ok(content) = tokio::fs::read_to_string(&file_path).await {
-                let lines: Vec<&str> = content.lines().collect();
-
-                // Show context around the referenced line
-                let start = file_ref.line.saturating_sub(10);
-                let end = (file_ref.line + 10).min(lines.len());
-
-                context.push_str(&format!("### {}", file_ref.path));
-                if file_ref.line > 0 {
-                    context.push_str(&format!(" (around line {})", file_ref.line));
-                }
-                context.push_str("\n```\n");
-
-                for (i, line) in lines[start..end].iter().enumerate() {
-                    let line_num = start + i + 1;
-                    let marker = if line_num == file_ref.line {
-                        ">>>"
-                    } else {
-                        "   "
-                    };
-                    context.push_str(&format!("{} {:4}: {}\n", marker, line_num, line));
-                }
-
-                context.push_str("```\n\n");
-            }
+    // Try to read each referenced file - if it doesn't exist, just skip it
+    let mut loaded: Vec<(String, usize, String)> = Vec::new();
+    for file_ref in &file_refs {
+        if let Ok(content) = tokio::fs::read_to_string(dir.join(&file_ref.path)).await {
+            loaded.push((file_ref.path.clone(), file_ref.line, content));
         }
     }
+    context.push_str(&render_issue_file_sections(&loaded));
 
     // Also try to grep for keywords from the issue title
     let keywords = extract_keywords(&issue.title);
@@ -238,6 +213,35 @@ async fn gather_code_context(dir: &Path, issue: &GitHubIssue) -> Result<String> 
 struct FileRef {
     path: String,
     line: usize,
+}
+
+/// Assemble the "Referenced files from issue" block from already-read contents.
+///
+/// Returns an empty string when no file yields a window. That matters beyond
+/// cosmetics: the caller's keyword-search fallback only runs while `context` is
+/// still empty, so emitting a bare heading here would suppress it whenever every
+/// reference is stale or out of range.
+fn render_issue_file_sections(files: &[(String, usize, String)]) -> String {
+    let mut sections = String::new();
+    for (path, line, content) in files {
+        let lines: Vec<&str> = content.lines().collect();
+        let Some(body) = crate::utils::render_line_window(&lines, *line, 10) else {
+            continue;
+        };
+
+        sections.push_str(&format!("### {}", path));
+        if *line > 0 {
+            sections.push_str(&format!(" (around line {})", line));
+        }
+        sections.push_str("\n```\n");
+        sections.push_str(&body);
+        sections.push_str("```\n\n");
+    }
+
+    if sections.is_empty() {
+        return sections;
+    }
+    format!("## Referenced files from issue:\n\n{}", sections)
 }
 
 fn extract_file_references(text: &str) -> Vec<FileRef> {
@@ -327,4 +331,69 @@ If you need more context about specific files, say which files you'd need to see
 Provide your fix:"#,
         issue.number, issue.title, body, code_context
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(path: &str, line: usize, body: &str) -> (String, usize, String) {
+        (path.to_string(), line, body.to_string())
+    }
+
+    #[test]
+    fn issue_sections_all_out_of_range_yields_nothing() {
+        // The point of returning "" rather than a bare heading: the caller only
+        // runs its keyword-search fallback while `context` is still empty.
+        let files = vec![
+            file("src/main.rs", 99999, "a\nb\nc\n"),
+            file("src/lib.rs", usize::MAX, "x\n"),
+        ];
+        assert_eq!(render_issue_file_sections(&files), "");
+    }
+
+    #[test]
+    fn issue_sections_empty_input_yields_nothing() {
+        assert_eq!(render_issue_file_sections(&[]), "");
+    }
+
+    #[test]
+    fn issue_sections_mixed_emits_heading_once_and_only_valid_sections() {
+        let files = vec![
+            file("src/gone.rs", 99999, "a\nb\n"),
+            file("src/real.rs", 2, "a\nb\nc\n"),
+            file("src/also_gone.rs", 40000, "z\n"),
+        ];
+        let out = render_issue_file_sections(&files);
+
+        assert_eq!(out.matches("## Referenced files from issue:").count(), 1);
+        assert_eq!(out.matches("### ").count(), 1);
+        assert!(out.contains("### src/real.rs (around line 2)"));
+        assert!(!out.contains("gone.rs"));
+        assert!(!out.contains("```\n```"), "no empty fenced block");
+    }
+
+    #[test]
+    fn issue_sections_line_zero_omits_the_around_line_suffix() {
+        let out = render_issue_file_sections(&[file("src/a.rs", 0, "x\ny\n")]);
+        assert!(out.contains("### src/a.rs\n```\n"));
+        assert!(!out.contains("around line"));
+    }
+
+    #[test]
+    fn issue_sections_framing_is_unchanged() {
+        let out = render_issue_file_sections(&[file("src/a.rs", 1, "x\n")]);
+        assert_eq!(
+            out,
+            "## Referenced files from issue:\n\n### src/a.rs (around line 1)\n```\n>>>    1: x\n```\n\n"
+        );
+    }
+
+    #[test]
+    fn issue_sections_empty_file_contributes_nothing() {
+        assert_eq!(
+            render_issue_file_sections(&[file("src/empty.rs", 1, "")]),
+            ""
+        );
+    }
 }

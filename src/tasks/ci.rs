@@ -194,8 +194,8 @@ fn get_github_ci_status(dir: &Path, pr: &str) -> Result<(String, Vec<FailedCheck
                     // Truncate very long logs
                     let truncated = if log_text.len() > 15000 {
                         format!(
-                            "{}...\n[truncated, showing last 15000 chars]",
-                            &log_text[log_text.len() - 15000..]
+                            "{}...\n[truncated, showing last 15000 bytes]",
+                            crate::utils::tail_utf8(&log_text, 15000)
                         )
                     } else {
                         log_text
@@ -273,7 +273,7 @@ fn get_gitlab_ci_status(dir: &Path, mr: &str) -> Result<(String, Vec<FailedCheck
                                         let truncated = if log_text.len() > 15000 {
                                             format!(
                                                 "{}...\n[truncated]",
-                                                &log_text[log_text.len() - 15000..]
+                                                crate::utils::tail_utf8(&log_text, 15000)
                                             )
                                         } else {
                                             log_text

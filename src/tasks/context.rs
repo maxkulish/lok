@@ -113,18 +113,13 @@ pub async fn run(
 
     // Extract file references from the text
     let file_refs = extract_file_references(&search_text);
-    if !file_refs.is_empty() {
-        context.push_str("## Referenced Files\n\n");
-        for file_ref in &file_refs {
-            if let Ok(content) = read_file_around_line(dir, &file_ref.path, file_ref.line, 15).await
-            {
-                context.push_str(&format!(
-                    "### {} (line {})\n```\n{}\n```\n\n",
-                    file_ref.path, file_ref.line, content
-                ));
-            }
+    let mut loaded: Vec<(String, usize, String)> = Vec::new();
+    for file_ref in &file_refs {
+        if let Ok(content) = tokio::fs::read_to_string(dir.join(&file_ref.path)).await {
+            loaded.push((file_ref.path.clone(), file_ref.line, content));
         }
     }
+    context.push_str(&render_referenced_files(&loaded));
 
     // Extract keywords and search codebase
     let keywords = extract_keywords(&search_text);
@@ -316,27 +311,26 @@ fn grep_codebase(dir: &Path, pattern: &str) -> Result<String> {
     Ok(limited)
 }
 
-async fn read_file_around_line(
-    dir: &Path,
-    path: &str,
-    line: usize,
-    context_lines: usize,
-) -> Result<String> {
-    let file_path = dir.join(path);
-    let content = tokio::fs::read_to_string(&file_path).await?;
-    let lines: Vec<&str> = content.lines().collect();
-
-    let start = line.saturating_sub(context_lines);
-    let end = (line + context_lines).min(lines.len());
-
-    let mut output = String::new();
-    for (i, l) in lines[start..end].iter().enumerate() {
-        let line_num = start + i + 1;
-        let marker = if line_num == line { ">>>" } else { "   " };
-        output.push_str(&format!("{} {:4}: {}\n", marker, line_num, l));
+/// Assemble the "Referenced Files" block from already-read file contents.
+///
+/// Returns an empty string when no file yields a window, so the heading is never
+/// emitted on its own and an out-of-range reference contributes no empty fence.
+fn render_referenced_files(files: &[(String, usize, String)]) -> String {
+    let mut sections = String::new();
+    for (path, line, content) in files {
+        let lines: Vec<&str> = content.lines().collect();
+        if let Some(body) = crate::utils::render_line_window(&lines, *line, 15) {
+            sections.push_str(&format!(
+                "### {} (line {})\n```\n{}\n```\n\n",
+                path, line, body
+            ));
+        }
     }
 
-    Ok(output)
+    if sections.is_empty() {
+        return sections;
+    }
+    format!("## Referenced Files\n\n{}", sections)
 }
 
 async fn read_file_with_limit(dir: &Path, path: &str, max_lines: usize) -> Result<String> {
@@ -378,4 +372,57 @@ fn get_project_structure(dir: &Path) -> Result<String> {
     }
 
     Ok(structure)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(path: &str, line: usize, body: &str) -> (String, usize, String) {
+        (path.to_string(), line, body.to_string())
+    }
+
+    #[test]
+    fn referenced_files_all_out_of_range_yields_nothing() {
+        let files = vec![
+            file("src/main.rs", 99999, "a\nb\nc\n"),
+            file("src/lib.rs", usize::MAX, "x\ny\n"),
+        ];
+        assert_eq!(render_referenced_files(&files), "");
+    }
+
+    #[test]
+    fn referenced_files_empty_input_yields_nothing() {
+        assert_eq!(render_referenced_files(&[]), "");
+    }
+
+    #[test]
+    fn referenced_files_mixed_emits_heading_once_and_only_valid_sections() {
+        let files = vec![
+            file("src/gone.rs", 99999, "a\nb\n"),
+            file("src/real.rs", 2, "a\nb\nc\n"),
+            file("src/also_gone.rs", 40000, "z\n"),
+        ];
+        let out = render_referenced_files(&files);
+
+        assert_eq!(out.matches("## Referenced Files").count(), 1);
+        assert_eq!(out.matches("### ").count(), 1);
+        assert!(out.contains("### src/real.rs (line 2)"));
+        assert!(!out.contains("gone.rs"));
+        assert!(!out.contains("```\n\n```"), "no empty fenced block");
+    }
+
+    #[test]
+    fn referenced_files_empty_file_contributes_nothing() {
+        assert_eq!(render_referenced_files(&[file("src/empty.rs", 1, "")]), "");
+    }
+
+    #[test]
+    fn referenced_files_framing_is_unchanged() {
+        let out = render_referenced_files(&[file("src/a.rs", 1, "x\n")]);
+        assert_eq!(
+            out,
+            "## Referenced Files\n\n### src/a.rs (line 1)\n```\n>>>    1: x\n\n```\n\n"
+        );
+    }
 }
