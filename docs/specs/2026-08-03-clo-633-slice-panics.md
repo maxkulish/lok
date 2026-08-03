@@ -181,7 +181,11 @@ section 5.
       200-byte model response, each with a multi-byte character straddling the cut, are handled
       without panicking.
 - [ ] AC10: `&sha[..8]` (`src/tasks/implement.rs:545`) does not panic when the SHA is shorter than
-      8 bytes, including the empty string.
+      8 bytes, including the empty string. Proven by a direct test of the extracted `short_sha`.
+      The `println!` call site itself is covered by the row-24 grep, not by a unit test: a test can
+      pin the behavior of the function that holds the slice, but it cannot assert that a given line
+      calls that function. Extracting a further display-path wrapper only moves the same gap one
+      level up, so the slice is confined to one tested function and the wiring is checked by grep.
 - [ ] AC11: None of the seven defect sites performs a raw byte-offset slice of a `String`/`&str`
       any more, and each one positively calls its intended helper. Scoped to exactly those seven
       sites - this is not a repository-wide prohibition, and other byte slices elsewhere are out of
@@ -348,7 +352,7 @@ may pass either way and are there to catch drift, not to demonstrate the fix.
 | 21 | **(D)** short-SHA rendering for `""`, `"abc"`, and a full 40-char SHA | `""`, `"abc"`, first 8 chars; no panic | `cargo test` |
 | 22 | (R) No byte indexing left at the defect sites | no output | `rg -n 'log_text\[' src/tasks/ci.rs` and `rg -n 'diff\[\.\.\|code\[\.\.\|sha\[\.\.' src/main.rs src/tasks/implement.rs` |
 | 23 | (R) Neither file caller computes its own window | no output | `rg -n 'saturating_sub\(context_lines\)\|saturating_sub\(10\)' src/tasks/context.rs src/tasks/fix.rs` |
-| 24 | (R) **Positive** wiring assertions - the helpers are actually called | two hits in `ci.rs`; at least one `render_line_window` in each of `context.rs` and `fix.rs`; one `truncate_utf8` in each of `main.rs` and `implement.rs` | `rg -c 'tail_utf8' src/tasks/ci.rs; rg -c 'render_line_window' src/tasks/context.rs src/tasks/fix.rs; rg -c 'truncate_utf8' src/main.rs src/tasks/implement.rs` |
+| 24 | (R) **Positive** wiring assertions - each defect site calls its helper. These must match *call sites*, not helper bodies or tests. After sub-tasks 1 and 4 extracted `truncate_log` and `truncate_diff_for_review`, counting `tail_utf8` in `ci.rs` proves nothing about the two call sites, since the only remaining hit is inside the helper; and a bare `truncate_log(` also matches the `fn` definition and the test. Hence the argument-anchored patterns below | 2, 1, 1, 1, 1, 1 respectively | `rg -c 'truncate_log\(log_text,' src/tasks/ci.rs; rg -c 'render_line_window' src/tasks/context.rs; rg -c 'render_line_window' src/tasks/fix.rs; rg -c 'truncate_diff_for_review\(&diff, max_diff_bytes\)' src/main.rs; rg -c 'short_sha\(&sha\)' src/tasks/implement.rs; rg -c 'truncate_utf8\(code, 150\)' src/tasks/implement.rs` |
 | 25 | (R) Full suite, lints, formatting | all pass | `cargo test && cargo clippy --all-targets -- -D warnings && cargo fmt --check` |
 | 26 | **(D)** Overflow absent in release, not merely masked | rows 6, 7 and 9 pass under release | `cargo test --release line_window` |
 

@@ -192,7 +192,122 @@ phases:
         (start = line - context_lines as a 0-based index). This is a panic fix; the off-by-one is
         behavior to preserve, not to correct here.
   implement:
-    status: pending
+    status: in_progress
+    commits:
+      - sha: 9db27fc
+        summary: 'fix(tasks): stop seven slice sites panicking on ordinary input'
+      - sha: 59e1538
+        summary: 'docs(clo-633): spec, reviews and workflow state'
+      - sha: 809eb67
+        summary: 'test(clo-633): make the proof discriminating at every changed call site'
+    pushed: true
+    remote_branch: origin/fix/clo-633-slice-panics
+    sub_tasks_complete: 4
+    validation_round_1:
+      opencode_verdict: PASS
+      opencode_report: docs/reviews/clo-633-opencode-validation.md
+      codex_verdict: FAIL
+      codex_report: docs/reviews/clo-633-codex-validation.md
+      note: >-
+        The two disagreed usefully. Opencode reviewed whether the panics were gone - they were, so
+        PASS. Codex reviewed whether the tests PROVED the panics were gone, and four of its five
+        findings held up. A FAIL on the proof plan rather than on the fix.
+      findings_upheld:
+        - >-
+          MEDIUM, correct - the AC10 test called `utils::truncate_utf8` directly. That helper was
+          already correct on main, so reverting the call site to `&sha[..8]` would have left the
+          test green. Exactly the non-discriminative shape the spec's own rule forbids, committed
+          by me one step after writing the rule. Fixed by extracting `short_sha` and testing it.
+        - >-
+          MEDIUM, correct - the AC7 differential sweep used a 5-line corpus, so `line` values of
+          199/200/201 only ever produced empty windows and no near-EOF body was ever compared.
+          Fixed with a 200-line corpus plus an assertion that the sweep compared at least 20
+          non-empty bodies, so a sweep that silently stops comparing cannot pass.
+        - >-
+          LOW, correct - AC8 was inferred from `render_issue_file_sections(...) == ""` rather than
+          proven. Nothing drove the real `context.is_empty()` gate. Fixed with two tokio tests
+          against a tempdir covering both directions.
+        - >-
+          LOW, correct and the most useful of the five - the empty-existing-file case is NOT
+          byte-identical to main, which emitted an empty fenced block. AC7 as worded was therefore
+          false. This is a spec defect, not a code defect: the behavior is intended and listed in
+          the edge cases, but AC7 claimed more than the change delivers. Rescoped AC7 to non-empty
+          bodies and added AC7a stating the carve-out.
+      findings_partially_upheld:
+        - >-
+          AC11's grep assertions were run and passed but exist only as spec text, so nothing guards
+          against a regression. More importantly `tasks/ci.rs` had no test at all - a revert to
+          byte slicing there would have been caught by nothing. Extracted `truncate_log` and tested
+          it, which also collapsed the two near-duplicate truncation blocks. The greps themselves
+          stay manual: adding untested shell assertions is what CLO-623 exists to stop.
+      findings_rejected:
+        - >-
+          AC12 "not verified" - codex ran in a read-only sandbox and could not invoke cargo. It was
+          verified locally: 564 unit tests pass, clippy clean with --all-targets --all-features -D
+          warnings, fmt clean.
+    validation_round_2:
+      codex_verdict: FAIL
+      codex_report: docs/reviews/clo-633-codex-validation-2.md
+      resolved: >-
+        3 of 5 confirmed resolved by codex - the AC7 sweep, the AC8 end-to-end tests, and the
+        AC7/AC7a carve-out.
+      findings_upheld:
+        - >-
+          LOW, correct and my own regression - extracting `truncate_log` and
+          `truncate_diff_for_review` made eval row 24 stale. It counted `tail_utf8` in ci.rs and
+          `truncate_utf8` in main.rs, but after the extraction the only hits are inside the helpers
+          themselves, so the grep proved nothing about the call sites. A bare `truncate_log(` also
+          matches the fn definition and the test. Row 24 rewritten with argument-anchored patterns
+          and re-verified: 2, 1, 1, 1, 1, 1.
+      findings_declined:
+        - >-
+          MEDIUM, declined with reasoning - "reverting `println!(..., short_sha(&sha))` at
+          implement.rs:545 to `&sha[..8]` would leave the test green". True, but not fixable the way
+          codex proposes. Its recommendation is to extract a display-path wrapper and test that;
+          the identical objection then applies to the new wrapper, since reverting the line that
+          calls it would also leave that test green. A unit test can pin the behavior of the
+          function holding the slice; it cannot assert that a particular line calls that function.
+          The slice is now confined to one tested function, no byte slice remains at the site, and
+          the wiring is checked by row 24's grep. Recorded in AC10 rather than silently ignored.
+      stopping_rule: >-
+        Two rounds, seven findings, six acted on. The one left open is a methodological limit of
+        unit testing, not a defect, and codex's own fix for it recurses. Proceeding to PR.
+    results:
+      helpers_added:
+        - 'utils::tail_utf8 - tail counterpart of truncate_utf8, is_char_boundary walk'
+        - 'utils::line_window - clamps start against end, saturating_add'
+        - 'utils::render_line_window - returns Option so an empty window cannot emit an empty fence'
+      call_sites_rewired:
+        - 'tasks/ci.rs:196,274 -> tail_utf8; "chars" label corrected to "bytes"'
+        - 'tasks/context.rs -> render_referenced_files + render_line_window; read_file_around_line deleted'
+        - 'tasks/fix.rs -> render_issue_file_sections + render_line_window'
+        - 'main.rs -> truncate_diff_for_review (extracted for testability) over truncate_utf8'
+        - 'tasks/implement.rs:583 -> truncate_utf8; :545 &sha[..8] -> truncate_utf8'
+      deviation_from_spec: >-
+        Sub-task 3 specified `read_file_around_line` becoming a thin wrapper over
+        `render_line_window`. It was deleted instead: once the section builder owns rendering, the
+        caller only needs the raw file contents, so the wrapper had no callers left. AC6 is
+        satisfied either way - neither file computes its own start/end.
+      eighth_site_found_and_left_alone: >-
+        `src/main.rs:1499` also slices a SHA - `&sha[..8.min(sha.len())]` - but the length is
+        already clamped and a SHA is ASCII hex, so it cannot panic. Not a defect; left untouched.
+      tests_added: 27
+      verification:
+        baseline_panics_confirmed: >-
+          Each defect shape was run against the pre-fix expression in a scratch program before the
+          tests were written: tail slice, inverted range, both head slices and the empty SHA all
+          panic on the exact inputs the tests use. The first attempt at the two head-slice inputs
+          did NOT panic - "é" is 2 bytes and both 50000 and 150 are even, so the cuts landed on
+          boundaries. Replaced with 3-byte "€" for the 50000 cut and 4-byte emoji for the 150 cut,
+          both re-verified as non-boundaries.
+        cargo_test: '753 passed, 0 failed (debug, --all-targets)'
+        cargo_test_release: '56 passed, 0 failed (new tests, release - proves overflow is absent, not masked)'
+        cargo_clippy: 'clean with --all-targets --all-features -D warnings'
+        cargo_fmt: clean
+        grep_rows: >-
+          Row 22 clean once comment lines are excluded; row 23 clean; row 24 positive - 2 tail_utf8
+          in ci.rs, 1 render_line_window in each of context.rs and fix.rs, truncate_utf8 present in
+          main.rs and implement.rs.
   pr:
     status: pending
     pr_url: null
@@ -259,3 +374,16 @@ history:
       User approved the revised spec after the second review pass. Seven defect sites, four
       sub-tasks, three follow-ups deferred to completion. Proceeding to implement; the spec
       decomposition is the plan, so the plan phase is skipped.
+  - timestamp: '2026-08-03T13:40:00Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All four sub-tasks landed as 9db27fc. Three helpers in utils.rs, seven call sites rewired,
+      27 tests. Every defect shape was proved to panic against the pre-fix expression before its
+      test was written - which caught that the first two head-truncation inputs were even-byte and
+      so never crossed a boundary at all. 753 tests pass in debug, the new ones also in release;
+      clippy and fmt clean.
+  - timestamp: '2026-08-03T13:41:00Z'
+    action: pushed_to_remote
+    phase: implement
+    details: Branch fix/clo-633-slice-panics pushed to origin, tracking set.
