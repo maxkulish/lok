@@ -318,7 +318,48 @@ phases:
     pr_number: 80
     base: main
     head: fix/clo-633-slice-panics
-    ci_gate: pending
+    ci_gate: pass
+    ci_checks:
+      - 'build / test (ubuntu-latest): pass'
+      - 'build / test (macos-latest): pass'
+      - 'library boundary: pass'
+      - 'etxtbsy-stress: skipping (by design)'
+    mergeable: true
+    merge_conflict_resolved:
+      cause: >-
+        main moved three commits ahead while the branch was open - 8b96821 (CLO-609 crate
+        metadata), 0e7c61e (aggregation sync for CLO-609), d28f0d8 (remove Gemini models from
+        tooling).
+      conflicts: >-
+        Only the three "Last Updated" header lines in PROJECT.md, ROADMAP.md and DEPENDENCIES.md.
+        Git merged the substance of both sides correctly - CLO-609's completion and this task's
+        Phase 15 additions coexist. Each header resolved to name both changes. Also retargeted
+        CLO-610 in PROJECT.md from "After CLO-609" to "Next", since that blocker had landed.
+      merge_commit: 48eb001
+    reviews:
+      qodo_round_1:
+        review_id: 4844718231
+        commit: 698683b
+        findings: 2
+        verdict_after_fix: 'Bugs (0), Rule violations (0), Requirement gaps (0), Skill insights (0)'
+        findings_detail:
+          - >-
+            Review recommended, UPHELD - `line_window` / `render_line_window` are public and their
+            docs read as conventional "1-based line, symmetric context on either side". The
+            implementation is deliberately asymmetric: `line` is 1-based but start/end are 0-based
+            indices with no conversion applied, so `line_window(5, 3, 1)` yields lines 3 and 4, not
+            2 through 4. A doc I wrote loosely. Rewritten to state the real semantics, why they
+            exist (byte-identical output), that they must not be "corrected" without changing the
+            callers' tests, and that `line == 0` is a real input from `unwrap_or(0)`.
+          - >-
+            Optional, UPHELD - the `short_sha_never_panics_on_an_unborn_head` comment claimed it
+            exercised the display call site. It does not; it calls `short_sha` directly. Same
+            overclaim codex raised in round 2, but aimed correctly: codex asked me to change the
+            code and I declined with reasoning; Qodo pointed out that the COMMENT asserts coverage
+            the test does not have, which was simply true. Code decision stands, comment corrected.
+        replies_posted: 2/2
+        re_review_requested_at: '2026-08-03T13:52:13Z'
+        re_review_observed_at: '2026-08-03T13:54:52Z'
     reviewers_expected:
       - qodo-code-review (requires /agentic_review; handle_push_trigger is False)
   complete:

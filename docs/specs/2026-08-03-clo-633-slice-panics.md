@@ -381,3 +381,12 @@ may pass either way and are there to catch drift, not to demonstrate the fix.
 3. No CI job builds against the declared `rust-version = "1.80"`, and the oldest toolchain installed
    locally is 1.94, so the MSRV in `Cargo.toml` is an unverified claim. It matters more once Phase 13
    publishes to crates.io.
+4. `/pr:review` Step 9.5's re-review poll cannot succeed against Qodo. It waits for a *review*
+   object whose `commit_id` equals the new head, but Qodo edits its existing review comment in
+   place and submits no new review - the same document already says so two sections earlier, then
+   gives a poll that contradicts it. Observed on PR #80: `/agentic_review` at 13:52:13Z produced a
+   comment update at 13:54:52Z with the findings recount, while `pulls/80/reviews` still held only
+   the original 13:46:39Z review against the superseded SHA. The poll ran to its full timeout on a
+   re-review that had already succeeded. The correct signal is `issues/comments/{id}.updated_at`
+   moving past the request timestamp on the existing review comment. Same untested-shell-in-
+   markdown family as CLO-623 and CLO-624.
