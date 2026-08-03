@@ -40,7 +40,7 @@ stop and reconcile both sides before landing.
    last resort and must be justified in `details`. Phase scripts must
    NOT set `status: complete` until their phase's exit-state checklist
    passes - in particular `implement` stays at `status: validating`
-   until the codex+gemini+synthesis gate produces a clean verdict.
+   until the codex+synthesis gate produces a clean verdict.
 
 3. **Schema parity between code and docs.** Any change to required
    fields, allowed transitions, allowed task-type x phase combinations,
@@ -49,14 +49,17 @@ stop and reconcile both sides before landing.
    - `.pi/extensions/orchestrate/index.ts` (`PHASE_CONFIG` etc.)
    - the relevant `.pi/orchestrator/phases/*.md` "Required exit state"
      and "History events required" sections
+   - the `.claude/commands/task/phases/*.md` mirror, for any phase file
+     that declares a "Required exit state" section
    Verify with `node .pi/scripts/check-schema-parity.mjs` before
    committing. Drift means the runtime gates one set of fields while
    the docs describe another - a silent failure mode. Fields documented
    in YAML but not gated by `PHASE_CONFIG` must be annotated with
    `# optional` inline so the parity checker treats them as
-   intentionally informational. If a `.claude/commands/task/phases/`
-   mirror is added later, extend the parity check to cover it as a
-   third place.
+   intentionally informational. The Claude mirror is checked only where
+   it declares an exit state; `--verbose` lists the phases still
+   outside the gate, and bringing one under it is just adding the
+   section.
 
 4. **MCP least-privilege.** Linear access is the approved 7-tool subset
    (`list_issues`, `get_issue`, `save_issue`, `list_comments`,
@@ -84,13 +87,17 @@ stop and reconcile both sides before landing.
      incidents. It writes a new `L<n>` block either into an existing
      topic file (e.g. `pr-review-failures.md`) or a per-task file at
      `.pi/lessons/clo-XX-<slug>-lessons.md`.
-   - Future tasks consult `.pi/lessons/` BEFORE drafting:
-     `design.md` Step 1 (before generating the draft) and
-     `implement.md` Step 1 (before slicing work) should `grep -l
-     <keyword> .pi/lessons/` for keywords relevant to the touched
-     modules / subsystems (e.g. `backend`, `workflow`, `conductor`,
-     `tasks`, `apply_verify`) and cite hits in the design assumption
-     list or the implementation plan.
+   - **There are two lesson stores and both are live.** `.pi/lessons/`
+     holds topic files written by the complete phase; `docs/lessons/`
+     holds per-lesson files written by `/session:wrap` (CLO-625 put
+     seven there). A consult that greps one store silently drops half
+     the corpus.
+   - Future tasks consult both BEFORE drafting: `design.md` Step 0
+     (before generating the draft) and `implement.md` Step 0 (before
+     slicing work) `grep -rl <keyword> .pi/lessons/ docs/lessons/` for
+     keywords relevant to the touched modules / subsystems (e.g.
+     `backend`, `workflow`, `conductor`, `tasks`, `apply_verify`) and
+     cite hits in the design assumption list or the implementation plan.
    - Lessons are append-only. Existing entries are not edited - a
      superseding incident produces a new `L<n>` that cross-references
      the old one.
@@ -112,8 +119,9 @@ stop and reconcile both sides before landing.
 
 The validation gate inside `implement.md` step 4 is the lok equivalent
 of a separate `review` phase. It runs the `pre-pr-validation` workflow
-(`.lok/workflows/pre-pr-validation.toml`) and synthesizes the codex +
-gemini reports. There is no standalone review phase here.
+(`.lok/workflows/pre-pr-validation.toml`) and synthesizes the codex
+report (or the Claude fallback's, when Codex fails). There is no
+standalone review phase here.
 
 The canonical assets under `.lok/` (`lok.toml`, `workflows/`, `prompts/`)
 are project-tracked, not local-only. A worktree created for a feature

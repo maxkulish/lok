@@ -20,11 +20,9 @@ table is a routing aid.
 | Phase                   | Persona                 | Default model               | Transport | Role            | Output                                              |
 |-------------------------|-------------------------|-----------------------------|-----------|-----------------|-----------------------------------------------------|
 | `design`                | `claude-designer.md`    | Claude Opus 5               | `claude`  | Drafter         | `docs/designs/clo-XX-<slug>.md`                     |
-| `design`                | `gemini-architect.md`   | `google/gemini-3.1-pro-preview` | `opencode` | Design reviewer | `docs/reviews/clo-XX-design-gemini.md`         |
-| `spec`                  | `gemini-architect.md`   | `google/gemini-3.1-pro-preview` | `opencode` | Spec reviewer   | `docs/reviews/clo-XX-spec-gemini.md`           |
-| `spec`                  | `ollama-rust-reviewer.md` | `glm-5.2:cloud`           | `ollama`  | Spec reviewer (footguns) | `docs/reviews/clo-XX-spec-ollama.md`       |
+| `design`                | `ollama-rust-reviewer.md` | `glm-5.2:cloud`           | `ollama`  | Design reviewer | `docs/reviews/clo-XX-review-ollama.md`              |
+| `spec`                  | `ollama-rust-reviewer.md` | `glm-5.2:cloud`           | `ollama`  | Spec reviewer   | `docs/reviews/clo-XX-spec-review-ollama.md`         |
 | `implement` (step 4)    | `codex-pre-pr.md`       | `gpt-5.6-sol`               | `codex`   | Validation gate | `docs/reviews/clo-XX-codex-validation.md`           |
-| `implement` (step 4)    | `gemini-architect.md`   | `google/gemini-3.1-pro-preview` | `opencode` | Validation gate | `docs/reviews/clo-XX-gemini-validation.md`     |
 | `implement` (step 4)    | `security-reviewer.md`  | Claude Opus 5               | `claude`  | Conditional - LLM backend / secret handling changes | inline in validation synthesis |
 | `implement` (step 4)    | `ops-reviewer.md`       | Claude Opus 5               | `claude`  | Conditional - rarely (lok is a CLI; only applies to deploy / packaging changes) | inline in validation synthesis |
 
@@ -32,38 +30,34 @@ The model column lists the *default*. Phase scripts and the
 underlying tooling (`lok workflow run …`, `pi run …`) can override
 via environment variables - see the relevant phase doc.
 
-**"Gemini" is a role name, not a CLI.** Google models are dispatched
-through `opencode` (`opencode run --model "google/<model>" --agent plan`),
-not the retired `gemini` CLI. The persona file, the `review_gemini` /
-`gemini_validation_report` schema fields, and the
-`docs/reviews/clo-XX-*-gemini.md` paths intentionally keep the `gemini`
-name: `PHASE_CONFIG` in `extensions/orchestrate/index.ts` gates on those
-identifiers and existing status YAMLs reference them. Only the transport
-and the model changed.
+Every review leg carries a Claude fallback inside its workflow, so a
+reviewer that returns `REVIEW_FAILED` degrades to a Claude review rather
+than to no review at all.
 
-Fallback model is `gemini-3.6-flash` (`GEMINI_FALLBACK_MODEL`), which also
-serves as the pre-flight health-check probe.
+**Google models are gone from the review path (2026-08-03).** The
+`gemini-architect` persona, the `gemini_review` legs in
+`.lok/workflows/*.toml`, and the `review_gemini` /
+`gemini_validation_report` schema fields were all removed. Ollama is the
+design and spec reviewer; Codex is the pre-PR validation reviewer. The
+`gemini` *backend* (`src/backend/gemini.rs`, `[backends.gemini]` in
+`.lok/lok.toml`) is untouched - lok still ships it as a selectable
+backend for user workflows; it is simply no longer wired into this
+repo's own review tooling.
 
-**Env overrides take the bare model name.** The `google/` above is the
-transport namespace, added by the workflows and by
-`GeminiBackend::normalize_model`, not part of the value you export. Both
-`GEMINI_MODEL=gemini-3.1-pro-preview` and the namespaced
-`GEMINI_MODEL=google/gemini-3.1-pro-preview` resolve correctly - the prefix is
-only added when absent - but the bare form is canonical.
+Workflow YAMLs written before that date may still carry `review_gemini`
+or `gemini_validation_report` keys. They are inert: nothing reads them
+and `PHASE_CONFIG` no longer requires them.
 
-Not to be confused with the former **GitHub bot** of a similar name:
+The **GitHub bot** of a similar name is a separate story:
 `gemini-code-assist` and its `/gemini review` trailer were removed from
 `skills/pr-review-cycle.md` on 2026-08-02 because the consumer Gemini
-Code Assist app is sunset. That was a PR-comment bot and is unrelated to
-the `gemini-architect` persona above, which is alive and runs on
-`opencode`. With the bot gone, this pre-PR gate is the automated review
-of record for lok.
+Code Assist app is sunset. `qodo-code-review` replaced it on the PR side.
 
 ## Conditional dispatch by module
 
 `security-reviewer.md` and `ops-reviewer.md` are NOT part of the
 default lok pipeline. lok is a CLI orchestrator for LLM agents, not a
-networked service, so the universal codex + gemini gate covers the
+networked service, so the universal codex validation gate covers the
 common case. Dispatch them only when the touched paths below fire:
 
 | Touched path                         | Run security-reviewer | Run ops-reviewer  |
@@ -87,8 +81,8 @@ The goal is non-overlapping finding domains:
 
 | Topic                              | Owned by                |
 |------------------------------------|-------------------------|
-| Design fidelity                    | `gemini-architect.md`   |
-| Rust idioms, lifetimes, generics   | `gemini-architect.md`   |
+| Design fidelity                    | `codex-pre-pr.md`       |
+| Rust idioms, lifetimes, generics   | `codex-pre-pr.md`       |
 | Mechanical Rust footguns           | `ollama-rust-reviewer.md` |
 | Test coverage of happy paths       | `codex-pre-pr.md`       |
 | LLM API keys, provider secrets     | `security-reviewer.md`  |
@@ -121,8 +115,8 @@ document, not a verdict.
 ## Adding a new persona
 
 1. Copy an existing reviewer persona as a template (`codex-pre-pr.md`
-   for pre-PR-style validators, `gemini-architect.md` for design
-   reviewers).
+   for pre-PR-style validators, `ollama-rust-reviewer.md` for design
+   and spec reviewers).
 2. Declare scope and out-of-scope explicitly. Out-of-scope must
    reference the persona that *does* own the topic.
 3. Keep the verdict line format identical.

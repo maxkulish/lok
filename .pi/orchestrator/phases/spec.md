@@ -18,17 +18,16 @@ phases:
     auto_approval_reason: "..."        # optional - if auto_approved
     review_completed: true
     review_skip_reason: "..."          # optional - only if review tooling unavailable
-    review_gemini: "docs/reviews/clo-XX-spec-gemini.md"   | null    # optional
-    review_ollama: "docs/reviews/clo-XX-spec-ollama.md"   | null    # optional
-    review_synthesis: "docs/reviews/clo-XX-spec-synthesis.md" | null   # optional
+    review_ollama: "docs/reviews/clo-XX-spec-review-ollama.md"   | null    # optional
+    review_synthesis: "docs/reviews/clo-XX-spec-review-synthesis.md" | null   # optional
     review_verdict: "approve" | "approve_with_changes" | "rework" | null   # optional
     review_applied: true | false       # optional
     applied_suggestions: []            # optional
     flagged_suggestions: []            # optional
     token_usage:                                              # optional, observational
       - recorded_at: "2026-05-16T12:00:00Z"
-        provider: "gemini"
-        model: "google/gemini-3.1-pro-preview"
+        provider: "ollama"
+        model: "glm-5.2:cloud"
         prompt_tokens: 0
         completion_tokens: 0
         task_label: "spec-review"
@@ -121,9 +120,10 @@ lok run .lok/workflows/spec-review.toml \
 
 Outputs:
 
-- `docs/reviews/clo-XX-spec-gemini.md`
-- `docs/reviews/clo-XX-spec-ollama.md`
-- `docs/reviews/clo-XX-spec-synthesis.md`
+- `docs/reviews/clo-XX-spec-review-ollama.md`
+- `docs/reviews/clo-XX-spec-review-synthesis.md`
+- `docs/reviews/clo-XX-spec-review-claude-fallback.md` (only when the
+  Ollama leg failed)
 
 ```ts
 update_workflow_state({
@@ -133,17 +133,16 @@ update_workflow_state({
   details: "Verdict: <verdict>. Applied: <n>. Flagged: <m>.",
   phase_updates: {
     review_completed: true,
-    review_gemini: "docs/reviews/clo-XX-spec-gemini.md",
-    review_ollama: "docs/reviews/clo-XX-spec-ollama.md",
-    review_synthesis: "docs/reviews/clo-XX-spec-synthesis.md",
+    review_ollama: "docs/reviews/clo-XX-spec-review-ollama.md",
+    review_synthesis: "docs/reviews/clo-XX-spec-review-synthesis.md",
     review_verdict: "<verdict>",
     review_applied: true,
     applied_suggestions: [...],
     flagged_suggestions: [...]
   },
   token_usage: [
-    { provider: "gemini", model: "google/gemini-3.1-pro-preview", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-gemini" },
-    { provider: "ollama", model: "glm-5.2:cloud", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-ollama" }
+    { provider: "ollama", model: "glm-5.2:cloud", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-ollama" },
+    { provider: "claude", model: "claude-opus-5", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-synthesis" }
   ]
 })
 ```
@@ -214,7 +213,7 @@ transition_phase({
 })
 ```
 
-The `implement` phase will still run the codex+gemini validation gate.
+The `implement` phase will still run the codex validation gate.
 
 ## Notes
 

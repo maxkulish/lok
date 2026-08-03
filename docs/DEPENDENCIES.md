@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-03 (CLO-633 started; the five codex-security scan findings added, eleven open tasks, none blocked)
+**Last Updated**: 2026-08-03 (CLO-609 completed, CLO-633 started; the five codex-security scan findings added, ten open tasks, none blocked)
 
 ## Current Blockers
 
@@ -13,7 +13,6 @@ Nothing is blocked. The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-591 -> CLO-592
 
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
-| [CLO-609](https://linear.app/cloud-ai/issue/CLO-609) | None. Standalone manifest fix | 2026-08-01 |
 | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610) | None. Standalone `release.yml` change | 2026-08-01 |
 | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623) | PR #71 merged | 2026-08-02 |
 | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | PR #71 merged | 2026-08-02 |
@@ -24,7 +23,7 @@ Nothing is blocked. The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-591 -> CLO-592
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | None. Independent codex-security scan finding | 2026-08-03 |
 
-CLO-609 is the one with a deadline attached to it rather than a blocker: per-version crate metadata freezes at publish, so it has to land before the next release or the wrong repository link is baked into another version.
+CLO-609 landed on 2026-08-03 (PR #78, `8b96821`), so the pre-publish metadata deadline is cleared.
 
 ## Standing constraints
 

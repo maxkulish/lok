@@ -144,7 +144,7 @@ history:
 | `/prd create` | Discovery | Draft lightweight PRD if none exists |
 | `/prd-discovery` | Discovery | Multi-model PRD review, prior-art research, assumption mapping |
 | `/design-doc:create` | Design | Interactive design creation (receives discovery report) |
-| `/design-doc:review` | Design | AI review (Gemini + Ollama) |
+| `/design-doc:review` | Design | AI review (Ollama + Claude fallback) |
 | `/design-doc:finalize` | Design | Mark design as approved |
 | `/plan:create` | Plan | Generate implementation plan |
 | `/plan:implement` | Implement | Execute plan phases |
@@ -161,7 +161,7 @@ history:
 |-------|-------|---------|
 | `/project:sync --start` | Entry | Validate WIP limit, add to Active Work |
 | `/spec` | Spec | Write 5-section autonomous specification |
-| Gemini + Ollama review | Spec | AI review of specification (parallel, same pattern as design review) |
+| Ollama review + synthesis | Spec | AI review of specification (same pattern as design review) |
 | `/plan:implement` | Implement | Execute spec decomposition |
 | `/pr:create` | PR | Create pull request |
 | `/pr:review` | PR | Handle review feedback |

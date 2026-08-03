@@ -807,8 +807,11 @@ mod tests {
 
     #[test]
     fn short_sha_never_panics_on_an_unborn_head() {
-        // Tests the display path itself, not the helper behind it: reverting the
-        // call site to `&sha[..8]` has to fail this.
+        // Scope: this covers `short_sha` only. It does NOT execute the
+        // `println!(..., short_sha(&sha))` call site, so reverting that line to
+        // `&sha[..8]` would leave this test green. A unit test can pin what a
+        // function does, not that a particular line calls it; the wiring is
+        // checked by the grep in the spec's evaluation table instead.
         assert_eq!(short_sha(""), "");
         assert_eq!(short_sha("abc"), "abc");
         assert_eq!(

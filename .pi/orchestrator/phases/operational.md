@@ -146,5 +146,5 @@ path.
 
 - Update Linear status `Backlog -> In Progress -> In Review -> Done`
   even when no PR is opened.
-- The codex+gemini validation gate is **not required** for operational
+- The codex validation gate is **not required** for operational
   tasks unless code changes are involved.

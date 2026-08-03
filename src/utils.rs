@@ -261,11 +261,28 @@ pub fn tail_utf8(s: &str, max_bytes: usize) -> &str {
     &s[start..]
 }
 
-/// Compute a non-inverted `[start, end)` window of `context_lines` either side of
-/// `line` (1-based) within a file of `total_lines`.
+/// Compute a non-inverted `[start, end)` slice range around `line` within a file
+/// of `total_lines`.
 ///
 /// Guarantees `start <= end <= total_lines` for every input, including line
 /// numbers past the end of the file and `usize::MAX` for either argument.
+///
+/// # Semantics, which are deliberately not symmetric
+///
+/// `line` is a 1-based line number but `start` and `end` are 0-based slice
+/// indices, and the conversion is not applied: `start` is `line - context_lines`
+/// and `end` is `line + context_lines`, both taken directly as indices. The
+/// window therefore sits one line *after* where a symmetric reading suggests -
+/// `line_window(5, 3, 1)` returns `(2, 4)`, which displays lines 3 and 4 rather
+/// than 2 through 4.
+///
+/// This is preserved from the code these helpers replaced so that output stays
+/// byte-identical (CLO-633). Do not "correct" it without changing the callers'
+/// expected output and their tests.
+///
+/// `line == 0` is a real input, not a bug: `extract_file_references` parses line
+/// numbers with `unwrap_or(0)`, so a reference whose digits overflow `usize`
+/// arrives as 0 and renders the head of the file with no marker.
 pub fn line_window(total_lines: usize, line: usize, context_lines: usize) -> (usize, usize) {
     let end = line.saturating_add(context_lines).min(total_lines);
     // Clamping `start` against `end` rather than `total_lines` is what keeps the
@@ -274,10 +291,14 @@ pub fn line_window(total_lines: usize, line: usize, context_lines: usize) -> (us
     (start, end)
 }
 
-/// Render numbered source lines around `line` (1-based), marking it with `>>>`.
+/// Render numbered source lines around `line`, marking `line` itself with `>>>`.
 ///
 /// Returns `None` when the window is empty, so callers cannot emit a heading or
 /// a fenced block with nothing inside it.
+///
+/// The window comes from [`line_window`] and inherits its asymmetry - read that
+/// function's docs before using this one, and note that `line == 0` renders the
+/// head of the file with no `>>>` marker anywhere.
 pub fn render_line_window(lines: &[&str], line: usize, context_lines: usize) -> Option<String> {
     let (start, end) = line_window(lines.len(), line, context_lines);
     if start == end {

@@ -57,15 +57,15 @@
      - `phases.design.draft_ready: true`
    - Add history entry: `design_draft_ready`
    - **Invoke AI Review**: `/design-doc:review CLO-XX`
-     - Display: "Running automated AI review (Gemini + Ollama in parallel, up to 5 minutes)..."
-     - Wait for both reviews to complete
+     - Display: "Running automated AI review (Ollama, with Claude fallback, up to 5 minutes)..."
+     - Wait for the review and its synthesis to complete
      - Update state:
-       - `phases.design.review_gemini: docs/reviews/clo-XX-review-gemini.md`
        - `phases.design.review_ollama: docs/reviews/clo-XX-review-ollama.md`
-       - `phases.design.review_verdict: [strictest verdict of both]`
+       - `phases.design.review_synthesis: docs/reviews/clo-XX-review-synthesis.md`
+       - `phases.design.review_verdict: [synthesis verdict]`
        - `phases.design.review_completed: true`
      - Add history entry: `design_review_complete`
-     - **If both reviews time out or fail**: Skip apply step, continue to checkpoint (review is advisory)
+     - **If the review and its fallback both fail**: Skip apply step, continue to checkpoint (review is advisory)
    - **Apply Review Feedback** (see section below)
    - Update state:
      - `phases.design.status: checkpoint`
@@ -134,7 +134,7 @@ If any contradicting items were found, present them **one at a time**:
 ```
 REVIEW CONFLICT - Item [N of M]
 
-Suggestion (from [Gemini|Ollama|both]):
+Suggestion (from [Ollama|Claude fallback|synthesis]):
   "[exact suggestion text]"
 
 This conflicts with a prior decision:
@@ -168,9 +168,8 @@ After all items are resolved, update state:
    ---
    AI REVIEW RESULTS
 
-   Gemini verdict:  [APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION]
-   Ollama verdict:  [APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION]
-   Consensus:       [strictest of both]
+   Ollama verdict:    [APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION]
+   Synthesis verdict: [APPROVE | APPROVE_WITH_SUGGESTIONS | NEEDS_REVISION]
 
    Auto-applied [N] suggestions:
    - [brief description of each applied change]
@@ -186,15 +185,15 @@ After all items are resolved, update state:
    Options:
    1. [approve] - Design is approved, finalize it
    2. [feedback] - I have changes to make
-   3. [view-gemini] - View full Gemini review
-   4. [view-ollama] - View full Ollama review
+   3. [view-ollama] - View full Ollama review
+   4. [view-synthesis] - View the review synthesis
    5. [pause] - Pause workflow, continue later
 
    Your choice:
    ```
 
-4. **If view-gemini**: Display `docs/reviews/clo-XX-review-gemini.md`, return to options
-5. **If view-ollama**: Display `docs/reviews/clo-XX-review-ollama.md`, return to options
+4. **If view-ollama**: Display `docs/reviews/clo-XX-review-ollama.md`, return to options
+5. **If view-synthesis**: Display `docs/reviews/clo-XX-review-synthesis.md`, return to options
 
 6. **If approve**:
    - **Invoke**: `/design-doc:finalize CLO-XX`
@@ -227,8 +226,8 @@ phases.design.status: complete
 phases.design.design_doc: <path to docs/design-docs/clo-XX-*.md>
 phases.design.draft_ready: true
 phases.design.discovery_context_used: <true|false>  # whether discovery report was available
-phases.design.review_gemini: <path|null>            # null if review failed/timed out
 phases.design.review_ollama: <path|null>            # null if review failed/timed out
+phases.design.review_synthesis: <path|null>         # null if review failed/timed out
 phases.design.review_verdict: <verdict|null>        # null if review failed/timed out
 phases.design.review_completed: <true|false>        # false if reviews failed/timed out
 phases.design.review_applied: <true|false>          # false if no reviews or nothing to apply

@@ -125,7 +125,6 @@ interface WorkflowState {
       auto_approval_reason?: string;
       review_completed?: boolean;
       review_skip_reason?: string;
-      review_gemini?: string | null;
       review_ollama?: string | null;
       review_synthesis?: string | null;
       review_verdict?: string | null;
@@ -145,7 +144,6 @@ interface WorkflowState {
       review_completed?: boolean;
       probe_completed?: string[];
       probe_decision?: string | null;
-      review_gemini?: string | null;
       review_ollama?: string | null;
       review_verdict?: string | null;
       review_applied?: boolean;
@@ -168,7 +166,6 @@ interface WorkflowState {
       codex_validated?: boolean;
       codex_verdict?: string;
       codex_report?: string;
-      gemini_validation_report?: string;
       validation_synthesis_report?: string;
       validation_synthesis_verdict?: string;
       validation_fix_iteration_count?: number;
@@ -183,6 +180,8 @@ interface WorkflowState {
       bot_review_wait_completed_at?: string;
       reviews_addressed?: boolean;
       reviews_addressed_skip_reason?: string;
+      bot_rereview_head_sha?: string;
+      bot_rereview_at?: string;
       pre_merge_refetch_passed?: boolean;
       pre_merge_refetch_at?: string;
       approved?: boolean;
@@ -214,7 +213,7 @@ interface WorkflowState {
 }
 
 const TokenUsageInput = Type.Object({
-  provider: Type.String({ description: "Provider id (gemini, codex, claude, ollama, ...)" }),
+  provider: Type.String({ description: "Provider id (codex, claude, ollama, ...)" }),
   model: Type.Optional(Type.String({ description: "Model identifier as reported by the provider" })),
   prompt_tokens: Type.Number({ description: "Tokens consumed by the prompt (input)" }),
   completion_tokens: Type.Number({ description: "Tokens consumed by the completion (output)" }),
@@ -296,7 +295,6 @@ const PHASE_CONFIG: Record<string, {
       "assumptions_revalidated",
       "codex_validated",
       "codex_report",
-      "gemini_validation_report",
       "validation_synthesis_report",
       "validation_synthesis_verdict",
     ],
@@ -311,6 +309,8 @@ const PHASE_CONFIG: Record<string, {
       "bot_review_wait_completed",
       "bot_review_wait_completed_at",
       "reviews_addressed",
+      "bot_rereview_head_sha",
+      "bot_rereview_at",
       "pre_merge_refetch_passed",
       "pre_merge_refetch_at",
     ],
@@ -320,6 +320,7 @@ const PHASE_CONFIG: Record<string, {
       "ci_passed",
       "bot_review_wait_completed",
       "review_addressed",
+      "bot_rereview_verified",
       "pre_merge_refetch_passed",
     ],
     requiredTrueFields: ["ci_passed", "bot_review_wait_completed", "reviews_addressed", "pre_merge_refetch_passed"],

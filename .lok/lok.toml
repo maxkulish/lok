@@ -41,9 +41,9 @@ model = "glm-5.2:cloud"
 timeout = 300
 
 [roles.code_review]
-backends = ["claude", "codex", "gemini"]
+backends = ["claude", "codex"]
 strategy = { Fallback = {} }
 
 [roles.design_review]
-backends = ["gemini", "codex", "claude"]
+backends = ["codex", "claude"]
 strategy = { Parallel = { min_success = 1, timeout_secs = 300 } }

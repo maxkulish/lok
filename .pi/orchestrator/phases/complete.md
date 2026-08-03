@@ -151,7 +151,7 @@ Candidate signals - scan each before deciding the list is empty:
 | Signal | Where to look | Why it matters |
 |---|---|---|
 | Design assumptions that turned out `violated` or `untested` | `phases.implement.assumptions_revalidated_details` | A wrong assumption may bite sibling tasks in the same area. |
-| Validation-gate fix iterations (`validation_fix_iteration_count > 0`) | `phases.implement` | The class of bug that codex/gemini caught is likely recurrent. |
+| Validation-gate fix iterations (`validation_fix_iteration_count > 0`) | `phases.implement` | The class of bug that the validation gate caught is likely recurrent. |
 | Flagged review suggestions the team intentionally declined | `phases.design.flagged_suggestions`, `phases.implement.flagged_suggestions` | Recording the rationale prevents the next task from re-litigating the same call. |
 | Plannotator annotations on the design | `phases.design.plannotator_annotations` | Human-caught issues that the AI reviewers missed point to gaps in the rubric. |
 | Surprising findings in discovery | `phases.discovery.findings` | A constraint or sibling system the project did not previously know about. |
