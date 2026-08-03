@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-02 (CLO-592 started)
+**Last Updated**: 2026-08-03 (aggregation sync; Phases 13 and 14 opened for the six tasks left after Phase 12 closed)
 
 ## Summary
 
@@ -18,6 +18,8 @@
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
+| Phase 13: Release Readiness | 2 | 0 | Not started |
+| Phase 14: Orchestration Tooling Hardening | 4 | 0 | Not started |
 
 ## Phase 11: Health Checks
 
@@ -40,6 +42,26 @@ Makes the `Backend` abstraction consumable by an external crate, and puts a CI g
 | [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | Done | - |
 | [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | Done | CLO-593 |
 | [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | Done | CLO-591 |
+
+## Phase 13: Release Readiness
+
+What still stands between the crate as it is now and a release someone outside this machine can trust. Both are cheap, and both get more expensive after a publish rather than before it: crate metadata freezes per version, and release provenance is hard to add retroactively once people are already downloading archives.
+
+| Task | Title | Status | Dependencies |
+|------|-------|--------|--------------|
+| [CLO-609](https://linear.app/cloud-ai/issue/CLO-609) | Point the crate's repository and homepage metadata at maxkulish/lok | Not started | - |
+| [CLO-610](https://linear.app/cloud-ai/issue/CLO-610) | Attest release binaries so their checksums prove origin, not only transfer | Not started | - |
+
+## Phase 14: Orchestration Tooling Hardening
+
+Four defects in the markdown-defined orchestration commands, all found by running them rather than reading them, and all sharing one root cause: procedural instructions that nothing executes or tests until they fail in production. CLO-623 is the structural fix; the other three are the individual failures that motivated it.
+
+| Task | Title | Status | Dependencies |
+|------|-------|--------|--------------|
+| [CLO-623](https://linear.app/cloud-ai/issue/CLO-623) | Make pr-review-cycle shell snippets executable and tested | Not started | - |
+| [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | Distinguish a bad reviewer invocation from an empty model response | Not started | - |
+| [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | complete.md edits the aggregation files, then checks out main with them uncommitted | Not started | - |
+| [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | gh pr merge --delete-branch silently skips the remote deletion when its local checkout fails | Not started | - |
 
 ## Phase 2: Validation Pipeline
 
