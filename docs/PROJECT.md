@@ -25,6 +25,7 @@ Taken first because it is the only open task that charges every other one: the p
 | Medium | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635/default-the-gemini-backend-to-the-plan-agent-when-no-sandbox-is) | Default the Gemini backend to the plan agent when no sandbox is requested — an omitted sandbox currently picks the write-capable `build` agent | None — codex-security scan finding | Next |
 | Medium | [CLO-639](https://linear.app/cloud-ai/issue/CLO-639) | `commit_file` returns an empty string as a successful SHA when `git rev-parse HEAD` fails (`src/tasks/implement.rs:761-767`). CLO-633 made the slice safe; the error handling is still wrong | None - CLO-633 follow-up | Next |
 | Medium | [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | Deduplicate `FILE_REF_RE` and `extract_file_references` across `tasks/context.rs` and `tasks/fix.rs`. The verbatim copy is the drift hazard that turned CLO-633's Defect 2 into two sites | None - CLO-633 follow-up | Next |
+| Medium | [CLO-649](https://linear.app/cloud-ai/issue/CLO-649) | spec-review workflow drops the Ollama leg when Linear text contains a single quote — the sed template dies on the quote and the synthesis silently proceeds with one reviewer | None — independent harness fix | Next |
 | Low | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610/attest-release-binaries-so-their-checksums-prove-origin-not-only) | Attest release binaries so their checksums prove origin, not only transfer — re-running a tag replaces the archive and its `.sha256` together, so a matching digest proves the pair is self-consistent and nothing more | None — standalone `release.yml` change | Next (CLO-609 landed 2026-08-03) |
 
 ## Recently Completed
@@ -83,4 +84,4 @@ Taken first because it is the only open task that charges every other one: the p
 
 | Task | Title | Blocked By | Notes |
 |------|-------|------------|-------|
-| - | - | - | - |
+| [CLO-650](https://linear.app/cloud-ai/issue/CLO-650) | Verify reviewer-bot identity exactly in the PR gates instead of substring matching | CLO-623 | Belongs in the script CLO-623 extracts, not in duplicated markdown |

@@ -52,7 +52,7 @@ phases:
     status: in_progress
     pr_url: https://github.com/maxkulish/lok/pull/84
     pr_number: 84
-    reviews_addressed: 1
+    reviews_addressed: true
   complete:
     status: pending
 
@@ -113,3 +113,7 @@ history:
     action: codex_validation_complete
     phase: pr
     details: "Gate re-run verdict PROCEED_WITH_FIXES, all items bookkeeping. Applied: implement phase closed, DEPENDENCIES.md bullet reworded to two-shape rule + CLO-649 in Ready + CLO-650 blocker row, local paths re-cleaned after the workflow rewrote the reports, CLO-650 filed (bot-identity hardening, blocked by CLO-623)."
+  - timestamp: 2026-08-06T21:25:00Z
+    action: review_addressed
+    phase: pr
+    details: "Live gate round 2: detected re-review on f2f3f06 at 20:37:01Z (shape 1), 5m05s after request - the race with the 31c485b push did not bite, Qodo covered the request-time head. New finding real: reviews_addressed typed number, orchestrate extension requires boolean true (index.ts:181,326); fixed to true. Merged origin/main (user resolved aggregation conflicts; PROJECT.md rows added for CLO-649/650)."
