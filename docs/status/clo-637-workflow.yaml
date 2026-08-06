@@ -38,7 +38,14 @@ phases:
     status: in_progress
     commits:
       - c636ef9
+      - 8bc265a
+      - c1dec11
     last_phase_completed: "spec decomposition items 1-4 (single commit)"
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-637-codex-validation.md
+    validation_synthesis_report: docs/reviews/clo-637-validation-synthesis.md
+    validation_synthesis_verdict: PROCEED_WITH_FIXES
   pr:
     status: in_progress
     pr_url: https://github.com/maxkulish/lok/pull/84
@@ -83,3 +90,11 @@ history:
     action: pr_created
     phase: pr
     details: "PR #84 created on user instruction while pre-pr-validation gate still running; gate verdict to be recorded and addressed within the PR review cycle. Linear CLO-637 -> In Review, PR comment posted."
+  - timestamp: 2026-08-06T20:40:00Z
+    action: codex_validation_complete
+    phase: pr
+    details: "Codex verdict FAIL recalibrated by synthesis to PROCEED_WITH_FIXES (login-filter and no-live-GitHub findings judged non-blocking). Must-fix: head-SHA guard in both polls (vacuous contains() on empty head), two review-object-only prose passages in pr-review-cycle.md, trailing blank line."
+  - timestamp: 2026-08-06T20:45:00Z
+    action: review_addressed
+    phase: pr
+    details: "One bounded fix iteration in c1dec11: 40-hex head guard both files, prose reconciled, hazard reproduced then closed (empty-head query fires unguarded, rc=1 guarded). 10/10 original probes still pass; shellcheck clean. Gate re-run started."
