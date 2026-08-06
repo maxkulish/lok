@@ -1,0 +1,119 @@
+task_id: CLO-637
+task_title: "Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object"
+task_url: https://linear.app/cloud-ai/issue/CLO-637/make-prreviews-re-review-poll-recognise-a-qodo-comment-update-instead
+task_type: specification
+classification_reason: "Well-scoped single-file procedure fix with explicit acceptance criteria; no architecture decisions. CLO-623 (script extraction) still in Backlog, so fix belongs inline in the markdown per task note."
+branch: fix/clo-637-qodo-review
+
+workflow:
+  current_phase: implement
+  status: in_progress
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: specs/2026-08-06-clo-637-qodo-rereview-poll.md
+    approved: true
+    review_ollama: docs/reviews/clo-637-spec-review-ollama.md
+    review_synthesis: docs/reviews/clo-637-spec-review-synthesis.md
+    review_claude_fallback: docs/reviews/clo-637-spec-review-claude-fallback.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - "Pinned AC2/AC4 probe values to full 40-char SHAs and exact REQUESTED_AT timestamps"
+      - "Acknowledged clean-initial-pass hole at 1b (F5) in decomposition item 3; recovery stays the explicit re-request"
+      - "Verification now snapshots raw probe JSON into PR evidence"
+      - "Marked AC5 rg probe advisory; manual read authoritative"
+    flagged_suggestions: []
+    notes: "Ollama leg REVIEW_FAILED (apostrophe in title broke sed template - filed CLO-649); Claude fallback was sole reviewer."
+  implement:
+    status: complete
+    commits:
+      - c636ef9
+      - 8bc265a
+      - c1dec11
+    last_phase_completed: "spec decomposition items 1-4 (single commit)"
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-637-codex-validation.md
+    validation_synthesis_report: docs/reviews/clo-637-validation-synthesis.md
+    validation_synthesis_verdict: PROCEED_WITH_FIXES
+    validation_rerun_verdict: PROCEED_WITH_FIXES
+    validation_rerun_notes: "Round 2 items were bookkeeping: close implement phase in YAML, reconcile DEPENDENCIES.md bullet/count, file bot-identity hardening as CLO-650 (blocked by CLO-623). since-prefilter and no-live-evidence findings were assessed non-blocking by the synthesis itself."
+  pr:
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/84
+    pr_number: 84
+    reviews_addressed: true
+  complete:
+    status: pending
+
+history:
+  - timestamp: 2026-08-06T19:50:43Z
+    action: workflow_started
+    phase: spec
+    details: "Workflow initialized as specification task. AFK label present - autonomous execution. CLO-623 not landed, fix goes inline in .claude/commands/pr/review.md."
+  - timestamp: 2026-08-06T19:53:00Z
+    action: project_sync_start
+    phase: spec
+    details: "WIP 1/3. PROJECT.md Active Work + Phase 14; ROADMAP.md Phase 14 row added (5 tasks, In progress); DEPENDENCIES.md follow-up bullet annotated with CLO-637."
+  - timestamp: 2026-08-06T20:04:00Z
+    action: spec_review_complete
+    phase: spec
+    details: "Verdict APPROVE_WITH_SUGGESTIONS. Ollama leg failed (sed quoting bug on apostrophe in title, filed as CLO-649); Claude fallback sole reviewer. 6 findings, none blocking."
+  - timestamp: 2026-08-06T20:07:00Z
+    action: spec_review_applied
+    phase: spec
+    details: "Auto-applied 4 suggestions (pin AC2/AC4 values, F5 initial-pass note, probe JSON snapshots, AC5 rg advisory). No conflicts with prior decisions."
+  - timestamp: 2026-08-06T20:07:30Z
+    action: spec_approved
+    phase: spec
+    details: "Approved autonomously per AFK label: verdict APPROVE_WITH_SUGGESTIONS, all suggestions applied, zero contradictions. Proceeding to implement; spec decomposition is the plan."
+  - timestamp: 2026-08-06T20:25:00Z
+    action: phase_completed
+    phase: implement
+    details: "All 4 decomposition items in commit c636ef9. Verification: 10/10 probes pass against recorded PR #71/#80 data; wait_for_bot_review exercised live (clean-shape detect rc=0, empty-since rc=1); bash -n + shellcheck clean; AC5 rg clean; AC6 changed-block conditions identical."
+  - timestamp: 2026-08-06T20:26:00Z
+    action: pushed_to_remote
+    phase: implement
+    details: "Pushed fix/clo-637-qodo-review (c636ef9) to origin."
+  - timestamp: 2026-08-06T20:26:30Z
+    action: implementation_complete
+    phase: implement
+    details: "Spec decomposition 100%. Entering validation gate."
+  - timestamp: 2026-08-06T20:32:00Z
+    action: pr_created
+    phase: pr
+    details: "PR #84 created on user instruction while pre-pr-validation gate still running; gate verdict to be recorded and addressed within the PR review cycle. Linear CLO-637 -> In Review, PR comment posted."
+  - timestamp: 2026-08-06T20:40:00Z
+    action: codex_validation_complete
+    phase: pr
+    details: "Codex verdict FAIL recalibrated by synthesis to PROCEED_WITH_FIXES (login-filter and no-live-GitHub findings judged non-blocking). Must-fix: head-SHA guard in both polls (vacuous contains() on empty head), two review-object-only prose passages in pr-review-cycle.md, trailing blank line."
+  - timestamp: 2026-08-06T20:45:00Z
+    action: review_addressed
+    phase: pr
+    details: "One bounded fix iteration in c1dec11: 40-hex head guard both files, prose reconciled, hazard reproduced then closed (empty-head query fires unguarded, rc=1 guarded). 10/10 original probes still pass; shellcheck clean. Gate re-run started."
+  - timestamp: 2026-08-06T21:00:00Z
+    action: review_addressed
+    phase: pr
+    details: "Qodo pass on 8bc265a: 2 findings, both verified real, both fixed in d2e30a6 (?since= server-side prefilter on comment polls; stderr messages on wait_for_bot_review guards). Replies 2/2. /agentic_review posted at 2026-08-06T20:26:37Z; the NEW Step 9.5 gate itself is polling head d2e30a6 - first live exercise of the fix."
+  - timestamp: 2026-08-06T21:10:00Z
+    action: review_addressed
+    phase: pr
+    details: "Live gate round 1: detected re-review on d2e30a6 at 20:30:03Z (shape 1, new findings; completion comment 5s later) - 3m26s after request, rc=0. New finding real: /Users/... links in committed codex report; fixed in f2f3f06 (repo-relative refs). Reply 3/3. Re-review round 2 requested at 20:31:56Z, gate polling f2f3f06."
+  - timestamp: 2026-08-06T21:12:00Z
+    action: codex_validation_complete
+    phase: pr
+    details: "Gate re-run verdict PROCEED_WITH_FIXES, all items bookkeeping. Applied: implement phase closed, DEPENDENCIES.md bullet reworded to two-shape rule + CLO-649 in Ready + CLO-650 blocker row, local paths re-cleaned after the workflow rewrote the reports, CLO-650 filed (bot-identity hardening, blocked by CLO-623)."
+  - timestamp: 2026-08-06T21:25:00Z
+    action: review_addressed
+    phase: pr
+    details: "Live gate round 2: detected re-review on f2f3f06 at 20:37:01Z (shape 1), 5m05s after request - the race with the 31c485b push did not bite, Qodo covered the request-time head. New finding real: reviews_addressed typed number, orchestrate extension requires boolean true (index.ts:181,326); fixed to true. Merged origin/main (user resolved aggregation conflicts; PROJECT.md rows added for CLO-649/650)."
