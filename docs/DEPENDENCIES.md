@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-06 (CLO-637 started; nine open tasks, none blocked)
+**Last Updated**: 2026-08-06 (CLO-637 in review via PR #84; CLO-649 filed; ten open tasks, none blocked)
 
 ## Current Blockers
 
@@ -42,7 +42,7 @@ breaks a command this project runs on every task:
 - **No CI job builds against the declared `rust-version = "1.80"`.** The oldest toolchain installed
   locally is 1.94 and `ci.yml` uses runner-stable, so the MSRV is an unverified claim. It starts
   costing something once Phase 13 publishes to crates.io.
-- **`/pr:review` Step 9.5's re-review poll can never fire against Qodo** (now [CLO-637](https://linear.app/cloud-ai/issue/CLO-637), in progress). It waits for a *review*
+- **`/pr:review` Step 9.5's re-review poll can never fire against Qodo** (now [CLO-637](https://linear.app/cloud-ai/issue/CLO-637), fix in review via PR #84). It waits for a *review*
   object on the new head SHA, but Qodo edits its existing review comment in place and submits no
   new review — which the same document states two sections earlier. Observed on PR #80: the poll
   ran to its full timeout while the re-review it was waiting for had already landed as a comment

@@ -40,7 +40,9 @@ phases:
       - c636ef9
     last_phase_completed: "spec decomposition items 1-4 (single commit)"
   pr:
-    status: pending
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/84
+    pr_number: 84
   complete:
     status: pending
 
@@ -77,3 +79,7 @@ history:
     action: implementation_complete
     phase: implement
     details: "Spec decomposition 100%. Entering validation gate."
+  - timestamp: 2026-08-06T20:32:00Z
+    action: pr_created
+    phase: pr
+    details: "PR #84 created on user instruction while pre-pr-validation gate still running; gate verdict to be recorded and addressed within the PR review cycle. Linear CLO-637 -> In Review, PR comment posted."

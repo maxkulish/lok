@@ -344,6 +344,7 @@ Each shape pairs a freshness bound with a covered-commit check, and both conditi
 
 ```bash
 NEW_HEAD=$(gh api repos/{owner}/{repo}/pulls/[number] --jq .head.sha)
+printf '%s' "$NEW_HEAD" | grep -qE '^[0-9a-f]{40}$' || { echo "Bad head SHA '${NEW_HEAD}' - the pulls lookup failed; fix that first"; exit 1; }
 [ -n "$REQUESTED_AT" ] || { echo "Empty REQUESTED_AT - the /agentic_review POST failed; fix that first"; exit 1; }
 DEADLINE=$(( $(date -u +%s) + 600 ))
 
