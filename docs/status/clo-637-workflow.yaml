@@ -1,0 +1,65 @@
+task_id: CLO-637
+task_title: "Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object"
+task_url: https://linear.app/cloud-ai/issue/CLO-637/make-prreviews-re-review-poll-recognise-a-qodo-comment-update-instead
+task_type: specification
+classification_reason: "Well-scoped single-file procedure fix with explicit acceptance criteria; no architecture decisions. CLO-623 (script extraction) still in Backlog, so fix belongs inline in the markdown per task note."
+branch: fix/clo-637-qodo-review
+
+workflow:
+  current_phase: implement
+  status: in_progress
+
+phases:
+  discovery:
+    status: skipped
+    skip_reason: "Specification task"
+    approved: true
+  design:
+    status: skipped
+    reason: "Specification task - using /spec instead"
+  spec:
+    status: complete
+    spec_file: specs/2026-08-06-clo-637-qodo-rereview-poll.md
+    approved: true
+    review_ollama: docs/reviews/clo-637-spec-review-ollama.md
+    review_synthesis: docs/reviews/clo-637-spec-review-synthesis.md
+    review_claude_fallback: docs/reviews/clo-637-spec-review-claude-fallback.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - "Pinned AC2/AC4 probe values to full 40-char SHAs and exact REQUESTED_AT timestamps"
+      - "Acknowledged clean-initial-pass hole at 1b (F5) in decomposition item 3; recovery stays the explicit re-request"
+      - "Verification now snapshots raw probe JSON into PR evidence"
+      - "Marked AC5 rg probe advisory; manual read authoritative"
+    flagged_suggestions: []
+    notes: "Ollama leg REVIEW_FAILED (apostrophe in title broke sed template - filed CLO-649); Claude fallback was sole reviewer."
+  implement:
+    status: in_progress
+    commits: []
+  pr:
+    status: pending
+  complete:
+    status: pending
+
+history:
+  - timestamp: 2026-08-06T19:50:43Z
+    action: workflow_started
+    phase: spec
+    details: "Workflow initialized as specification task. AFK label present - autonomous execution. CLO-623 not landed, fix goes inline in .claude/commands/pr/review.md."
+  - timestamp: 2026-08-06T19:53:00Z
+    action: project_sync_start
+    phase: spec
+    details: "WIP 1/3. PROJECT.md Active Work + Phase 14; ROADMAP.md Phase 14 row added (5 tasks, In progress); DEPENDENCIES.md follow-up bullet annotated with CLO-637."
+  - timestamp: 2026-08-06T20:04:00Z
+    action: spec_review_complete
+    phase: spec
+    details: "Verdict APPROVE_WITH_SUGGESTIONS. Ollama leg failed (sed quoting bug on apostrophe in title, filed as CLO-649); Claude fallback sole reviewer. 6 findings, none blocking."
+  - timestamp: 2026-08-06T20:07:00Z
+    action: spec_review_applied
+    phase: spec
+    details: "Auto-applied 4 suggestions (pin AC2/AC4 values, F5 initial-pass note, probe JSON snapshots, AC5 rg advisory). No conflicts with prior decisions."
+  - timestamp: 2026-08-06T20:07:30Z
+    action: spec_approved
+    phase: spec
+    details: "Approved autonomously per AFK label: verdict APPROVE_WITH_SUGGESTIONS, all suggestions applied, zero contradictions. Proceeding to implement; spec decomposition is the plan."

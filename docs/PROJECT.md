@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-03 (CLO-633 completed via PR #80; Phase 15 at 1 of 5)
+**Last Updated**: 2026-08-06 (CLO-637 started; Phase 14 in progress)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | In Progress | Phase 14 | - |
 
 ## Up Next (Prioritized Backlog)
 

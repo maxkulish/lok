@@ -23,7 +23,7 @@
 │  7. Push to branch (BEFORE replying)                            │
 │  8. Reply to EVERY comment (MANDATORY - track N/N)              │
 │  9. Request re-validation (/agentic_review - Qodo needs it)     │
-│ 10. Poll for a review on the CURRENT head SHA                   │
+│ 10. Poll for the re-review pass on the CURRENT head SHA         │
 │ 11. Repeat if new comments arrive                               │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -338,23 +338,42 @@ REQUESTED_AT=$(gh api repos/{owner}/{repo}/issues/[number]/comments \
 
 Read the timestamp off the POST response rather than from local `date`. The review's `submitted_at` comes from GitHub's clock, so a locally generated bound compares two clock domains - a local clock running fast would filter out the very re-review it is waiting for and time out. This costs no extra API call.
 
-Then poll for a review on the **post-push** head SHA that was submitted **at or after** `REQUESTED_AT`. Both conditions matter. A review whose `commit_id` is the old SHA is the stale pass. And matching on SHA alone would accept a *previous* run's review on the same SHA - so re-running this step without an intervening push, or after the `/agentic_review` post failed, would report a re-validation that never happened.
+Then poll for the completed pass on the **post-push** head SHA. A completed pass arrives in one of **two shapes** (the per-pass delivery rule in "How Qodo posts" below): a new **review object** appears only when the pass has new inline findings to attach; a **clean pass** edits the existing "Code Review by Qodo" comment in place and announces completion with a *new* issue comment reading `[Code review](...) by qodo was updated up to the latest commit <sha>`. Polling only the reviews endpoint therefore times out precisely when the re-review came back clean - the success case (observed on PR #80).
+
+Each shape pairs a freshness bound with a covered-commit check, and both conditions matter. Freshness alone would accept a previous run's pass - re-running this step without an intervening push, or after the `/agentic_review` post failed, must not report a re-validation that never happened. The commit check alone would accept the stale pass on the old head.
 
 ```bash
 NEW_HEAD=$(gh api repos/{owner}/{repo}/pulls/[number] --jq .head.sha)
+[ -n "$REQUESTED_AT" ] || { echo "Empty REQUESTED_AT - the /agentic_review POST failed; fix that first"; exit 1; }
 DEADLINE=$(( $(date -u +%s) + 600 ))
 
 while :; do
+  # Shape 1: a new review object - submitted only when the pass carries new inline findings
   REREVIEW=$(gh api repos/{owner}/{repo}/pulls/[number]/reviews --paginate --slurp \
     | jq -r --arg h "$NEW_HEAD" --arg since "$REQUESTED_AT" \
-      '.[][] | select(.commit_id==$h) | select(.user.login|test("qodo")) | select(.submitted_at >= $since) | .submitted_at' | tail -1)
-  [ -n "$REREVIEW" ] && { echo "Re-review on ${NEW_HEAD:0:7} at ${REREVIEW}"; break; }
-  [ "$(date -u +%s)" -ge "$DEADLINE" ] && { echo "No re-review since ${REQUESTED_AT}"; exit 1; }
+      '[.[][] | select(.commit_id==$h) | select(.user.login|test("qodo"))
+        | select(.submitted_at >= $since) | .submitted_at] | last // empty')
+  [ -n "$REREVIEW" ] && { echo "Re-review (new findings) on ${NEW_HEAD:0:7} at ${REREVIEW}"; break; }
+
+  # Shape 2: a clean pass - a new completion comment naming the covered commit
+  UPDATED=$(gh api repos/{owner}/{repo}/issues/[number]/comments --paginate --slurp \
+    | jq -r --arg h "$NEW_HEAD" --arg since "$REQUESTED_AT" \
+      '[.[][] | select(.user.login|test("qodo")) | select(.created_at >= $since)
+        | select(.body|test("was updated up to the latest commit"))
+        | select(.body|contains($h)) | .created_at] | last // empty')
+  [ -n "$UPDATED" ] && { echo "Re-review (clean pass) covering ${NEW_HEAD:0:7} at ${UPDATED}"; break; }
+
+  [ "$(date -u +%s)" -ge "$DEADLINE" ] && {
+    echo "No re-review since ${REQUESTED_AT}: no qodo review object on ${NEW_HEAD:0:7} and no completion comment naming it. Inspect the PR before overriding - do not treat this as a pass."
+    exit 1
+  }
   sleep 20
 done
 ```
 
-Expect 3-4 minutes per pass. Qodo **edits its existing review comment in place** rather than posting a new one, and that comment passes through intermediate states while it works - it briefly showed `Bugs (0)` before settling on `Bugs (1)` during one pass on PR #71. Never read the finding count while a "Qodo is busy working" comment is present.
+**Why not the persistent comment's `updated_at`?** It bumps when a re-review has *not* landed: the comment cycles through intermediate states during a pass, and Qodo also refreshes it outside passes entirely - on PR #80 it was edited 10 seconds after merge, with no `/agentic_review` posted and no completion comment, just permalinks refreshed to a head no pass had covered. `updated_at >= REQUESTED_AT` is corroborating evidence, never the gate; gating on it reports re-validations that never happened.
+
+Expect 3-4 minutes per pass. Whichever shape lands, the "Code Review by Qodo" comment passes through intermediate states while Qodo works - it briefly showed `Bugs (0)` before settling on `Bugs (1)` during one pass on PR #71. The gate above only proves the pass **landed**; never read the finding count while a "Qodo is busy working" comment is present.
 
 **Command notes** (Qodo's managed app is PR-Agent under the hood):
 
@@ -638,12 +657,14 @@ Your choice:
 
 ### How Qodo posts
 
-Two artifacts per pass, in order:
+On the first pass, two artifacts in order:
 
 1. **A summary issue comment** ("PR Summary by Qodo") - AI description, a mermaid diagram, alternative approaches, and a per-file table. Informational; there is nothing to address in it.
-2. **A review** with the inline findings attached ("Code Review by Qodo"), submitted about a minute later.
+2. **The review** ("Code Review by Qodo") - a persistent issue comment carrying the findings header, plus a review object with the inline findings attached, a few minutes later.
 
 Only the second carries actionable content. On PR #71 the summary arrived at 12:31 and the review at 12:35. Reading the summary and concluding "no findings" is a mistake - wait for the review.
+
+**Per-pass delivery rule** (verified against PRs #71 and #80): a **review object** is submitted only when a pass has new inline findings to attach - all six on PR #71 carried 1-3 inline comments; PR #80's clean re-review submitted none. Every pass updates the persistent "Code Review by Qodo" comment in place, and every completed *re*-review pass additionally announces itself with a new issue comment reading `[Code review](...) by qodo was updated up to the latest commit <sha>`. Step 9.5's poll is built on this rule - both shapes, fail closed. Do not describe or poll Qodo's re-reviews any other way.
 
 The review is always submitted as `COMMENTED`, never `CHANGES_REQUESTED`, so `reviewDecision` stays `PENDING` no matter how severe the findings. Never infer severity from review state.
 
@@ -707,7 +728,7 @@ When a premise is wrong, decline with the evidence that disproves it - command o
 │  5. Commit and push                                             │
 │  6. Reply to every finding (@qodo only where you want an answer)│
 │  7. Post /agentic_review - it does NOT re-review on push        │
-│  8. Poll for a review whose commit_id == current head SHA       │
+│  8. Poll for the pass: review object OR completion comment      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -782,10 +803,10 @@ Replies Posted: 3/3
 - 3699023245: declined (evidence: timeout --version output)
 
 Re-validation: /agentic_review posted
-Re-review observed on head 1d0f984: [yes/no]
+Re-review observed covering head 1d0f984 (review object or completion comment): [yes/no]
 
 Next steps:
-1. Confirm the new review targets the current head SHA
+1. Confirm the re-review covered the current head SHA (either shape)
 2. Address any new findings: /pr:review CLO-XX
 3. After approval: merge or continue workflow
 ```

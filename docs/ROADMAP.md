@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-03 (CLO-633 completed, Phase 15 at 1 of 5; Phase 13 at 1 of 2)
+**Last Updated**: 2026-08-06 (CLO-637 started; Phase 14 in progress)
 
 ## Summary
 
@@ -19,7 +19,7 @@
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
 | Phase 13: Release Readiness | 2 | 1 | In progress |
-| Phase 14: Orchestration Tooling Hardening | 4 | 0 | Not started |
+| Phase 14: Orchestration Tooling Hardening | 5 | 0 | In progress |
 | Phase 15: Security Scan Remediation | 5 | 1 | In Progress |
 
 ## Phase 11: Health Checks
@@ -55,7 +55,7 @@ What still stands between the crate as it is now and a release someone outside t
 
 ## Phase 14: Orchestration Tooling Hardening
 
-Four defects in the markdown-defined orchestration commands, all found by running them rather than reading them, and all sharing one root cause: procedural instructions that nothing executes or tests until they fail in production. CLO-623 is the structural fix; the other three are the individual failures that motivated it.
+Five defects in the markdown-defined orchestration commands, all found by running them rather than reading them, and all sharing one root cause: procedural instructions that nothing executes or tests until they fail in production. CLO-623 is the structural fix; the others are the individual failures that motivated it.
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
@@ -63,6 +63,7 @@ Four defects in the markdown-defined orchestration commands, all found by runnin
 | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | Distinguish a bad reviewer invocation from an empty model response | Not started | - |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | complete.md edits the aggregation files, then checks out main with them uncommitted | Not started | - |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | gh pr merge --delete-branch silently skips the remote deletion when its local checkout fails | Not started | - |
+| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | In Progress | - |
 
 ## Phase 15: Security Scan Remediation
 
