@@ -6,8 +6,8 @@ classification_reason: "Well-scoped single-file procedure fix with explicit acce
 branch: fix/clo-637-qodo-review
 
 workflow:
-  current_phase: implement
-  status: in_progress
+  current_phase: complete
+  status: complete
 
 phases:
   discovery:
@@ -48,13 +48,20 @@ phases:
     validation_synthesis_verdict: PROCEED_WITH_FIXES
     validation_rerun_verdict: PROCEED_WITH_FIXES
     validation_rerun_notes: "Round 2 items were bookkeeping: close implement phase in YAML, reconcile DEPENDENCIES.md bullet/count, file bot-identity hardening as CLO-650 (blocked by CLO-623). since-prefilter and no-live-evidence findings were assessed non-blocking by the synthesis itself."
+    validation_fixes_applied: true
   pr:
-    status: in_progress
+    status: complete
     pr_url: https://github.com/maxkulish/lok/pull/84
     pr_number: 84
     reviews_addressed: true
+    merged_at: 2026-08-06T20:50:20Z
+    merge_commit: 4263a1c
   complete:
-    status: pending
+    status: complete
+    aggregation_files_updated: true
+    merged_at: 2026-08-06T20:50:20Z
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/85
+    finalize_pr_number: 85
 
 history:
   - timestamp: 2026-08-06T19:50:43Z
@@ -117,3 +124,15 @@ history:
     action: review_addressed
     phase: pr
     details: "Live gate round 2: detected re-review on f2f3f06 at 20:37:01Z (shape 1), 5m05s after request - the race with the 31c485b push did not bite, Qodo covered the request-time head. New finding real: reviews_addressed typed number, orchestrate extension requires boolean true (index.ts:181,326); fixed to true. Merged origin/main (user resolved aggregation conflicts; PROJECT.md rows added for CLO-649/650)."
+  - timestamp: 2026-08-06T20:52:00Z
+    action: review_addressed
+    phase: pr
+    details: "Live gate round 3: detected re-review on 7dbbed8 at 20:51:40Z (shape 1, completion comment 4s later), 9m41s after request - Qodo finished the pass despite the PR merging mid-review; the gate correctly ignored the intermediate busy-working comment at 20:46:07Z. Post-merge finding on implement.status consistency answered with evidence and validation_fixes_applied marker added; replies 5/5 across the cycle."
+  - timestamp: 2026-08-06T20:50:20Z
+    action: pr_merged
+    phase: pr
+    details: "PR #84 squash-merged to main as 4263a1c by Max. Three review rounds, five findings, four fixed, one partially declined with evidence."
+  - timestamp: 2026-08-06T21:40:00Z
+    action: workflow_complete
+    phase: complete
+    details: "Task CLO-637 fully completed. Aggregation files updated via docs/clo-637-finalize."

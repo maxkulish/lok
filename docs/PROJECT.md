@@ -1,14 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-06 (CLO-637 in review via PR #84; CLO-633's four follow-ups carry their issue IDs; Phase 14 in progress)
+**Last Updated**: 2026-08-06 (CLO-637 done via PR #84, squashed as `4263a1c`; Phase 14 at 1 of 5)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make `/pr:review`'s re-review poll recognise a Qodo comment update instead of waiting for a review object | In Review | 14 | - |
-
-Taken first because it is the only open task that charges every other one: the poll runs to its full timeout on each PR opened while it is broken. CLO-623 will later extract this gate logic into `.pi/scripts/`, and the fix is written to survive that move as logic rather than as a location.
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -32,6 +30,7 @@ Taken first because it is the only open task that charges every other one: the p
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | 2026-08-06 | The diagnosis sharpened during spec work: Qodo submits a review object only when a pass carries new inline findings (all six on PR #71 had 1-3 attached), so the old reviews-endpoint poll timed out precisely when the re-review came back clean — the gate inverted, passing only on failure. The Linear issue proposed polling the persistent comment's `updated_at`; replaying PR #80 killed that — the field bumps mid-pass and even 10s after merge with no review requested — so the gate keys on the append-only completion comment naming the covered head, OR a review object, both paths pairing freshness with a covered-commit check, failing closed at 600s. Same logic ported to `wait_for_bot_review` in the pi skill (both call sites). The validation gate caught a fail-open in the fix itself: an empty head makes jq's `contains("")` vacuously true, closed with a 40-hex guard. Three live exercises during this PR's own review cycle detected passes at 3m26s, 5m05s and 9m41s — the old gate would have burned 600s on none-shown-clean rounds. Verified by replaying recorded PR #71/#80 API data (10/10 probes; snapshots in the PR body). Follow-ups: CLO-649 (spec-review sed template dies on apostrophes, silently dropping a reviewer leg), CLO-650 (exact bot-identity matching, parked on CLO-623's script). PR #84, squashed as `4263a1c`. |
 | [CLO-633](https://linear.app/cloud-ai/issue/CLO-633) | Fix slice panics on CI log truncation and out-of-range file:line references | 2026-08-03 | Seven slice sites, not the four the ticket named — review of the spec found two more head-truncation slices, and investigating a scope question turned `&sha[..8]` into the seventh, since `commit_file` never checks `git rev-parse HEAD`'s exit status and returns `""` on an unborn HEAD. Three helpers in `utils.rs` (`tail_utf8`, `line_window`, `render_line_window`); `context.rs` and `fix.rs` carried byte-identical copies of the rendering loop, which is how one defect became two. `floor_char_boundary` was rejected: it is `stable since 1.91.0` against a declared MSRV of 1.80, and nothing local or in CI builds against that MSRV, so the violation would first surface for a crates.io consumer. One behaviour change beyond the panics: both callers pushed their parent heading *before* the loop that may render nothing, and `fix.rs` gates its keyword fallback on `context.is_empty()` — so an issue whose every reference was stale produced a prompt with one empty section and no code. PR #80, squashed as `a8f84d8`. Two spec-review rounds and two validation rounds, thirteen findings, eleven acted on; the recurring lesson was tests that pass against the broken baseline — two of mine used 2-byte `"é"` at even cut points and never crossed a boundary at all. |
 | [CLO-609](https://linear.app/cloud-ai/issue/CLO-609/point-the-crates-repository-and-homepage-metadata-at-maxkulishlok) | Point the crate's repository and homepage metadata at maxkulish/lok | 2026-08-03 | `Cargo.toml:9-10` now read `maxkulish/lok`. PR #78, squashed as `8b96821`. The remaining `ducks/lok` strings in `docs/discovery/`, `docs/status/` and `specs/` are historical records of the defect and were deliberately left; `README.md` links to `ducks/git-agent`, a different upstream project, and is correct as-is. |
 | [CLO-406](https://linear.app/cloud-ai/issue/CLO-406/fr-15a-lok-health-ttl-env-override-for-healthcache-ttl) | FR-15a: LOK_HEALTH_TTL env override for HealthCache TTL | 2026-05-26 | Shipped and archived. It sat in Up Next behind a 2026-06-09 review gate that was never closed out, two months after the work merged; found during the 2026-08-03 sync. |
