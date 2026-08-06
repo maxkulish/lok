@@ -35,7 +35,7 @@ phases:
     flagged_suggestions: []
     notes: "Ollama leg REVIEW_FAILED (apostrophe in title broke sed template - filed CLO-649); Claude fallback was sole reviewer."
   implement:
-    status: in_progress
+    status: complete
     commits:
       - c636ef9
       - 8bc265a
@@ -46,6 +46,8 @@ phases:
     codex_report: docs/reviews/clo-637-codex-validation.md
     validation_synthesis_report: docs/reviews/clo-637-validation-synthesis.md
     validation_synthesis_verdict: PROCEED_WITH_FIXES
+    validation_rerun_verdict: PROCEED_WITH_FIXES
+    validation_rerun_notes: "Round 2 items were bookkeeping: close implement phase in YAML, reconcile DEPENDENCIES.md bullet/count, file bot-identity hardening as CLO-650 (blocked by CLO-623). since-prefilter and no-live-evidence findings were assessed non-blocking by the synthesis itself."
   pr:
     status: in_progress
     pr_url: https://github.com/maxkulish/lok/pull/84
@@ -103,3 +105,11 @@ history:
     action: review_addressed
     phase: pr
     details: "Qodo pass on 8bc265a: 2 findings, both verified real, both fixed in d2e30a6 (?since= server-side prefilter on comment polls; stderr messages on wait_for_bot_review guards). Replies 2/2. /agentic_review posted at 2026-08-06T20:26:37Z; the NEW Step 9.5 gate itself is polling head d2e30a6 - first live exercise of the fix."
+  - timestamp: 2026-08-06T21:10:00Z
+    action: review_addressed
+    phase: pr
+    details: "Live gate round 1: detected re-review on d2e30a6 at 20:30:03Z (shape 1, new findings; completion comment 5s later) - 3m26s after request, rc=0. New finding real: /Users/... links in committed codex report; fixed in f2f3f06 (repo-relative refs). Reply 3/3. Re-review round 2 requested at 20:31:56Z, gate polling f2f3f06."
+  - timestamp: 2026-08-06T21:12:00Z
+    action: codex_validation_complete
+    phase: pr
+    details: "Gate re-run verdict PROCEED_WITH_FIXES, all items bookkeeping. Applied: implement phase closed, DEPENDENCIES.md bullet reworded to two-shape rule + CLO-649 in Ready + CLO-650 blocker row, local paths re-cleaned after the workflow rewrote the reports, CLO-650 filed (bot-identity hardening, blocked by CLO-623)."

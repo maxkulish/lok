@@ -7,31 +7,28 @@
 
 ## Verdict: FAIL
 
-Reviewed commit `c636ef9` via `git diff main...HEAD`. The spec also serves as the implementation plan. One uncommitted workflow-status change was excluded from that diff.
+Reviewed `main...HEAD` through `d2e30a6`. The checkout also has an uncommitted workflow-status update. Core AC behavior passes local fixtures, but two medium findings block approval.
 
 ## Findings
 
-- **HIGH — The new comment path can fail open when the head lookup fails.** `.claude/commands/pr/review.md:346` validates `REQUESTED_AT` but not `NEW_HEAD`; `.pi/skills/pr-review-cycle.md:134` similarly validates only `since`. In jq, `contains("")` is true, so an empty head accepts any fresh matching completion comment without proving the reviewed commit. A local probe confirmed this. This violates the fail-closed and covered-commit constraints.
+- **MEDIUM — Bot identity can be spoofed.** Both gates trust any login containing `qodo` (`.claude/commands/pr/review.md:355`, `.pi/skills/pr-review-cycle.md:150`). A fixture using `not-qodo-reviewer` successfully satisfied the completion gate. GitHub permits identities with repository read access to comment and review, so substring matching is not app authentication. This is a design-level security weakness because the spec explicitly preserves `test("qodo")`. [GitHub review model](https://docs.github.com/en/pull-requests/concepts/giving-reviews)
 
-- **MEDIUM — The new completion signal can be spoofed by a login merely containing `qodo`.** Both `.claude/commands/pr/review.md:361` and `.pi/skills/pr-review-cycle.md:149` use `test("qodo")`. A synthetic `qodo-spoof` author passed the filter. Because issue comments are easier to create than bot review objects, the new path should verify the exact app identity.
+- **MEDIUM — Workflow state dispatches the wrong phase.** The state pointer says `current_phase: implement` while the PR phase is already in progress and review feedback has been addressed (`docs/status/clo-637-workflow.yaml:9`). Task orchestration dispatches from this field, so resuming CLO-637 can incorrectly return to implementation. The implementation commit list also omits `d2e30a6`.
 
-- **MEDIUM — The Pi workflow still contradicts the two-shape rule.** Its introductory rules still require a review object at `.pi/skills/pr-review-cycle.md:35`, while the later guidance explicitly recommends the forbidden persistent-comment `updated_at` signal at `.pi/skills/pr-review-cycle.md:570`. This leaves the executable procedure internally inconsistent and plan item 3 incomplete.
+- **LOW — The new server-side `since` optimization is stricter than the specified gate.** The client accepts `created_at >= REQUESTED_AT`, but GitHub documents `since` as returning comments updated *after* the supplied time (`.claude/commands/pr/review.md:364`, `.pi/skills/pr-review-cycle.md:157`). A completion comment created in the same second as the request can therefore be removed server-side before jq sees it, despite satisfying the client condition. [GitHub issue-comments API](https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28)
 
-- **LOW — Project tracking retains inaccurate task text.** `docs/DEPENDENCIES.md:45` still says the poll "can never fire" and Qodo submits no new review, although the spec establishes that review objects appear when findings exist. Its header also says nine open tasks, while the tracking files show nine backlog tasks plus active CLO-637.
-
-- **LOW — Diff hygiene is not clean.** `git diff --check main...HEAD` reports an extra blank line at EOF in `docs/reviews/clo-637-spec-review-ollama.md`.
+- **LOW — Tracking prose still contradicts the spec.** `docs/DEPENDENCIES.md:45` says Qodo "submits no new review," while the spec establishes that it submits review objects when new findings exist. Its "ten open tasks" header also appears inconsistent with nine listed backlog tasks plus CLO-637 and newly filed CLO-649.
 
 ## Missing Items
 
-- The fail-closed contract lacks validation that the covered head is a nonempty full SHA.
-- The Pi workflow's prose reconciliation is incomplete.
-- AC1–AC4's required raw API snapshots and PR-body command output are not present in the committed branch. The nominal filters passed synthetic probes, but live GitHub verification was unavailable from this environment, so those criteria remain **UNVERIFIED**.
-- AC7 is implemented for an empty `REQUESTED_AT`; AC6's executable conditions otherwise match apart from the existing multi-bot review-object filter.
+- No functional AC is visibly absent: local fixtures passed AC1–AC4, AC5/AC6 static comparison, AC7 guards, `bash -n`, ShellCheck, and `git diff --check`.
+- The required live AC1–AC4 commands and raw API snapshots in PR #84 remain **UNVERIFIED** here because GitHub API access failed. The branch records that they passed but does not contain the evidence itself.
+- The successful re-review result for current head `d2e30a6` is not yet recorded at `HEAD`; the uncommitted workflow update says polling is still underway.
 
 ## Recommendations
 
-1. Reject invalid heads before polling in both snippets, ideally requiring `^[0-9a-f]{40}$`.
-2. Match the exact observed Qodo app login, or use a tightly anchored allowlist verified against captured API JSON.
-3. Replace every remaining "current-head review"/`updated_at` instruction in the Pi skill with the dual-shape `created_at + full SHA` rule.
-4. Correct `DEPENDENCIES.md`, remove the trailing blank line, and commit the workflow-status update only after validation evidence is recorded.
-5. Add negative probes for empty head, failed head API lookup, and spoofed Qodo-like usernames; include their output and the raw PR #71/#80 snapshots in the PR description.
+1. Anchor bot identity to the verified Qodo/Copilot app logins, preferably also requiring `.user.type == "Bot"`, in both review and comment paths.
+2. Set `workflow.current_phase: pr`, complete the implementation phase, and record `d2e30a6` plus the final re-review result.
+3. Remove the `?since=` prefilter or query from at least one second before `REQUESTED_AT`; keep jq's `created_at` condition authoritative.
+4. Correct `DEPENDENCIES.md` wording and task count.
+5. Confirm PR #84 contains the required commands, outputs, and raw JSON snapshots before merge.
