@@ -50,6 +50,7 @@ phases:
     status: in_progress
     pr_url: https://github.com/maxkulish/lok/pull/84
     pr_number: 84
+    reviews_addressed: 1
   complete:
     status: pending
 
@@ -98,3 +99,7 @@ history:
     action: review_addressed
     phase: pr
     details: "One bounded fix iteration in c1dec11: 40-hex head guard both files, prose reconciled, hazard reproduced then closed (empty-head query fires unguarded, rc=1 guarded). 10/10 original probes still pass; shellcheck clean. Gate re-run started."
+  - timestamp: 2026-08-06T21:00:00Z
+    action: review_addressed
+    phase: pr
+    details: "Qodo pass on 8bc265a: 2 findings, both verified real, both fixed in d2e30a6 (?since= server-side prefilter on comment polls; stderr messages on wait_for_bot_review guards). Replies 2/2. /agentic_review posted at 2026-08-06T20:26:37Z; the NEW Step 9.5 gate itself is polling head d2e30a6 - first live exercise of the fix."
