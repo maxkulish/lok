@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-06 (CLO-637 in review via PR #84; CLO-649 and CLO-650 filed; eleven open tasks, one blocked by design)
+**Last Updated**: 2026-08-06 (CLO-637 in review via PR #84; CLO-633's four follow-ups carry their issue IDs; CLO-649 and CLO-650 filed. Fifteen open tasks, one blocked by design)
 
 ## Current Blockers
 
@@ -22,6 +22,9 @@ One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-
 | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | None. Independent codex-security scan finding | 2026-08-03 |
+| [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | None. CLO-633 follow-up | 2026-08-03 |
+| [CLO-639](https://linear.app/cloud-ai/issue/CLO-639) | None. CLO-633 follow-up | 2026-08-03 |
+| [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | None. CLO-633 follow-up | 2026-08-03 |
 | [CLO-649](https://linear.app/cloud-ai/issue/CLO-649) | None. Independent spec-review harness fix | 2026-08-06 |
 
 CLO-609 landed on 2026-08-03 (PR #78, `8b96821`), so the pre-publish metadata deadline is cleared.
@@ -32,22 +35,25 @@ listed below.
 ## Follow-ups filed by CLO-633
 
 Recorded here because three of the four are latent defects rather than features, and the fourth
-breaks a command this project runs on every task:
+breaks a command this project runs on every task. All four were written up as prose on 2026-08-03
+without their issue IDs, which kept them out of every prioritised list until the 2026-08-06 sync:
 
-- **`commit_file` ignores `git rev-parse HEAD`'s exit status** (`src/tasks/implement.rs:761-767`),
-  returning `""` as a successful SHA on an unborn HEAD. CLO-633 made the *slice* safe; the error
-  handling is still wrong.
-- **`extract_file_references` and `FILE_REF_RE` are duplicated verbatim** across
-  `src/tasks/context.rs` and `src/tasks/fix.rs` — the same drift hazard that turned CLO-633's
-  Defect 2 into two sites.
-- **No CI job builds against the declared `rust-version = "1.80"`.** The oldest toolchain installed
-  locally is 1.94 and `ci.yml` uses runner-stable, so the MSRV is an unverified claim. It starts
-  costing something once Phase 13 publishes to crates.io.
-- **`/pr:review` Step 9.5's re-review poll timed out on every clean pass** (now [CLO-637](https://linear.app/cloud-ai/issue/CLO-637), fix in review via PR #84). It waited for a *review*
-  object on the new head SHA, but Qodo submits one only when a pass carries new inline findings;
-  a clean re-review updates its review comment in place and announces completion with a new
-  comment naming the covered commit, so the gate failed precisely on the success case. Observed
-  on PR #80. Same untested-shell-in-markdown family as CLO-623 and CLO-624.
+- **[CLO-639](https://linear.app/cloud-ai/issue/CLO-639) - `commit_file` ignores `git rev-parse HEAD`'s exit status**
+  (`src/tasks/implement.rs:761-767`), returning `""` as a successful SHA on an unborn HEAD.
+  CLO-633 made the *slice* safe; the error handling is still wrong. Phase 16.
+- **[CLO-640](https://linear.app/cloud-ai/issue/CLO-640) - `extract_file_references` and `FILE_REF_RE` are duplicated verbatim**
+  across `src/tasks/context.rs` and `src/tasks/fix.rs` — the same drift hazard that turned CLO-633's
+  Defect 2 into two sites. Phase 16.
+- **[CLO-638](https://linear.app/cloud-ai/issue/CLO-638) - No CI job builds against the declared `rust-version = "1.80"`.**
+  The oldest toolchain installed locally is 1.94 and `ci.yml` uses runner-stable, so the MSRV is an
+  unverified claim. It starts costing something once Phase 13 publishes to crates.io, which is why
+  it now sits in that phase.
+- **[CLO-637](https://linear.app/cloud-ai/issue/CLO-637) - `/pr:review` Step 9.5's re-review poll timed out on every clean pass**
+  (fix in review via PR #84). It waited for a *review* object on the new head SHA, but Qodo submits
+  one only when a pass carries new inline findings; a clean re-review updates its review comment in
+  place and announces completion with a new comment naming the covered commit, so the gate failed
+  precisely on the success case. Observed on PR #80. Same untested-shell-in-markdown family as
+  CLO-623 and CLO-624, so it joins them in Phase 14.
 
 ## Standing constraints
 

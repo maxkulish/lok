@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-06 (CLO-637 started; Phase 14 in progress)
+**Last Updated**: 2026-08-06 (CLO-637 in review via PR #84; CLO-633's four follow-ups placed into phases, adding Phase 16; Phase 14 in progress)
 
 ## Summary
 
@@ -18,9 +18,10 @@
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
-| Phase 13: Release Readiness | 2 | 1 | In progress |
+| Phase 13: Release Readiness | 3 | 1 | In progress |
 | Phase 14: Orchestration Tooling Hardening | 5 | 0 | In progress |
 | Phase 15: Security Scan Remediation | 5 | 1 | In Progress |
+| Phase 16: Task-Pipeline Cleanup | 2 | 0 | Not started |
 
 ## Phase 11: Health Checks
 
@@ -51,7 +52,10 @@ What still stands between the crate as it is now and a release someone outside t
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-609](https://linear.app/cloud-ai/issue/CLO-609) | Point the crate's repository and homepage metadata at maxkulish/lok | Done | - |
+| [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs | Not started | - |
 | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610) | Attest release binaries so their checksums prove origin, not only transfer | Not started | - |
+
+CLO-638 joined this phase on 2026-08-06. It arrived as a CLO-633 follow-up, but it belongs here for the same reason as the other two: the oldest toolchain installed locally is 1.94 and `ci.yml` uses runner-stable, so `rust-version = "1.80"` is a claim nobody has tested. It costs nothing today and becomes a consumer-facing build failure the moment the crate is published.
 
 ## Phase 14: Orchestration Tooling Hardening
 
@@ -63,7 +67,9 @@ Five defects in the markdown-defined orchestration commands, all found by runnin
 | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | Distinguish a bad reviewer invocation from an empty model response | Not started | - |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | complete.md edits the aggregation files, then checks out main with them uncommitted | Not started | - |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | gh pr merge --delete-branch silently skips the remote deletion when its local checkout fails | Not started | - |
-| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | In Progress | - |
+| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | In Review | - |
+
+CLO-637 joined this phase on 2026-08-06, filed out of CLO-633. It is the fourth individual failure of the same root cause: Step 9.5 waited for a review object on the new head SHA, but Qodo submits one only when a pass carries new inline findings. A clean re-review updates its comment in place, so the gate failed precisely on the success case. Observed on PR #80.
 
 ## Phase 15: Security Scan Remediation
 
@@ -76,6 +82,15 @@ Five findings from the codex-security scan of `6ac4694` (2026-08-03). They share
 | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | Gate project-layer lok.toml backend commands behind a trust boundary | Not started | - |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | Add one path-confinement helper and use it in every worktree writer and reader | Not started | - |
 | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | Default the Gemini backend to the plan agent when no sandbox is requested | Not started | - |
+
+## Phase 16: Task-Pipeline Cleanup
+
+Two latent defects in `src/tasks/`, both surfaced while CLO-633 was investigated rather than by the security scan that opened Phase 15, and neither of them a security finding. They sit here instead of in Phase 15 because they share that task's origin, not its subject. Both are contained changes and neither blocks anything.
+
+| Task | Title | Status | Dependencies |
+|------|-------|--------|--------------|
+| [CLO-639](https://linear.app/cloud-ai/issue/CLO-639) | commit_file returns an empty string as a successful SHA when git rev-parse HEAD fails | Not started | - |
+| [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | Deduplicate FILE_REF_RE and extract_file_references across tasks/context.rs and tasks/fix.rs | Not started | - |
 
 ## Phase 2: Validation Pipeline
 
