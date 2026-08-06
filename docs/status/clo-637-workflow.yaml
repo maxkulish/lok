@@ -36,7 +36,9 @@ phases:
     notes: "Ollama leg REVIEW_FAILED (apostrophe in title broke sed template - filed CLO-649); Claude fallback was sole reviewer."
   implement:
     status: in_progress
-    commits: []
+    commits:
+      - c636ef9
+    last_phase_completed: "spec decomposition items 1-4 (single commit)"
   pr:
     status: pending
   complete:
@@ -63,3 +65,15 @@ history:
     action: spec_approved
     phase: spec
     details: "Approved autonomously per AFK label: verdict APPROVE_WITH_SUGGESTIONS, all suggestions applied, zero contradictions. Proceeding to implement; spec decomposition is the plan."
+  - timestamp: 2026-08-06T20:25:00Z
+    action: phase_completed
+    phase: implement
+    details: "All 4 decomposition items in commit c636ef9. Verification: 10/10 probes pass against recorded PR #71/#80 data; wait_for_bot_review exercised live (clean-shape detect rc=0, empty-since rc=1); bash -n + shellcheck clean; AC5 rg clean; AC6 changed-block conditions identical."
+  - timestamp: 2026-08-06T20:26:00Z
+    action: pushed_to_remote
+    phase: implement
+    details: "Pushed fix/clo-637-qodo-review (c636ef9) to origin."
+  - timestamp: 2026-08-06T20:26:30Z
+    action: implementation_complete
+    phase: implement
+    details: "Spec decomposition 100%. Entering validation gate."
