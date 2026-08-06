@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-06 (CLO-638 started)
+**Last Updated**: 2026-08-06 (CLO-637 done via PR #84; Phase 14 at 1 of 5)
 
 ## Summary
 
@@ -19,7 +19,7 @@
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
 | Phase 13: Release Readiness | 3 | 1 | In progress |
-| Phase 14: Orchestration Tooling Hardening | 5 | 0 | Not started |
+| Phase 14: Orchestration Tooling Hardening | 5 | 1 | In progress |
 | Phase 15: Security Scan Remediation | 5 | 1 | In Progress |
 | Phase 16: Task-Pipeline Cleanup | 2 | 0 | Not started |
 
@@ -52,14 +52,14 @@ What still stands between the crate as it is now and a release someone outside t
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-609](https://linear.app/cloud-ai/issue/CLO-609) | Point the crate's repository and homepage metadata at maxkulish/lok | Done | - |
-| [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs | In Progress | - |
+| [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs | Not started | - |
 | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610) | Attest release binaries so their checksums prove origin, not only transfer | Not started | - |
 
 CLO-638 joined this phase on 2026-08-06. It arrived as a CLO-633 follow-up, but it belongs here for the same reason as the other two: the oldest toolchain installed locally is 1.94 and `ci.yml` uses runner-stable, so `rust-version = "1.80"` is a claim nobody has tested. It costs nothing today and becomes a consumer-facing build failure the moment the crate is published.
 
 ## Phase 14: Orchestration Tooling Hardening
 
-Four defects in the markdown-defined orchestration commands, all found by running them rather than reading them, and all sharing one root cause: procedural instructions that nothing executes or tests until they fail in production. CLO-623 is the structural fix; the other three are the individual failures that motivated it.
+Five defects in the markdown-defined orchestration commands, all found by running them rather than reading them, and all sharing one root cause: procedural instructions that nothing executes or tests until they fail in production. CLO-623 is the structural fix; the others are the individual failures that motivated it.
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
@@ -67,9 +67,9 @@ Four defects in the markdown-defined orchestration commands, all found by runnin
 | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | Distinguish a bad reviewer invocation from an empty model response | Not started | - |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | complete.md edits the aggregation files, then checks out main with them uncommitted | Not started | - |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | gh pr merge --delete-branch silently skips the remote deletion when its local checkout fails | Not started | - |
-| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | In Progress | - |
+| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | Done | - |
 
-CLO-637 joined this phase on 2026-08-06, filed out of CLO-633. It is the fourth individual failure of the same root cause: Step 9.5 waits for a review object on the new head SHA, while Qodo edits its existing review comment in place and submits no new review. The same document states that two sections earlier. Observed on PR #80, where the poll ran to its full timeout after the re-review had already landed.
+CLO-637 joined this phase on 2026-08-06, filed out of CLO-633. It is the fourth individual failure of the same root cause: Step 9.5 waited for a review object on the new head SHA, but Qodo submits one only when a pass carries new inline findings. A clean re-review updates its comment in place, so the gate failed precisely on the success case. Observed on PR #80.
 
 ## Phase 15: Security Scan Remediation
 

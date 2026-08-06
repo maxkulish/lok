@@ -32,10 +32,13 @@ It writes `bot_review_wait_completed`, `review_addressed` and
 > currently installed here). The former `gemini-code-assist` app is
 > sunset and reviews nothing; no trigger of any kind reaches it.
 
-Bot reviewers post a GitHub review on the current head commit when their
-pass finishes. Poll for that observable review, not merely for elapsed
-time or CI status. PR #24 showed why: it was merged at +261s while the
-bot posted its review and inline comment at +289s/+290s.
+Bot reviewers make a finished pass observable in one of two shapes: a
+GitHub review object on the current head commit when the pass carries
+new inline findings, or - Qodo only - a completion comment naming that
+head when it does not (the per-pass delivery rule in 1b). Poll for
+those observable signals, not merely for elapsed time or CI status.
+PR #24 showed why: it was merged at +261s while the bot posted its
+review and inline comment at +289s/+290s.
 
 **Probe first, then poll.** With no bot installed, the polling loop can
 only ever time out, stalling every PR for ten minutes. Run 1a and skip
@@ -109,15 +112,35 @@ update_workflow_state({
 
 Only run when 1a found at least one installed bot.
 
-Define the poll once - step 8 reuses it verbatim. It matches on the head
-SHA **and** a lower bound on `submitted_at`, so it can never mistake an
-older pass on the same commit for a fresh one:
+Define the poll once - step 8 reuses it verbatim. A completed pass
+arrives in one of **two shapes**, and the helper accepts both. A new
+**review object** appears only when the pass has new inline findings to
+attach (all six on PR #71 carried 1-3 inline comments). A **clean pass**
+submits no review object at all - Qodo edits its persistent "Code Review
+by Qodo" comment in place and announces completion with a *new* issue
+comment reading `[Code review](...) by qodo was updated up to the latest
+commit <sha>` (observed on PR #80, where a reviews-endpoint-only poll ran
+to full timeout while the clean pass had already landed). Each shape
+pairs a freshness bound with a covered-commit check, so the helper can
+never mistake an older pass - on the same commit or an old one - for a
+fresh one. The persistent comment's `updated_at` is deliberately not a
+condition: it bumps mid-pass and on post-merge permalink refreshes, so
+it would pass runs that never happened.
 
 ```bash
 # wait_for_bot_review <head_sha> <since_iso8601> [timeout_seconds]
-# Echoes the review's submitted_at and returns 0; returns 1 on timeout.
+# Echoes the detection timestamp and returns 0; returns 1 on timeout,
+# on an empty <since> (a failed POST must not widen the window), or on
+# a malformed <head_sha> (an empty head would make the comment leg's
+# contains() vacuously true and pass any fresh completion comment).
+# Accepts both delivery shapes: a review object on <head_sha>, or -
+# qodo only - a completion comment naming <head_sha>.
 wait_for_bot_review() {
   head="$1"; since="$2"; limit="${3:-600}"
+  printf '%s' "$head" | grep -qE '^[0-9a-f]{40}$' \
+    || { echo "wait_for_bot_review: head '${head}' is not a 40-hex SHA - pulls lookup failed?" >&2; return 1; }
+  [ -n "$since" ] \
+    || { echo "wait_for_bot_review: empty since - the /agentic_review POST (or PR lookup) failed?" >&2; return 1; }
   deadline=$(( $(date -u +%s) + limit ))
   while :; do
     seen=$(gh api repos/${REPO}/pulls/${PR}/reviews --paginate --slurp \
@@ -127,6 +150,18 @@ wait_for_bot_review() {
            | select(.user.login | test($re))
            | select(.submitted_at >= $since)
            | .submitted_at] | last // empty')
+    [ -n "$seen" ] && { printf '%s\n' "$seen"; return 0; }
+    # ?since= is a server-side prefilter on updated_at (never earlier than
+    # created_at, so it cannot drop a comment the created_at gate below would
+    # accept); it keeps each tick from re-downloading the full history.
+    seen=$(gh api "repos/${REPO}/issues/${PR}/comments?since=${since}&per_page=100" --paginate --slurp \
+      | jq -r --arg h "$head" --arg since "$since" '
+          [.[][]
+           | select(.user.login | test("qodo"))
+           | select(.created_at >= $since)
+           | select(.body | test("was updated up to the latest commit"))
+           | select(.body | contains($h))
+           | .created_at] | last // empty')
     [ -n "$seen" ] && { printf '%s\n' "$seen"; return 0; }
     [ "$(date -u +%s)" -ge "$deadline" ] && return 1
     sleep 10
@@ -161,6 +196,13 @@ fi
 Take `REQUESTED_AT` from the POST response, never from local `date` -
 `submitted_at` comes from GitHub's clock, and a fast local clock would
 exclude the very review it is waiting for. Expect 3-4 minutes.
+
+Known limit: a clean **initial** pass may deliver neither shape - the
+review object needs findings, and the completion comment is only
+evidenced for *re*-review passes ("was updated"). The first wait then
+times out and this explicit request is the recovery: the requested pass
+is a re-review, which does announce itself. No worse than a plain
+timeout, and the gate still fails closed if nothing lands.
 
 If `BOT_REVIEW_SEEN` is still 0 after the requested pass, that is a real
 gate failure - go to step 2.
@@ -513,18 +555,21 @@ else
 fi
 ```
 
-`wait_for_bot_review` is the helper defined in step 1b. Both of its
-conditions are load-bearing here:
+`wait_for_bot_review` is the helper defined in step 1b - it accepts
+both delivery shapes (review object, or qodo's completion comment
+naming the head). Its paired conditions are load-bearing here:
 
-- The SHA must be the **post-push** head. A review whose `commit_id` is
-  the old SHA is the stale pass.
+- The SHA must be the **post-push** head. A review object on the old
+  SHA - or a completion comment naming it - is the stale pass.
 - SHA alone is not proof of a fresh pass. Re-running step 8 without an
   intervening push, or running it after the `/agentic_review` post
-  failed, would match the *previous* run's review on the same SHA and
+  failed, would match the *previous* run's pass on the same SHA and
   report re-validation that never happened. `REQUESTED_AT` is what makes
   the poll observe this run rather than any run - and it comes from the
   POST response, not local `date`, so both sides stay in GitHub's clock
-  domain.
+  domain. An empty `REQUESTED_AT` - or a head that is not a 40-hex SHA,
+  as after a failed pulls lookup - makes the helper return 1 immediately
+  rather than poll with a vacuous condition.
 
 Carry `BOT_REREVIEW_SHA` and `BOT_REREVIEW_AT` into step 9; they are
 what the workflow YAML records and what the pre-merge gate in
@@ -535,9 +580,12 @@ Observed latency on PR #71 was 3-4 minutes per pass.
 Three behaviors to expect, all observed on PR #71:
 
 - Qodo **edits its existing "Code Review by Qodo" issue comment in
-  place** rather than posting a new one. Watching for a new comment id
-  will miss the re-review; compare `commit_id` on the review object, or
-  the comment's `updated_at`.
+  place**. Watching that comment for a new id will miss the re-review;
+  the observable completion signals are the two shapes
+  `wait_for_bot_review` polls - a review object on the head, or the
+  completion comment naming it. Do not fall back to the comment's
+  `updated_at`: it bumps mid-pass and on post-merge permalink
+  refreshes, so it passes runs that never happened.
 - It posts a transient "Qodo is busy working" comment and then
   **deletes** it. A comment id that 404s on fetch is normal, not an
   error.
