@@ -356,8 +356,12 @@ while :; do
         | select(.submitted_at >= $since) | .submitted_at] | last // empty')
   [ -n "$REREVIEW" ] && { echo "Re-review (new findings) on ${NEW_HEAD:0:7} at ${REREVIEW}"; break; }
 
-  # Shape 2: a clean pass - a new completion comment naming the covered commit
-  UPDATED=$(gh api repos/{owner}/{repo}/issues/[number]/comments --paginate --slurp \
+  # Shape 2: a clean pass - a new completion comment naming the covered commit.
+  # ?since= is a server-side prefilter (GitHub filters on updated_at, which is
+  # never earlier than created_at, so it cannot drop a comment the client-side
+  # created_at gate would accept) - it keeps each poll tick from re-downloading
+  # the PR's whole comment history. The jq created_at check remains the gate.
+  UPDATED=$(gh api "repos/{owner}/{repo}/issues/[number]/comments?since=${REQUESTED_AT}&per_page=100" --paginate --slurp \
     | jq -r --arg h "$NEW_HEAD" --arg since "$REQUESTED_AT" \
       '[.[][] | select(.user.login|test("qodo")) | select(.created_at >= $since)
         | select(.body|test("was updated up to the latest commit"))

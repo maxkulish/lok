@@ -137,8 +137,10 @@ it would pass runs that never happened.
 # qodo only - a completion comment naming <head_sha>.
 wait_for_bot_review() {
   head="$1"; since="$2"; limit="${3:-600}"
-  printf '%s' "$head" | grep -qE '^[0-9a-f]{40}$' || return 1
-  [ -n "$since" ] || return 1
+  printf '%s' "$head" | grep -qE '^[0-9a-f]{40}$' \
+    || { echo "wait_for_bot_review: head '${head}' is not a 40-hex SHA - pulls lookup failed?" >&2; return 1; }
+  [ -n "$since" ] \
+    || { echo "wait_for_bot_review: empty since - the /agentic_review POST (or PR lookup) failed?" >&2; return 1; }
   deadline=$(( $(date -u +%s) + limit ))
   while :; do
     seen=$(gh api repos/${REPO}/pulls/${PR}/reviews --paginate --slurp \
@@ -149,7 +151,10 @@ wait_for_bot_review() {
            | select(.submitted_at >= $since)
            | .submitted_at] | last // empty')
     [ -n "$seen" ] && { printf '%s\n' "$seen"; return 0; }
-    seen=$(gh api repos/${REPO}/issues/${PR}/comments --paginate --slurp \
+    # ?since= is a server-side prefilter on updated_at (never earlier than
+    # created_at, so it cannot drop a comment the created_at gate below would
+    # accept); it keeps each tick from re-downloading the full history.
+    seen=$(gh api "repos/${REPO}/issues/${PR}/comments?since=${since}&per_page=100" --paginate --slurp \
       | jq -r --arg h "$head" --arg since "$since" '
           [.[][]
            | select(.user.login | test("qodo"))
