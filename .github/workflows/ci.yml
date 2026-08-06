@@ -59,12 +59,36 @@ jobs:
       - name: Build (release)
         run: cargo build --release --locked
 
+  # CLO-638. Build against the declared MSRV (1.83) so a dependency or
+  # source-code change that requires a newer toolchain is caught in CI
+  # before it reaches a consumer on an older Rust.
+  msrv-check:
+    name: MSRV check (1.83)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MSRV toolchain
+        uses: dtolnay/rust-toolchain@1.83
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check against MSRV
+        run: cargo check --locked --all-targets
+
   # Single stable context for the branch ruleset. Requiring the matrix legs
   # directly would mean adding or renaming an OS silently changes what `main`
   # is protected by.
   ci-gate:
     name: CI Gate
-    needs: [build-and-test, library-boundary]
+    needs: [build-and-test, library-boundary, msrv-check]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -73,7 +97,8 @@ jobs:
           failed=0
           for pair in \
             "build-and-test:${{ needs.build-and-test.result }}" \
-            "library-boundary:${{ needs.library-boundary.result }}"; do
+            "library-boundary:${{ needs.library-boundary.result }}" \
+            "msrv-check:${{ needs.msrv-check.result }}"; do
             name=${pair%%:*}; result=${pair#*:}
             echo "$name: $result"
             [ "$result" = "success" ] || failed=1

@@ -23,7 +23,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-08-06T20:46:34.250Z'
-  updated_at: '2026-08-06T20:55:38.996Z'
+  updated_at: '2026-08-06T20:55:54.937Z'
 phases:
   discovery:
     status: complete
@@ -76,6 +76,8 @@ phases:
     approved: true
   implement:
     status: pending
+    commits:
+      - 84dff5e
   pr:
     status: pending
   complete:
@@ -149,5 +151,9 @@ history:
     action: phase_transition
     phase: plan
     details: Transitioned from plan to implement
+  - timestamp: '2026-08-06T20:55:54.937Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST1 landed: update rust-version from 1.80 to 1.83. Commit 84dff5e'
 task_title: Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs
 task_url: https://linear.app/cloud-ai/issue/CLO-638/verify-the-declared-rust-version-180-in-ci-or-raise-it-to-what-the
