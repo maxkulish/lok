@@ -23,7 +23,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-08-06T20:46:34.250Z'
-  updated_at: '2026-08-06T20:55:54.937Z'
+  updated_at: '2026-08-06T20:57:47.135Z'
 phases:
   discovery:
     status: complete
@@ -75,9 +75,27 @@ phases:
     plan_file: docs/plans/clo-638-msrv-ci-gate.md
     approved: true
   implement:
-    status: pending
+    status: validating
     commits:
       - 84dff5e
+      - e8ba32e
+    assumption_outcomes:
+      - evidence: cargo +1.83.0 check --locked --all-targets passes locally
+        outcome: held
+        text: dtolnay/rust-toolchain@1.83 resolves to a toolchain that can compile the crate's dependency tree
+      - evidence: Verified on aarch64-darwin; ICU4X chain is platform-agnostic
+        outcome: held
+        text: The MSRV is platform-independent (no platform-specific dependencies require a newer Rust on macOS vs Linux)
+      - evidence: YAML valid; follows same pattern as existing jobs
+        outcome: held
+        text: 'Adding a new job to CI Gate''s needs list does not break the if: always() semantics'
+      - evidence: 'msrv-check job has no paths: filter'
+        outcome: held
+        text: 'No paths: filter is needed on the new job (per lesson clo-625-l2)'
+      - evidence: Both jobs share same Cargo.lock; toolchain installed separately by dtolnay/rust-toolchain
+        outcome: held
+        text: The shared cache key does not cause cross-contamination between the MSRV job and build-and-test
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -155,5 +173,19 @@ history:
     action: subtask_complete
     phase: implement
     details: 'ST1 landed: update rust-version from 1.80 to 1.83. Commit 84dff5e'
+  - timestamp: '2026-08-06T20:56:32.597Z'
+    action: subtask_complete
+    phase: implement
+    details: 'ST2+ST3 landed: add msrv-check job and wire into CI Gate. Commit e8ba32e'
+  - timestamp: '2026-08-06T20:57:44.539Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: '5 assumptions reviewed. held: 5, violated: 0, untested: 0. All held.'
+  - timestamp: '2026-08-06T20:57:47.135Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All sub-tasks landed. fmt+clippy+test green. 2 commits: 84dff5e (rust-version), e8ba32e (msrv-check job + CI Gate
+      wiring).
 task_title: Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs
 task_url: https://linear.app/cloud-ai/issue/CLO-638/verify-the-declared-rust-version-180-in-ci-or-raise-it-to-what-the

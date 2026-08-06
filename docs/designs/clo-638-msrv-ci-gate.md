@@ -20,6 +20,14 @@ Discovery (see `docs/discovery/clo-638.md`) confirmed that **1.80 does not build
 - Not changing how local development works (no `rust-toolchain.toml` file)
 - Not changing the release or publish workflows (they use runner-stable, which is fine)
 
+### Bedrock feature MSRV
+
+The optional `bedrock` feature (enabled by `--features bedrock`) pulls in `aws-config` and
+`aws-sdk-bedrockruntime`, which require Rust **1.88**. This is a separate concern from the
+default-features MSRV of 1.83. The CI job checks both:
+- `cargo check --locked --all-targets` against 1.83 (default features)
+- `cargo check --locked --all-targets --features bedrock` against 1.88 (bedrock feature)
+
 ## Architecture
 
 ### Changes to `Cargo.toml`

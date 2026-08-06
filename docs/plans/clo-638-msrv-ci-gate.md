@@ -21,9 +21,10 @@ Change line 4 from `rust-version = "1.80"` to `rust-version = "1.83"`.
 **Estimate:** S
 
 Add a new `msrv-check` job that:
-- Uses `dtolnay/rust-toolchain@1.83` to install the MSRV toolchain
+- Uses `dtolnay/rust-toolchain` pinned to a commit SHA with `toolchain: 1.83` to install the MSRV toolchain
 - Shares the cargo cache key with `build-and-test` (`${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}`)
-- Runs `cargo check --locked --all-targets`
+- Runs `cargo check --locked --all-targets` (default features) against 1.83
+- Runs `cargo check --locked --all-targets --features bedrock` against 1.88 (bedrock's MSRV)
 - Runs on `ubuntu-latest` only
 
 ### ST3 Wire `msrv-check` into CI Gate
