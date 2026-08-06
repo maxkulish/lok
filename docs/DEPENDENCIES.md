@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-06 (CLO-637 in review via PR #84; CLO-633's four follow-ups carry their issue IDs; CLO-649 and CLO-650 filed. Fifteen open tasks, one blocked by design)
+**Last Updated**: 2026-08-06 (CLO-637 done via PR #84. Fourteen open tasks, one blocked by design)
 
 ## Current Blockers
 
@@ -49,7 +49,7 @@ without their issue IDs, which kept them out of every prioritised list until the
   unverified claim. It starts costing something once Phase 13 publishes to crates.io, which is why
   it now sits in that phase.
 - **[CLO-637](https://linear.app/cloud-ai/issue/CLO-637) - `/pr:review` Step 9.5's re-review poll timed out on every clean pass**
-  (fix in review via PR #84). It waited for a *review* object on the new head SHA, but Qodo submits
+  (landed 2026-08-06, PR #84 squashed as `4263a1c`). It waited for a *review* object on the new head SHA, but Qodo submits
   one only when a pass carries new inline findings; a clean re-review updates its review comment in
   place and announces completion with a new comment naming the covered commit, so the gate failed
   precisely on the success case. Observed on PR #80. Same untested-shell-in-markdown family as

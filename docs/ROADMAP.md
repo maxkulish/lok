@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-06 (CLO-637 in review via PR #84; CLO-633's four follow-ups placed into phases, adding Phase 16; Phase 14 in progress)
+**Last Updated**: 2026-08-06 (CLO-637 done via PR #84; Phase 14 at 1 of 5)
 
 ## Summary
 
@@ -19,7 +19,7 @@
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
 | Phase 13: Release Readiness | 3 | 1 | In progress |
-| Phase 14: Orchestration Tooling Hardening | 5 | 0 | In progress |
+| Phase 14: Orchestration Tooling Hardening | 5 | 1 | In progress |
 | Phase 15: Security Scan Remediation | 5 | 1 | In Progress |
 | Phase 16: Task-Pipeline Cleanup | 2 | 0 | Not started |
 
@@ -67,7 +67,7 @@ Five defects in the markdown-defined orchestration commands, all found by runnin
 | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | Distinguish a bad reviewer invocation from an empty model response | Not started | - |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | complete.md edits the aggregation files, then checks out main with them uncommitted | Not started | - |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | gh pr merge --delete-branch silently skips the remote deletion when its local checkout fails | Not started | - |
-| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | In Review | - |
+| [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | Done | - |
 
 CLO-637 joined this phase on 2026-08-06, filed out of CLO-633. It is the fourth individual failure of the same root cause: Step 9.5 waited for a review object on the new head SHA, but Qodo submits one only when a pass carries new inline findings. A clean re-review updates its comment in place, so the gate failed precisely on the success case. Observed on PR #80.
 
