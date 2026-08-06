@@ -1,12 +1,13 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-06 (synced with Linear; CLO-633's four follow-ups picked up their issue IDs and entered the backlog tables)
+**Last Updated**: 2026-08-06 (CLO-638 started)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
 | [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make `/pr:review`'s re-review poll recognise a Qodo comment update instead of waiting for a review object | In Progress | 14 | - |
+| [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | Verify the declared `rust-version = "1.80"` in CI, or raise it to what the code actually needs | In Progress | 13 | - |
 
 Taken first because it is the only open task that charges every other one: the poll runs to its full timeout on each PR opened while it is broken. CLO-623 will later extract this gate logic into `.pi/scripts/`, and the fix is written to survive that move as logic rather than as a location.
 
@@ -16,7 +17,7 @@ Taken first because it is the only open task that charges every other one: the p
 |----------|------|-------|--------------|--------|
 | High | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields) | Escape or remove step output interpolated into workflow shell fields — `shell_escape` is registered as a filter and used nowhere, so model output reaches `sh -c` as source | None — codex-security scan finding | Next (HITL) |
 | High | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632/gate-project-layer-loktoml-backend-commands-behind-a-trust-boundary) | Gate project-layer `lok.toml` backend commands behind a trust boundary — a cloned repo's `./lok.toml` is the highest-precedence config layer and can replace a backend executable | None — codex-security scan finding | Next (HITL) |
-| High | [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | Verify the declared `rust-version = "1.80"` in CI, or raise it to what the code actually needs. Nothing local or in CI builds against the declared MSRV, so it is an unverified claim that first breaks for a crates.io consumer | None - CLO-633 follow-up | Before the Phase 13 publish |
+
 | Medium | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested) | Make pr-review-cycle shell snippets executable and tested — extract the gate logic to `.pi/scripts/`, shellcheck in CI, fixture tests asserting each gate fails *closed*, and collapse the skill/`/pr:review` duplication | None — PR #71 merged | Next |
 | Medium | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624/distinguish-a-bad-reviewer-invocation-from-an-empty-model-response) | Distinguish a bad reviewer invocation from an empty model response — `REVIEW_FAILED` on empty stdout regardless of cause is what hid the retired-gemini-CLI breakage for weeks | None — PR #71 merged | Next |
 | Medium | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627/completemd-edits-the-aggregation-files-then-checks-out-main-with-them) | `complete.md` edits the aggregation files at Step 3, then checks out main at Step 4 with them uncommitted — in worktree mode the same three files get edited twice in two places | None — CLO-625 merged | Next |
