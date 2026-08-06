@@ -20,10 +20,10 @@ linear:
   priority: 2
   branch_actual: feat/clo-638-rust-version
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: active
   created_at: '2026-08-06T20:46:34.250Z'
-  updated_at: '2026-08-06T22:41:45.100Z'
+  updated_at: '2026-08-06T22:43:00.438Z'
 phases:
   discovery:
     status: complete
@@ -129,6 +129,8 @@ phases:
     pre_merge_refetch_passed: true
   complete:
     status: pending
+    merge_commit: 6e17ee20b58bbd4e3d2af82c49551631f54c1a17
+    merged_at: '2026-08-06T22:42:35Z'
 history:
   - timestamp: '2026-08-06T20:46:34.250Z'
     action: workflow_started
@@ -255,5 +257,21 @@ history:
     action: pre_merge_refetch_passed
     phase: pr
     details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads.'
+  - timestamp: '2026-08-06T22:42:00.543Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #86 opened: https://github.com/maxkulish/lok/pull/86'
+  - timestamp: '2026-08-06T22:42:03.023Z'
+    action: ci_passed
+    phase: pr
+    details: 'All required checks passing. CI run 31129114217: MSRV check success, CI Gate success, all jobs green.'
+  - timestamp: '2026-08-06T22:42:05.736Z'
+    action: phase_transition
+    phase: pr
+    details: Transitioned from pr to complete
+  - timestamp: '2026-08-06T22:43:00.438Z'
+    action: pr_merged
+    phase: complete
+    details: 'PR #86 merged. Merge commit 6e17ee20b58bbd4e3d2af82c49551631f54c1a17.'
 task_title: Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs
 task_url: https://linear.app/cloud-ai/issue/CLO-638/verify-the-declared-rust-version-180-in-ci-or-raise-it-to-what-the
