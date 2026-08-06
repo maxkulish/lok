@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-03 (CLO-633 completed; nine open tasks, none blocked)
+**Last Updated**: 2026-08-06 (synced with Linear; CLO-633's four follow-ups now carry their issue IDs. Thirteen open tasks, none blocked; CLO-637 started)
 
 ## Current Blockers
 
@@ -22,6 +22,9 @@ Nothing is blocked. The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-591 -> CLO-592
 | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | None. Independent codex-security scan finding | 2026-08-03 |
+| [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | None. CLO-633 follow-up | 2026-08-03 |
+| [CLO-639](https://linear.app/cloud-ai/issue/CLO-639) | None. CLO-633 follow-up | 2026-08-03 |
+| [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | None. CLO-633 follow-up | 2026-08-03 |
 
 CLO-609 landed on 2026-08-03 (PR #78, `8b96821`), so the pre-publish metadata deadline is cleared.
 CLO-633 landed the same day (PR #80, `a8f84d8`). It blocked nothing — the five Phase 15 findings
@@ -31,22 +34,25 @@ listed below.
 ## Follow-ups filed by CLO-633
 
 Recorded here because three of the four are latent defects rather than features, and the fourth
-breaks a command this project runs on every task:
+breaks a command this project runs on every task. All four were written up as prose on 2026-08-03
+without their issue IDs, which kept them out of every prioritised list until the 2026-08-06 sync:
 
-- **`commit_file` ignores `git rev-parse HEAD`'s exit status** (`src/tasks/implement.rs:761-767`),
-  returning `""` as a successful SHA on an unborn HEAD. CLO-633 made the *slice* safe; the error
-  handling is still wrong.
-- **`extract_file_references` and `FILE_REF_RE` are duplicated verbatim** across
-  `src/tasks/context.rs` and `src/tasks/fix.rs` — the same drift hazard that turned CLO-633's
-  Defect 2 into two sites.
-- **No CI job builds against the declared `rust-version = "1.80"`.** The oldest toolchain installed
-  locally is 1.94 and `ci.yml` uses runner-stable, so the MSRV is an unverified claim. It starts
-  costing something once Phase 13 publishes to crates.io.
-- **`/pr:review` Step 9.5's re-review poll can never fire against Qodo.** It waits for a *review*
-  object on the new head SHA, but Qodo edits its existing review comment in place and submits no
-  new review — which the same document states two sections earlier. Observed on PR #80: the poll
-  ran to its full timeout while the re-review it was waiting for had already landed as a comment
-  update. Same untested-shell-in-markdown family as CLO-623 and CLO-624.
+- **[CLO-639](https://linear.app/cloud-ai/issue/CLO-639) - `commit_file` ignores `git rev-parse HEAD`'s exit status**
+  (`src/tasks/implement.rs:761-767`), returning `""` as a successful SHA on an unborn HEAD.
+  CLO-633 made the *slice* safe; the error handling is still wrong. Phase 16.
+- **[CLO-640](https://linear.app/cloud-ai/issue/CLO-640) - `extract_file_references` and `FILE_REF_RE` are duplicated verbatim**
+  across `src/tasks/context.rs` and `src/tasks/fix.rs` — the same drift hazard that turned CLO-633's
+  Defect 2 into two sites. Phase 16.
+- **[CLO-638](https://linear.app/cloud-ai/issue/CLO-638) - No CI job builds against the declared `rust-version = "1.80"`.**
+  The oldest toolchain installed locally is 1.94 and `ci.yml` uses runner-stable, so the MSRV is an
+  unverified claim. It starts costing something once Phase 13 publishes to crates.io, which is why
+  it now sits in that phase.
+- **[CLO-637](https://linear.app/cloud-ai/issue/CLO-637) - `/pr:review` Step 9.5's re-review poll can never fire against Qodo.**
+  It waits for a *review* object on the new head SHA, but Qodo edits its existing review comment in
+  place and submits no new review — which the same document states two sections earlier. Observed on
+  PR #80: the poll ran to its full timeout while the re-review it was waiting for had already landed
+  as a comment update. Same untested-shell-in-markdown family as CLO-623 and CLO-624, so it joins
+  them in Phase 14.
 
 ## Standing constraints
 
