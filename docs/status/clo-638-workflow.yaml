@@ -23,7 +23,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-08-06T20:46:34.250Z'
-  updated_at: '2026-08-06T21:34:15.935Z'
+  updated_at: '2026-08-06T22:41:45.100Z'
 phases:
   discovery:
     status: complete
@@ -116,7 +116,17 @@ phases:
         completion_tokens: 800
         task_label: pre-pr-validation-synthesis
   pr:
-    status: in_progress
+    status: complete
+    ci_passed: true
+    pr_number: 86
+    pr_url: https://github.com/maxkulish/lok/pull/86
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-08-06T22:40:55Z'
+    reviews_addressed: true
+    bot_rereview_at: '2026-08-06T22:40:55Z'
+    bot_rereview_head_sha: 4cda58af8b54485359b1f12df4369ad6e3b28e79
+    pre_merge_refetch_at: '2026-08-06T22:41:29Z'
+    pre_merge_refetch_passed: true
   complete:
     status: pending
 history:
@@ -221,5 +231,29 @@ history:
     action: pre_flight_checks_passed
     phase: pr
     details: 'Pre-merge gate green: fmt + clippy + test all pass'
+  - timestamp: '2026-08-06T22:41:11.379Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: 'Pre-merge gate green: fmt + clippy + test all pass'
+  - timestamp: '2026-08-06T22:41:14.317Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: 'Current-head bot review observed for PR #86 at head 4cda58a; Qodo reviewed and confirmed no code changes.'
+  - timestamp: '2026-08-06T22:41:29.784Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      3 threads resolved (3 qodo, 0 human); replies posted 3/3; 2 declined with evidence; negative proof completed in
+      CI; unresolved-thread re-check clean.
+  - timestamp: '2026-08-06T22:41:33.315Z'
+    action: bot_rereview_verified
+    phase: pr
+    details: >-
+      qodo-code-review confirmed no code changes since last review. Negative proof completed: CI run 31129038763
+      confirmed msrv-check fails with 1.82. Reverted and CI run 31129114217 confirms all green.
+  - timestamp: '2026-08-06T22:41:45.100Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 'Pre-merge re-fetch passed: no new inline comments and no unresolved review threads.'
 task_title: Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs
 task_url: https://linear.app/cloud-ai/issue/CLO-638/verify-the-declared-rust-version-180-in-ci-or-raise-it-to-what-the
