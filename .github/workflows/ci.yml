@@ -73,8 +73,6 @@ jobs:
 
       - name: Install MSRV toolchain
         uses: dtolnay/rust-toolchain@c18ebc01c713fe144ce50311473bf5c1b15b8e08
-        with:
-          toolchain: 1.83
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -90,8 +88,6 @@ jobs:
 
       - name: Install bedrock MSRV toolchain
         uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b
-        with:
-          toolchain: 1.88
 
       - name: Check against bedrock MSRV (1.88)
         run: cargo check --locked --all-targets --features bedrock
