@@ -60,6 +60,8 @@ phases:
     status: complete
     aggregation_files_updated: true
     merged_at: 2026-08-06T20:50:20Z
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/85
+    finalize_pr_number: 85
 
 history:
   - timestamp: 2026-08-06T19:50:43Z
