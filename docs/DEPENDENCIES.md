@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-07 (CLO-653 filed from the standing constraints list and started under Phase 12. Sixteen open tasks, one blocked by design)
+**Last Updated**: 2026-08-07 (CLO-653 merged, closing Phase 12. Fifteen open tasks tracked here, one blocked by design; CLO-655, CLO-656 and CLO-660 were filed during CLO-653 and are not yet placed)
 
 ## Current Blockers
 
