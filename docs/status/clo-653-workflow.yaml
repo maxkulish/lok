@@ -236,8 +236,49 @@ phases:
       not a regression, and must not be chased with partial reverts.
   implement:
     status: in_progress
-    commits: []
-    last_phase_completed: 'Phase 1: Failing test first'
+    commits:
+      - 0a4e083
+      - f17cb8a
+    last_phase_completed: 'Phase 6: Testing and validation'
+    ci_contract_verified:
+      - {cmd: 'cargo fmt --check', result: pass}
+      - {cmd: 'cargo clippy --locked --all-targets -- -D warnings', result: pass}
+      - {cmd: 'cargo test --locked', result: 'pass - 156 lib, 567 bin, all integration'}
+      - {cmd: 'cargo clippy --locked --all-targets --features bedrock -- -D warnings', result: pass}
+      - {cmd: 'cargo test --locked --features bedrock', result: pass}
+      - {cmd: 'cargo build --locked --lib --no-default-features', result: pass}
+      - {cmd: 'cargo test --locked --lib --no-default-features', result: 'pass - 152 tests'}
+      - {cmd: 'cargo clippy --locked --lib --tests --no-default-features -- -D warnings', result: pass}
+      - {cmd: "RUSTDOCFLAGS='-D missing_docs' cargo doc --locked --no-deps --lib --all-features", result: pass}
+      - {cmd: 'cargo +1.83.0 check --locked --all-targets', result: 'pass - declared MSRV'}
+      - {cmd: 'cargo +1.88.0 check --locked --all-targets --features bedrock', result: 'pass - toolchain installed for this'}
+      - {cmd: 'cargo test --locked --test backend_public_api', result: 'pass - 14 tests'}
+      - {cmd: 'cargo run --bin lok -- doctor', result: 'pass - all four backends available'}
+    failing_first_verifications:
+      - test: two_configs_same_name_honour_their_own_endpoint_and_model
+        fails_against: name-keyed cache on main
+        evidence: 'server B received 0 requests, server A received 2'
+      - test: losing_racer_does_not_erase_a_probe
+        fails_against: unconditional insert in place of the double-checked entry()
+        evidence: >-
+          Verified by temporarily reverting cache_or_keep_incumbent to an unconditional insert; the test failed and
+          the other four in the module still passed. Restored afterwards.
+    self_correction: >-
+      The first version of losing_racer_does_not_erase_a_probe was vacuous - it called create_backend twice, and the
+      second call returns on the cache read hit without ever reaching the insert, so it passed against the very
+      behaviour it was written to rule out. Caught by running it against the naive insert rather than assuming.
+      Fixed by extracting cache_or_keep_incumbent and driving it directly, which reproduces the state a losing racer
+      arrives in.
+    measurements:
+      key_construction_cost: >-
+        10,000 warm-cache iterations - key 2.12ms, full create_backend 13.14ms, key is 16.2% of the call. Trips the
+        design's >5% threshold, but the threshold was the wrong test: absolute cost is ~0.2us per call against an LLM
+        query of hundreds of milliseconds. No hoisting and no follow-up filed. Measured with a throwaway test rather
+        than a committed one, since a non-asserting timing test is flakiness and runtime with nothing gating on it.
+    doc_deviation: >-
+      The design specified the closure form `|k| super::is_backend_available(k)` for readability on the AI review's
+      suggestion. clippy's redundant_closure is denied in CI, so the function-reference form is used instead, with a
+      comment at each of the five sites explaining why.
     proof_of_defect:
       test: backend::cache_key_tests::two_configs_same_name_honour_their_own_endpoint_and_model
       location: src/backend/mod.rs

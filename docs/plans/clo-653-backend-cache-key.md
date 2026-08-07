@@ -4,7 +4,7 @@
 **Design Document**: docs/designs/clo-653-backend-cache-key.md
 **Discovery Report**: docs/discovery/clo-653.md
 **Created**: 2026-08-07
-**Overall Progress**: 56% (63/113 tasks completed — 26 tasks across 7 phases, 113 checkboxes including subtasks)
+**Overall Progress**: 94% (107/113 tasks completed — 26 tasks across 7 phases, 113 checkboxes including subtasks)
 
 ---
 
@@ -109,60 +109,60 @@ Ordering is not arbitrary. Phase 1 must be observed failing before Phase 2 exist
 
 ### Phase 5: Documentation
 
-- [ ] Task 17: Remove the stale constraint
-  - [ ] Subtask 17.1: Rewrite the backend-cache section of the crate docs (`src/lib.rs:73-79`)
-  - [ ] Subtask 17.2: Rewrite the `create_backend` caching rustdoc (`mod.rs:344-353`)
-  - [ ] Subtask 17.3: Rewrite the `BACKEND_CACHE` known-constraint block (`mod.rs:420-430`)
+- [x] Task 17: Remove the stale constraint
+  - [x] Subtask 17.1: Rewrite the backend-cache section of the crate docs (`src/lib.rs:73-79`)
+  - [x] Subtask 17.2: Rewrite the `create_backend` caching rustdoc (`mod.rs:344-353`)
+  - [x] Subtask 17.3: Rewrite the `BACKEND_CACHE` known-constraint block (`mod.rs:420-430`)
 
-- [ ] Task 18: Document what replaced it
-  - [ ] Subtask 18.1: Document the ambient-credential bound — `api_key_env` holds a name, not a value; `ClaudeBackend` captures `env::var` at construction and `BedrockBackend` loads ambient AWS config — with distinct `api_key_env` names as the host-side answer
-  - [ ] Subtask 18.2: Record the deferred host-owned-handle decision (Approach C) and why it is a superset rather than an alternative
-  - [ ] Subtask 18.3: Note that `acquire_test_lock` stays, because the global stays
-  - [ ] Subtask 18.4: Document the `set_mock_health` signature change for `test-support` consumers
+- [x] Task 18: Document what replaced it
+  - [x] Subtask 18.1: Document the ambient-credential bound — `api_key_env` holds a name, not a value; `ClaudeBackend` captures `env::var` at construction and `BedrockBackend` loads ambient AWS config — with distinct `api_key_env` names as the host-side answer
+  - [x] Subtask 18.2: Record the deferred host-owned-handle decision (Approach C) and why it is a superset rather than an alternative
+  - [x] Subtask 18.3: Note that `acquire_test_lock` stays, because the global stays
+  - [x] Subtask 18.4: Document the `set_mock_health` signature change for `test-support` consumers
 
-- [ ] Task 19: Retire the standing constraint
-  - [ ] Subtask 19.1: Remove the `BACKEND_CACHE` bullet from `docs/DEPENDENCIES.md` standing constraints, leaving the lib/bin one in place
+- [x] Task 19: Retire the standing constraint
+  - [x] Subtask 19.1: Remove the `BACKEND_CACHE` bullet from `docs/DEPENDENCIES.md` standing constraints, leaving the lib/bin one in place
 
 ### Phase 6: Testing & Validation
 
-- [ ] Task 20: Add the remaining evaluation tests
-  - [ ] Subtask 20.1: Test 2 — same endpoint, different model; two recorded requests carrying different models
-  - [ ] Subtask 20.2: Test 3 — different `defaults.max_retries`; observably different attempt counts against a 500-returning server
-  - [ ] Subtask 20.3: Test 4 — concurrent construction with a probe in between leaves `health: Some(..)` and returns one `Arc`
-  - [ ] Subtask 20.4: Test 5 — warmup leaves exactly one probed entry per configured backend
-  - [ ] Subtask 20.5: Test 6 — `is_available` true after warmup for a config-keyed entry
-  - [ ] Subtask 20.6: Test 7 — provider built via `new()` alone reports `is_available() == false`
-  - [ ] Subtask 20.7: Test 8 — `unambiguous_cached_health` answers with one config cached
-  - [ ] Subtask 20.8: Test 9 — returns `None` with two configs cached, run repeatedly to defeat `HashMap` ordering
-  - [ ] Subtask 20.9: Test 10 — two healthy Ollama configs with different inventories cause validation to skip, not to error
+- [x] Task 20: Add the remaining evaluation tests
+  - [x] Subtask 20.1: Test 2 — same endpoint, different model; two recorded requests carrying different models
+  - [x] Subtask 20.2: Test 3 — different `defaults.max_retries`; observably different attempt counts against a 500-returning server
+  - [x] Subtask 20.3: Test 4 — concurrent construction with a probe in between leaves `health: Some(..)` and returns one `Arc`
+  - [x] Subtask 20.4: Test 5 — warmup leaves exactly one probed entry per configured backend
+  - [x] Subtask 20.5: Test 6 — `is_available` true after warmup for a config-keyed entry
+  - [x] Subtask 20.6: Test 7 — provider built via `new()` alone reports `is_available() == false`
+  - [x] Subtask 20.7: Test 8 — `unambiguous_cached_health` answers with one config cached
+  - [x] Subtask 20.8: Test 9 — returns `None` with two configs cached, run repeatedly to defeat `HashMap` ordering
+  - [x] Subtask 20.9: Test 10 — two healthy Ollama configs with different inventories cause validation to skip, not to error
 
-- [ ] Task 21: Cover the edge cases
-  - [ ] Subtask 21.1: Cache cleared between `create_backend` and the warmup write-back; the write-back still lands
-  - [ ] Subtask 21.2: `health: None` versus `Some(unavailable)` distinction still drives warmup's skip logic
-  - [ ] Subtask 21.3: Same key, different ambient `ANTHROPIC_API_KEY` — assert the documented shared-instance behaviour so the bound is pinned
+- [x] Task 21: Cover the edge cases
+  - [x] Subtask 21.1: Cache cleared between `create_backend` and the warmup write-back; the write-back still lands
+  - [x] Subtask 21.2: `health: None` versus `Some(unavailable)` distinction still drives warmup's skip logic
+  - [x] Subtask 21.3: Same key, different ambient `ANTHROPIC_API_KEY` — assert the documented shared-instance behaviour so the bound is pinned
 
-- [ ] Task 22: Extend the public-surface test
-  - [ ] Subtask 22.1: In `tests/backend_public_api.rs`, construct a `BackendKey`, reach the cache via `get_backend_cache`, and call `set_mock_health` in its new form — proving all three migrations from outside the crate
+- [x] Task 22: Extend the public-surface test
+  - [x] Subtask 22.1: In `tests/backend_public_api.rs`, construct a `BackendKey`, reach the cache via `get_backend_cache`, and call `set_mock_health` in its new form — proving all three migrations from outside the crate
 
-- [ ] Task 23: Run the full CI contract
-  - [ ] Subtask 23.1: `cargo fmt --check`
-  - [ ] Subtask 23.2: `cargo clippy --locked --all-targets -- -D warnings`
-  - [ ] Subtask 23.3: `cargo test --locked`
-  - [ ] Subtask 23.4: `cargo clippy --locked --all-targets --features bedrock -- -D warnings`
-  - [ ] Subtask 23.5: `cargo test --locked --features bedrock`
-  - [ ] Subtask 23.6: `cargo build --locked --lib --no-default-features`
-  - [ ] Subtask 23.7: `cargo test --locked --lib --no-default-features`
-  - [ ] Subtask 23.8: `cargo clippy --locked --lib --tests --no-default-features -- -D warnings`
-  - [ ] Subtask 23.9: `RUSTDOCFLAGS='-D missing_docs' cargo doc --locked --no-deps --lib --all-features` — will reject `BackendKey` and its methods if undocumented
-  - [ ] Subtask 23.10: MSRV 1.83 `cargo check --locked --all-targets`
-  - [ ] Subtask 23.11: Bedrock MSRV 1.88 `cargo check --locked --all-targets --features bedrock`
+- [x] Task 23: Run the full CI contract
+  - [x] Subtask 23.1: `cargo fmt --check`
+  - [x] Subtask 23.2: `cargo clippy --locked --all-targets -- -D warnings`
+  - [x] Subtask 23.3: `cargo test --locked`
+  - [x] Subtask 23.4: `cargo clippy --locked --all-targets --features bedrock -- -D warnings`
+  - [x] Subtask 23.5: `cargo test --locked --features bedrock`
+  - [x] Subtask 23.6: `cargo build --locked --lib --no-default-features`
+  - [x] Subtask 23.7: `cargo test --locked --lib --no-default-features`
+  - [x] Subtask 23.8: `cargo clippy --locked --lib --tests --no-default-features -- -D warnings`
+  - [x] Subtask 23.9: `RUSTDOCFLAGS='-D missing_docs' cargo doc --locked --no-deps --lib --all-features` — will reject `BackendKey` and its methods if undocumented
+  - [x] Subtask 23.10: MSRV 1.83 `cargo check --locked --all-targets`
+  - [x] Subtask 23.11: Bedrock MSRV 1.88 `cargo check --locked --all-targets --features bedrock`
 
-- [ ] Task 24: Measure the hashing cost
-  - [ ] Subtask 24.1: Time 10k `create_backend` calls on a warm cache; compare against the same loop with a pre-built key
-  - [ ] Subtask 24.2: Record the number. If key construction exceeds 5% of `create_backend` wall time, file a follow-up to hoist the key at call sites — no design change needed, since all nine already hold the inputs
+- [x] Task 24: Measure the hashing cost
+  - [x] Subtask 24.1: Time 10k `create_backend` calls on a warm cache; compare against the same loop with a pre-built key
+  - [x] Subtask 24.2: Record the number. If key construction exceeds 5% of `create_backend` wall time, file a follow-up to hoist the key at call sites — no design change needed, since all nine already hold the inputs
 
-- [ ] Task 25: Manual verification
-  - [ ] Subtask 25.1: `cargo run -- doctor` before and after; the health table must show the same backends with the same statuses. Treat this as a smoke test, not acceptance evidence — the output is not deterministic enough for that
+- [x] Task 25: Manual verification
+  - [x] Subtask 25.1: `cargo run -- doctor` before and after; the health table must show the same backends with the same statuses. Treat this as a smoke test, not acceptance evidence — the output is not deterministic enough for that
 
 ### Phase 7: Finalization
 
