@@ -2102,4 +2102,80 @@ mod tests {
         // After re-probe, the entry is fresh again and carries a recorded result
         assert_probed(&key_from(&config, "ollama"));
     }
+
+    // ── unambiguous_cached_health (CLO-653) ──
+
+    /// With one configuration cached, the helper answers - this is the CLI case
+    /// and the behaviour `workflow.rs` relied on before the cache was rekeyed.
+    #[tokio::test]
+    async fn unambiguous_health_answers_for_a_single_config() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let cfg = crate::config::BackendConfig {
+            enabled: true,
+            command: Some("http://one.invalid:11434".to_string()),
+            ..Default::default()
+        };
+        let key = BackendKey::new("ollama", &cfg, &RetryPolicy::default());
+        set_mock_health(&key, HealthStatus::new_available());
+
+        let health = unambiguous_cached_health("ollama").expect("one config must answer");
+        assert!(health.available);
+
+        clear_health_cache();
+    }
+
+    /// With two configurations of one name cached, the helper refuses to answer.
+    ///
+    /// Picking would let `HashMap` iteration order decide a hard
+    /// `WorkflowError::UnknownModel`, so ambiguity must fail open rather than
+    /// guess. Seeded with opposite health and asserted over many rounds, since a
+    /// single round could pass by luck under either behaviour.
+    #[tokio::test]
+    async fn unambiguous_health_refuses_when_two_configs_are_cached() {
+        let _guard = acquire_test_lock().await;
+
+        for round in 0..64 {
+            clear_health_cache();
+
+            let healthy = crate::config::BackendConfig {
+                enabled: true,
+                command: Some("http://healthy.invalid:11434".to_string()),
+                ..Default::default()
+            };
+            let sick = crate::config::BackendConfig {
+                enabled: true,
+                command: Some("http://sick.invalid:11434".to_string()),
+                ..Default::default()
+            };
+
+            set_mock_health(
+                &BackendKey::new("ollama", &healthy, &RetryPolicy::default()),
+                HealthStatus::new_available(),
+            );
+            set_mock_health(
+                &BackendKey::new("ollama", &sick, &RetryPolicy::default()),
+                HealthStatus::new_unavailable(),
+            );
+
+            assert!(
+                unambiguous_cached_health("ollama").is_none(),
+                "round {round}: answered for an ambiguous name instead of refusing"
+            );
+        }
+
+        clear_health_cache();
+    }
+
+    /// An unknown name answers `None`, same as before.
+    #[tokio::test]
+    async fn unambiguous_health_is_none_for_an_uncached_name() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        assert!(unambiguous_cached_health("nothing-here").is_none());
+
+        clear_health_cache();
+    }
 }

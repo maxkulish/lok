@@ -4,7 +4,7 @@
 **Design Document**: docs/designs/clo-653-backend-cache-key.md
 **Discovery Report**: docs/discovery/clo-653.md
 **Created**: 2026-08-07
-**Overall Progress**: 0% (0/113 tasks completed — 26 tasks across 7 phases, 113 checkboxes including subtasks)
+**Overall Progress**: 56% (63/113 tasks completed — 26 tasks across 7 phases, 113 checkboxes including subtasks)
 
 ---
 
@@ -38,74 +38,74 @@ Ordering is not arbitrary. Phase 1 must be observed failing before Phase 2 exist
 
 ### Phase 2: The key
 
-- [ ] Task 4: Make the key types hashable
-  - [ ] Subtask 4.1: Add `PartialEq, Eq, Hash` to the `BackendConfig` derive (`src/backend/config.rs:10`)
-  - [ ] Subtask 4.2: Add `PartialEq, Eq, Hash` to the `RetryPolicy` derive (`src/backend/retry.rs:18`)
+- [x] Task 4: Make the key types hashable
+  - [x] Subtask 4.1: Add `PartialEq, Eq, Hash` to the `BackendConfig` derive (`src/backend/config.rs:10`)
+  - [x] Subtask 4.2: Add `PartialEq, Eq, Hash` to the `RetryPolicy` derive (`src/backend/retry.rs:18`)
 
-- [ ] Task 5: Introduce `BackendKey`
-  - [ ] Subtask 5.1: Define `BackendKey { name: String, config: BackendConfig, retry: RetryPolicy }` with `Clone, Debug, PartialEq, Eq, Hash`
-  - [ ] Subtask 5.2: Add `new(&str, &BackendConfig, &RetryPolicy)` — borrow, not move; `RetryPolicy` is not `Copy` and every caller reads it again
-  - [ ] Subtask 5.3: Add a `name()` accessor
-  - [ ] Subtask 5.4: Write rustdoc covering why `RetryPolicy` participates and the ambient-credential bound
+- [x] Task 5: Introduce `BackendKey`
+  - [x] Subtask 5.1: Define `BackendKey { name: String, config: BackendConfig, retry: RetryPolicy }` with `Clone, Debug, PartialEq, Eq, Hash`
+  - [x] Subtask 5.2: Add `new(&str, &BackendConfig, &RetryPolicy)` — borrow, not move; `RetryPolicy` is not `Copy` and every caller reads it again
+  - [x] Subtask 5.3: Add a `name()` accessor
+  - [x] Subtask 5.4: Write rustdoc covering why `RetryPolicy` participates and the ambient-credential bound
 
-- [ ] Task 6: Rekey the cache
-  - [ ] Subtask 6.1: Change `BACKEND_CACHE` to `HashMap<BackendKey, CachedBackend>` (`src/backend/mod.rs:430`)
-  - [ ] Subtask 6.2: Update `get_backend_cache`'s return type (`mod.rs:433`)
-  - [ ] Subtask 6.3: Build the key once at the top of `create_backend` and use it for the read
+- [x] Task 6: Rekey the cache
+  - [x] Subtask 6.1: Change `BACKEND_CACHE` to `HashMap<BackendKey, CachedBackend>` (`src/backend/mod.rs:430`)
+  - [x] Subtask 6.2: Update `get_backend_cache`'s return type (`mod.rs:433`)
+  - [x] Subtask 6.3: Build the key once at the top of `create_backend` and use it for the read
 
-- [ ] Task 7: Double-checked insert
-  - [ ] Subtask 7.1: Import `std::collections::hash_map::Entry`
-  - [ ] Subtask 7.2: Replace the unconditional `insert` (`mod.rs:405`) with `match lock.entry(key)` — `Occupied` returns the incumbent's `Arc` and discards the candidate, `Vacant` inserts
-  - [ ] Subtask 7.3: Keep construction outside the lock; the write guard covers only the map operation
-  - [ ] Subtask 7.4: Comment why, referencing that `set_mock_health` (`mod.rs:495`) already uses this shape
+- [x] Task 7: Double-checked insert
+  - [x] Subtask 7.1: Import `std::collections::hash_map::Entry`
+  - [x] Subtask 7.2: Replace the unconditional `insert` (`mod.rs:405`) with `match lock.entry(key)` — `Occupied` returns the incumbent's `Arc` and discards the candidate, `Vacant` inserts
+  - [x] Subtask 7.3: Keep construction outside the lock; the write guard covers only the map operation
+  - [x] Subtask 7.4: Comment why, referencing that `set_mock_health` (`mod.rs:495`) already uses this shape
 
-- [ ] Task 8: Migrate `set_mock_health`
-  - [ ] Subtask 8.1: Change the signature to take `&BackendKey` (`mod.rs:491`) — public under `test-support`, so this is part of the break
-  - [ ] Subtask 8.2: Keep the existing `entry().and_modify().or_insert()` body, which already preserves the cached backend
+- [x] Task 8: Migrate `set_mock_health`
+  - [x] Subtask 8.1: Change the signature to take `&BackendKey` (`mod.rs:491`) — public under `test-support`, so this is part of the break
+  - [x] Subtask 8.2: Keep the existing `entry().and_modify().or_insert()` body, which already preserves the cached backend
 
 ### Phase 3: Provider identity
 
-- [ ] Task 9: Give each provider a key
-  - [ ] Subtask 9.1: Add `key: Option<BackendKey>` to `OllamaBackend`, `CodexBackend`, `ClaudeBackend`, `GeminiBackend` and `BedrockBackend`
-  - [ ] Subtask 9.2: Add `pub(crate) fn with_cache_key(self, key: BackendKey) -> Self` to each — crate-internal, so no caller can forge another entry's identity
-  - [ ] Subtask 9.3: Leave all five `new(config)` signatures unchanged
-  - [ ] Subtask 9.4: Wire `with_cache_key` into each arm of `create_backend`'s match
+- [x] Task 9: Give each provider a key
+  - [x] Subtask 9.1: Add `key: Option<BackendKey>` to `OllamaBackend`, `CodexBackend`, `ClaudeBackend`, `GeminiBackend` and `BedrockBackend`
+  - [x] Subtask 9.2: Add `pub(crate) fn with_cache_key(self, key: BackendKey) -> Self` to each — crate-internal, so no caller can forge another entry's identity
+  - [x] Subtask 9.3: Leave all five `new(config)` signatures unchanged
+  - [x] Subtask 9.4: Wire `with_cache_key` into each arm of `create_backend`'s match
 
-- [ ] Task 10: Rework `is_backend_available`
-  - [ ] Subtask 10.1: Change it to take `&BackendKey` (`mod.rs:564`)
-  - [ ] Subtask 10.2: Point all five provider `is_available` impls at `self.key`, using the closure form
-  - [ ] Subtask 10.3: Confirm `RetryExecutor::is_available` (`retry.rs:146`) still delegates correctly and needs no key
+- [x] Task 10: Rework `is_backend_available`
+  - [x] Subtask 10.1: Change it to take `&BackendKey` (`mod.rs:564`)
+  - [x] Subtask 10.2: Point all five provider `is_available` impls at `self.key`, using the closure form
+  - [x] Subtask 10.3: Confirm `RetryExecutor::is_available` (`retry.rs:146`) still delegates correctly and needs no key
 
-- [ ] Task 11: Re-verify the behavioural change
-  - [ ] Subtask 11.1: Re-grep for `.is_available()` on hand-built providers; confirm the design-time finding still holds against the tree as it now stands
-  - [ ] Subtask 11.2: Confirm `conductor.rs:74` and `spawn.rs:74` still only use `api_details()`
+- [x] Task 11: Re-verify the behavioural change
+  - [x] Subtask 11.1: Re-grep for `.is_available()` on hand-built providers; confirm the design-time finding still holds against the tree as it now stands
+  - [x] Subtask 11.2: Confirm `conductor.rs:74` and `spawn.rs:74` still only use `api_details()`
 
 ### Phase 4: Binary-side call sites
 
-- [ ] Task 12: Fix the warmup write-back
-  - [ ] Subtask 12.1: Build the key alongside `retry_policy` in the `warmup_backends` loop (`engine.rs:107`)
-  - [ ] Subtask 12.2: Use it for the skip-check at `engine.rs:100`
-  - [ ] Subtask 12.3: Move the key into the future so the write-back is keyed identically, replacing `backend.name()` (`engine.rs:136-161`)
-  - [ ] Subtask 12.4: Use `key.name()` in the warning messages so operator-visible output is unchanged
+- [x] Task 12: Fix the warmup write-back
+  - [x] Subtask 12.1: Build the key alongside `retry_policy` in the `warmup_backends` loop (`engine.rs:107`)
+  - [x] Subtask 12.2: Use it for the skip-check at `engine.rs:100`
+  - [x] Subtask 12.3: Move the key into the future so the write-back is keyed identically, replacing `backend.name()` (`engine.rs:136-161`)
+  - [x] Subtask 12.4: Use `key.name()` in the warning messages so operator-visible output is unchanged
 
-- [ ] Task 13: Rekey `get_cached_health`
-  - [ ] Subtask 13.1: Change it to take `&BackendKey` (`engine.rs:195`)
-  - [ ] Subtask 13.2: Build the key at `main.rs:795` from `backend_config` and `config.defaults` via `get_retry_policy`
+- [x] Task 13: Rekey `get_cached_health`
+  - [x] Subtask 13.1: Change it to take `&BackendKey` (`engine.rs:195`)
+  - [x] Subtask 13.2: Build the key at `main.rs:795` from `backend_config` and `config.defaults` via `get_retry_policy`
 
-- [ ] Task 14: Add the unambiguous health helper
-  - [ ] Subtask 14.1: Write `unambiguous_cached_health(name) -> Option<HealthStatus>` in `engine.rs`, binary-only, returning `None` when zero or more than one entry matches
-  - [ ] Subtask 14.2: Document that `None` means "cannot answer" and that it must never select an instance
+- [x] Task 14: Add the unambiguous health helper
+  - [x] Subtask 14.1: Write `unambiguous_cached_health(name) -> Option<HealthStatus>` in `engine.rs`, binary-only, returning `None` when zero or more than one entry matches
+  - [x] Subtask 14.2: Document that `None` means "cannot answer" and that it must never select an instance
 
-- [ ] Task 15: Move the two `workflow.rs` reads
-  - [ ] Subtask 15.1: `codex_unusable_flag_warnings` (`workflow.rs:104-108`) uses the helper and emits no warning on `None`
-  - [ ] Subtask 15.2: Ollama model validation (`workflow.rs:222-224`) uses the helper and **skips the check** on `None`, never reaching `UnknownModel`
-  - [ ] Subtask 15.3: Comment at the Ollama site that this path returns a hard error, which is why ambiguity must fail open
+- [x] Task 15: Move the two `workflow.rs` reads
+  - [x] Subtask 15.1: `codex_unusable_flag_warnings` (`workflow.rs:104-108`) uses the helper and emits no warning on `None`
+  - [x] Subtask 15.2: Ollama model validation (`workflow.rs:222-224`) uses the helper and **skips the check** on `None`, never reaching `UnknownModel`
+  - [x] Subtask 15.3: Comment at the Ollama site that this path returns a hard error, which is why ambiguity must fail open
 
-- [ ] Task 16: Update test helpers
-  - [ ] Subtask 16.1: `Engine::is_backend_available` (`engine.rs:178`, `#[cfg(test)]`) takes a key
-  - [ ] Subtask 16.2: `assert_probed` (`engine.rs:457`) takes a key
-  - [ ] Subtask 16.3: `MockSyscallBackend` (`engine.rs:1115`) carries a key
-  - [ ] Subtask 16.4: Migrate the roughly thirty call sites that insert or assert on bare names; the compiler enumerates them
+- [x] Task 16: Update test helpers
+  - [x] Subtask 16.1: `Engine::is_backend_available` (`engine.rs:178`, `#[cfg(test)]`) takes a key
+  - [x] Subtask 16.2: `assert_probed` (`engine.rs:457`) takes a key
+  - [x] Subtask 16.3: `MockSyscallBackend` (`engine.rs:1115`) carries a key
+  - [x] Subtask 16.4: Migrate the roughly thirty call sites that insert or assert on bare names; the compiler enumerates them
 
 ### Phase 5: Documentation
 

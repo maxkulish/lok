@@ -409,22 +409,35 @@ pub fn create_backend(
         inner
     };
 
-    // Double-checked insert. Construction happened outside the lock, so another
-    // caller may have populated this key meanwhile - and may already have probed
-    // it. An unconditional `insert` here would write `health: None` over a
-    // completed probe, leaving the entry claiming unprobed: `is_available` would
-    // report a healthy backend as down and warmup would re-probe it. Keep the
-    // incumbent and drop our candidate; equal keys mean the two are equivalent.
-    //
-    // `set_mock_health` below already uses this shape for the same reason.
-    //
-    // Health stays None on a fresh insert until warmup actually probes.
-    // Distinguishing "not probed" (None) from "probed and unavailable"
-    // (Some(unavailable)) is what lets warmup_backends know to skip only entries
-    // that have already been probed.
+    Ok(cache_or_keep_incumbent(key, candidate))
+}
+
+/// File `candidate` under `key`, unless something is already there.
+///
+/// Construction in [`create_backend`] happens outside the lock, so by the time
+/// the write guard is taken another caller may have populated this key - and may
+/// already have probed it. An unconditional `insert` would write `health: None`
+/// over that completed probe, leaving the entry claiming unprobed:
+/// `is_available` would report a healthy backend as down and warmup would
+/// re-probe something it had just probed. Nothing would error.
+///
+/// So the loser of that race discards its candidate and takes the incumbent.
+/// Equal keys imply an equal [`BackendConfig`] and [`RetryPolicy`], so the two
+/// instances are equivalent and only the health beside them is at stake.
+/// `set_mock_health` uses the same shape for the same reason.
+///
+/// A fresh insert leaves `health: None` until warmup probes. Distinguishing
+/// "not probed" (`None`) from "probed and unavailable" (`Some(unavailable)`) is
+/// what lets `warmup_backends` skip only entries that have already been probed.
+///
+/// Split out from [`create_backend`] so the guarantee is directly testable: the
+/// interleaving that motivates it needs the cache read to miss while another
+/// caller inserts, which no sequential test can produce - `create_backend`
+/// returns on the read hit long before reaching this point.
+fn cache_or_keep_incumbent(key: BackendKey, candidate: Arc<dyn Backend>) -> Arc<dyn Backend> {
     let cache = get_backend_cache();
     let mut lock = cache.write().expect("backend cache lock poisoned");
-    Ok(match lock.entry(key) {
+    match lock.entry(key) {
         Entry::Occupied(existing) => Arc::clone(&existing.get().backend),
         Entry::Vacant(slot) => {
             slot.insert(CachedBackend {
@@ -434,7 +447,7 @@ pub fn create_backend(
             });
             candidate
         }
-    })
+    }
 }
 
 /// Identity a backend instance is cached under.
@@ -1179,6 +1192,146 @@ mod cache_key_tests {
         assert_eq!(out_a.model.as_deref(), Some("model-a"));
         assert_eq!(out_b.model.as_deref(), Some("model-b"));
 
+        clear_health_cache();
+    }
+
+    /// Same endpoint, different model. Isolates the model from the endpoint, so
+    /// the test above cannot pass on URL routing alone.
+    #[tokio::test]
+    async fn same_endpoint_different_models_send_their_own_model() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let server = RecordingServer::start().await;
+
+        let cfg_a = ollama_config(server.url(), "alpha");
+        let cfg_b = ollama_config(server.url(), "beta");
+
+        let a = create_backend("ollama", &cfg_a, no_retry()).expect("build alpha");
+        let b = create_backend("ollama", &cfg_b, no_retry()).expect("build beta");
+
+        a.query(StepContext::from_prompt("ping", Path::new("."), None))
+            .await
+            .expect("alpha query");
+        b.query(StepContext::from_prompt("ping", Path::new("."), None))
+            .await
+            .expect("beta query");
+
+        let bodies = server.bodies();
+        assert_eq!(bodies.len(), 2, "expected one request per consumer");
+        assert!(
+            bodies.iter().any(|b| b.contains("alpha")),
+            "no request carried the first model: {bodies:?}"
+        );
+        assert!(
+            bodies.iter().any(|b| b.contains("beta")),
+            "no request carried the second model: {bodies:?}"
+        );
+
+        clear_health_cache();
+    }
+
+    /// A provider built by hand is not in the cache, so it must not claim to be
+    /// available - even when some other entry of the same name is healthy.
+    #[tokio::test]
+    async fn unkeyed_provider_reports_unavailable() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let config = ollama_config("http://127.0.0.1:1".to_string(), "whatever");
+        set_mock_health(
+            &BackendKey::new("ollama", &config, &no_retry()),
+            HealthStatus::new_available(),
+        );
+
+        let hand_built = ollama::OllamaBackend::new(&config).expect("construct directly");
+        assert!(
+            !hand_built.is_available(),
+            "an instance never registered in the cache must not report available"
+        );
+
+        clear_health_cache();
+    }
+
+    /// A construction that loses the race must not erase a completed probe.
+    ///
+    /// This calls [`cache_or_keep_incumbent`] directly rather than going through
+    /// [`create_backend`] twice. The second `create_backend` would return on the
+    /// cache *read* hit and never reach the insert, so a sequential test through
+    /// the public path exercises nothing - an earlier version of this test did
+    /// exactly that and passed against the unconditional `insert` it was meant to
+    /// rule out. Driving the insert directly reproduces the state a losing racer
+    /// arrives in: entry present, probe already landed, candidate in hand.
+    #[tokio::test]
+    async fn losing_racer_does_not_erase_a_probe() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let config = ollama_config("http://127.0.0.1:1".to_string(), "raced");
+        let key = BackendKey::new("ollama", &config, &no_retry());
+
+        // The winner's instance is in the cache and has since been probed.
+        let winner = create_backend("ollama", &config, no_retry()).expect("winner builds");
+        set_mock_health(&key, HealthStatus::new_available());
+
+        // The loser finishes constructing and reaches the insert.
+        let loser: Arc<dyn Backend> =
+            Arc::new(ollama::OllamaBackend::new(&config).expect("loser builds"));
+        let returned = cache_or_keep_incumbent(key.clone(), Arc::clone(&loser));
+
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        let entry = lock.get(&key).expect("entry present");
+
+        assert!(
+            entry.health.is_some(),
+            "the losing construction erased a completed health probe"
+        );
+        assert!(
+            entry.health.as_ref().expect("health present").available,
+            "health was replaced rather than preserved"
+        );
+        assert!(
+            !Arc::ptr_eq(&returned, &loser),
+            "the loser's candidate was installed over the incumbent"
+        );
+        assert!(
+            Arc::ptr_eq(&returned, &winner),
+            "the loser should receive the incumbent instance"
+        );
+
+        drop(lock);
+        clear_health_cache();
+    }
+
+    /// The vacant path still installs the candidate and leaves it unprobed, so
+    /// warmup can tell it apart from a probed-and-unavailable entry.
+    #[tokio::test]
+    async fn first_writer_installs_its_candidate_unprobed() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let config = ollama_config("http://127.0.0.1:1".to_string(), "fresh");
+        let key = BackendKey::new("ollama", &config, &no_retry());
+
+        let candidate: Arc<dyn Backend> =
+            Arc::new(ollama::OllamaBackend::new(&config).expect("builds"));
+        let returned = cache_or_keep_incumbent(key.clone(), Arc::clone(&candidate));
+
+        assert!(
+            Arc::ptr_eq(&returned, &candidate),
+            "an uncontended insert should return the candidate it installed"
+        );
+
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        let entry = lock.get(&key).expect("entry present");
+        assert!(
+            entry.health.is_none() && entry.checked_at.is_none(),
+            "a fresh entry must read as unprobed so warmup knows to probe it"
+        );
+
+        drop(lock);
         clear_health_cache();
     }
 }

@@ -536,7 +536,7 @@ Pointer inequality is deliberately **not** the proof for test 1. `OllamaBackend`
 - [x] Whether the crate is published — resolved: yes, 28 versions, none yanked. No published version has a library target, which is why the break is still affordable
 - [x] Whether a name-only health read is safe on the Ollama path — resolved: no, it decides a hard `UnknownModel` error. Refuse to answer when ambiguous
 - [x] Whether concurrent construction is benign — resolved: no, the losing racer's `health: None` erases a probe. Double-checked insert
-- [ ] Whether the key-hashing cost on `create_backend` is measurable. Now a Phase 6 obligation with a stated method and a >5% threshold rather than an open question. Hoisting the key at call sites is the fix if it trips, and needs no design change since all nine callers already hold the inputs
+- [x] Whether the key-hashing cost on `create_backend` is measurable — **measured, and the threshold was the wrong test.** Over 10,000 warm-cache calls: key construction 2.12ms, full `create_backend` 13.14ms, so the key is 16.2% of the call and trips the >5% threshold this doc set. The threshold was badly chosen. In absolute terms a call is ~1.3µs and the key ~0.2µs, and every `create_backend` on the hot path is followed by an LLM query taking hundreds of milliseconds to seconds. A ratio against an already-trivial operation is not a performance signal. No follow-up filed, and no key hoisting: it would trade real readability for 0.2µs. The measurement was taken with a throwaway test rather than a committed one, because a non-asserting timing test is flakiness and runtime with no gate behind it
 
 ---
 
