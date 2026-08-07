@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-06 (CLO-638 done via PR #86. Thirteen open tasks, one blocked by design)
+**Last Updated**: 2026-08-07 (CLO-651 and CLO-652 filed and placed in Phase 14. Fifteen open tasks, one blocked by design)
 
 ## Current Blockers
 
@@ -25,6 +25,8 @@ One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-
 | [CLO-639](https://linear.app/cloud-ai/issue/CLO-639) | None. CLO-633 follow-up | 2026-08-03 |
 | [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | None. CLO-633 follow-up | 2026-08-03 |
 | [CLO-649](https://linear.app/cloud-ai/issue/CLO-649) | None. Independent spec-review harness fix | 2026-08-06 |
+| [CLO-651](https://linear.app/cloud-ai/issue/CLO-651) | None. Found during the 2026-08-06 Actions outage | 2026-08-07 |
+| [CLO-652](https://linear.app/cloud-ai/issue/CLO-652) | None. Independent agent-template fix | 2026-08-07 |
 
 CLO-609 landed on 2026-08-03 (PR #78, `8b96821`), so the pre-publish metadata deadline is cleared.
 CLO-633 landed the same day (PR #80, `a8f84d8`). It blocked nothing — the five Phase 15 findings
