@@ -1040,7 +1040,14 @@ mod cache_key_tests {
     }
 
     impl RecordingServer {
+        /// Answers every request with 200 and [`CHAT_REPLY_WITHOUT_MODEL`].
         async fn start() -> Self {
+            Self::answering(200).await
+        }
+
+        /// Answers every request with `status`, recording the body either way.
+        /// A 5xx drives the retry path without needing a real unhealthy backend.
+        async fn answering(status: u16) -> Self {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
                 .await
                 .expect("bind ephemeral port");
@@ -1089,8 +1096,13 @@ mod cache_key_tests {
                             .expect("recorder lock poisoned")
                             .push(String::from_utf8_lossy(&buf[header_end..]).to_string());
 
+                        let reason = match status {
+                            200 => "OK",
+                            429 => "Too Many Requests",
+                            _ => "Server Error",
+                        };
                         let response = format!(
-                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                            "HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
                             CHAT_REPLY_WITHOUT_MODEL.len(),
                             CHAT_REPLY_WITHOUT_MODEL
                         );
@@ -1301,6 +1313,68 @@ mod cache_key_tests {
         );
 
         drop(lock);
+        clear_health_cache();
+    }
+
+    /// Two consumers differing only in retry policy must get instances that
+    /// retry differently — proven by counting attempts, not by comparing keys.
+    ///
+    /// `RetryPolicy` comes from `Config::defaults` rather than from
+    /// `BackendConfig`, so the ticket's proposed "hash of the effective
+    /// `BackendConfig`" would hand both of these one instance wrapped for
+    /// whichever constructed first. Key inequality alone would not show that:
+    /// it proves the map distinguishes them, not that the instances behave
+    /// differently.
+    #[tokio::test]
+    async fn distinct_retry_policies_produce_observably_different_attempt_counts() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        // Always 429. It must be a *retryable* class: `BackendError::is_retryable`
+        // covers Timeout, RateLimit and Network only, and ollama maps a 500 to
+        // ExecutionFailed, which `RetryExecutor` correctly does not retry. A
+        // 500-returning server would make both policies look identical here for
+        // a reason unrelated to cache identity.
+        let server = RecordingServer::answering(429).await;
+        let config = ollama_config(server.url(), "retry-probe");
+
+        // Short delays: this exercises attempt counts, not backoff timing.
+        let quiet = RetryPolicy {
+            max_retries: 0,
+            base_delay: Duration::from_millis(1),
+            max_delay: Duration::from_millis(2),
+        };
+        let persistent = RetryPolicy {
+            max_retries: 2,
+            base_delay: Duration::from_millis(1),
+            max_delay: Duration::from_millis(2),
+        };
+
+        let quiet_backend =
+            create_backend("ollama", &config, quiet).expect("build without retries");
+        let _ = quiet_backend
+            .query(StepContext::from_prompt("ping", Path::new("."), None))
+            .await;
+        let after_quiet = server.bodies().len();
+        assert_eq!(
+            after_quiet, 1,
+            "max_retries: 0 should make exactly one attempt"
+        );
+
+        let persistent_backend =
+            create_backend("ollama", &config, persistent).expect("build with retries");
+        let _ = persistent_backend
+            .query(StepContext::from_prompt("ping", Path::new("."), None))
+            .await;
+        let by_persistent = server.bodies().len() - after_quiet;
+
+        assert_eq!(
+            by_persistent, 3,
+            "max_retries: 2 should make three attempts; got {by_persistent}. \
+             Equal counts would mean both consumers share one instance and the \
+             retry policy is not part of cache identity"
+        );
+
         clear_health_cache();
     }
 

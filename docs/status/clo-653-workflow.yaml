@@ -239,7 +239,59 @@ phases:
     commits:
       - 0a4e083
       - f17cb8a
+      - ea4e1dd
+      - 84d3096
+      - a98b4b1
     last_phase_completed: 'Phase 6: Testing and validation'
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    codex_report: docs/reviews/clo-653-codex-validation.md
+    validation_synthesis_report: docs/reviews/clo-653-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_recommendation: PROCEED_WITH_FIXES
+    validation_fix_iteration_count: 1
+    validation_gate:
+      workflow: .lok/workflows/pre-pr-validation.toml
+      status: complete
+      note: >-
+        Codex leg exceeded its 900s inner timeout once and completed on retry (step allows 2 at 15m each). The
+        workflow itself was intact - unlike design-review it carries no ${#VAR} pattern, and its `codex exec` runs
+        against the openai provider where gpt-5.6-sol accepts the xhigh reasoning effort that glm-5.2:cloud rejected
+        in CLO-655.
+      finding: >-
+        No correctness defect found by either reviewer. All five Must Fix items were proof-obligation or
+        record-accuracy gaps rather than repairs, and all five were valid on inspection.
+    must_fix_resolution:
+      - item: 'Test 10 absent - the workflow.rs ambiguity path was unproven end-to-end'
+        action: >-
+          Added ambiguous_ollama_configs_skip_model_validation in workflow.rs. Two ollama identities, both insertion
+          orders, model absent from both inventories so a guessing implementation rejects regardless of which entry
+          wins, plus a single-config case proving the skip is scoped to ambiguity. Verified failing against a helper
+          that picks instead of refusing.
+      - item: 'Test 3 absent - retry participation proven only by key inequality'
+        action: >-
+          Added distinct_retry_policies_produce_observably_different_attempt_counts. Uses 429 rather than the
+          reviewer-suggested 500 - is_retryable covers Timeout/RateLimit/Network only, and ollama maps a 500 to
+          ExecutionFailed, which RetryExecutor correctly does not retry, so a 500 would have shown both policies as
+          identical for a reason unrelated to cache identity. The first run caught this itself.
+      - item: 'warmup_writeback_survives_a_cache_clear did not test its stated edge case'
+        action: >-
+          Confirmed on inspection - it cleared before warmup_backends, which re-runs create_backend itself, so the
+          clear never entered the window. Replaced with warmup_writeback_survives_a_clear_during_the_probe,
+          synchronised on the probe reaching a local listener rather than on a sleep. Verified failing when the
+          write-back is made conditional.
+      - item: 'Plan checkboxes overstated what shipped'
+        action: >-
+          20.2 annotated with the 429-vs-500 correction, 20.4 downgraded to partial (strict cardinality not
+          asserted), 21.3 marked declined with its rationale and substitute, 21.1 rewritten. Added a Deviations table
+          to the plan covering all eight departures including the two test substitutions.
+      - item: 'Validation record named an earlier revision'
+        action: >-
+          Full twelve-command CI contract re-run against the post-fix tree and recorded here; committed with the
+          fixes so the evidence and the code land together.
+    ci_contract_reverified_after_fixes:
+      revision: post-fix (this commit)
+      result: 'all 12 pass - 157 lib, 570 bin, 14 public-api; doctor shows all four backends available'
     ci_contract_verified:
       - {cmd: 'cargo fmt --check', result: pass}
       - {cmd: 'cargo clippy --locked --all-targets -- -D warnings', result: pass}

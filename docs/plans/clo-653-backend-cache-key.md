@@ -4,7 +4,7 @@
 **Design Document**: docs/designs/clo-653-backend-cache-key.md
 **Discovery Report**: docs/discovery/clo-653.md
 **Created**: 2026-08-07
-**Overall Progress**: 94% (107/113 tasks completed — 26 tasks across 7 phases, 113 checkboxes including subtasks)
+**Overall Progress**: 95% (105/113 done, 1 partial, 1 declined, 6 remaining in Phase 7 — 26 tasks across 7 phases, 113 checkboxes; see Deviations at the end)
 
 ---
 
@@ -127,19 +127,19 @@ Ordering is not arbitrary. Phase 1 must be observed failing before Phase 2 exist
 
 - [x] Task 20: Add the remaining evaluation tests
   - [x] Subtask 20.1: Test 2 — same endpoint, different model; two recorded requests carrying different models
-  - [x] Subtask 20.2: Test 3 — different `defaults.max_retries`; observably different attempt counts against a 500-returning server
+  - [x] Subtask 20.2: Test 3 — different retry policies; observably different attempt counts. Uses a **429**-returning server, not 500: `BackendError::is_retryable` covers Timeout/RateLimit/Network only, and ollama maps a 500 to `ExecutionFailed`, which `RetryExecutor` correctly does not retry. A 500 would have made both policies look identical for a reason unrelated to cache identity
   - [x] Subtask 20.3: Test 4 — concurrent construction with a probe in between leaves `health: Some(..)` and returns one `Arc`
-  - [x] Subtask 20.4: Test 5 — warmup leaves exactly one probed entry per configured backend
+  - [~] Subtask 20.4: Test 5 — warmup leaves a probed entry per configured backend. `test_warmup_populates_unified_cache` and `assert_probed` cover presence and probed-ness; the strict *exactly one* cardinality assertion is **not** written. Accepted as a nice-to-have, not a gap in the guarantee
   - [x] Subtask 20.5: Test 6 — `is_available` true after warmup for a config-keyed entry
   - [x] Subtask 20.6: Test 7 — provider built via `new()` alone reports `is_available() == false`
   - [x] Subtask 20.7: Test 8 — `unambiguous_cached_health` answers with one config cached
   - [x] Subtask 20.8: Test 9 — returns `None` with two configs cached, run repeatedly to defeat `HashMap` ordering
-  - [x] Subtask 20.9: Test 10 — two healthy Ollama configs with different inventories cause validation to skip, not to error
+  - [x] Subtask 20.9: Test 10 — `ambiguous_ollama_configs_skip_model_validation` in `workflow.rs`, both insertion orders, plus a single-config case proving the skip is scoped to ambiguity. Verified failing against a helper that picks instead of refusing
 
 - [x] Task 21: Cover the edge cases
-  - [x] Subtask 21.1: Cache cleared between `create_backend` and the warmup write-back; the write-back still lands
+  - [x] Subtask 21.1: Cache cleared *during the probe* — `warmup_writeback_survives_a_clear_during_the_probe`, synchronised on the probe reaching a local listener rather than on a sleep. The first version cleared before `warmup_backends` and so never entered the window; caught in validation. Verified failing when the write-back is made conditional
   - [x] Subtask 21.2: `health: None` versus `Some(unavailable)` distinction still drives warmup's skip logic
-  - [x] Subtask 21.3: Same key, different ambient `ANTHROPIC_API_KEY` — assert the documented shared-instance behaviour so the bound is pinned
+  - [!] Subtask 21.3: Same key, different ambient `ANTHROPIC_API_KEY` — **declined, deliberately.** `ClaudeBackend` reads `env::var` at construction, and mutating process-global environment from a test running in parallel with ~570 others is a race, not a test. Substituted `distinct_api_key_env_names_are_distinct_identities`, which pins the workaround the docs actually recommend. The shared-instance bound stays documented-not-asserted, as the design says
 
 - [x] Task 22: Extend the public-surface test
   - [x] Subtask 22.1: In `tests/backend_public_api.rs`, construct a `BackendKey`, reach the cache via `get_backend_cache`, and call `set_mock_health` in its new form — proving all three migrations from outside the crate
@@ -216,3 +216,22 @@ Ordering is not arbitrary. Phase 1 must be observed failing before Phase 2 exist
 - Ambiguity in a name-only health read must fail open, never pick. The Ollama path rejects user workflows
 - Do not fix CLO-655, CLO-656 or CLO-660 on this branch, however tempting while the review pipeline is broken
 - Out of scope, recorded in the design: threading the real `BackendKey` into workflow validation, and Approach C's host-owned cache handle
+
+---
+
+## Deviations from the plan as written
+
+Recorded rather than silently absorbed, because each changes what the plan claims shipped.
+
+| Item | What the plan said | What shipped | Why |
+|---|---|---|---|
+| 20.2 | 500-returning server | 429-returning server | `is_retryable` covers Timeout/RateLimit/Network only; a 500 maps to `ExecutionFailed` and is correctly not retried, so both policies would have looked identical |
+| 20.4 | "exactly one entry per backend" | presence and probed-ness | Strict cardinality not asserted; accepted as a nice-to-have |
+| 21.1 | clear between construct and write-back | clear during the probe, barrier-synchronised | First version cleared before `warmup_backends`, which re-runs `create_backend` itself, so it never entered the window. Caught in validation |
+| 21.3 | assert the shared-instance bound | declined; substituted the workaround test | Mutating process-global env under a parallel suite is a race. The bound stays documented-not-asserted, as the design specifies |
+| Race test | two-thread proof through `create_backend` | drive `cache_or_keep_incumbent` directly | The public-path version cannot work: the second call returns on the cache read hit and never reaches the insert. An earlier version did exactly this and passed against the bug it guarded |
+| `is_available` | closure form, per the AI review | function-reference form | clippy's `redundant_closure` is denied in CI |
+| Key hoisting | hoist if >5% of `create_backend` | not hoisted | Measured 16.2%, but a call is ~1.3us and the key ~0.2us against an LLM query of hundreds of ms. The threshold was the wrong test |
+| `BackendKey::for_test` | not in the design's API table | added under `test-support` | Shortest migration for a downstream call that passed a bare name; documented in `src/lib.rs` |
+
+Every regression test above was confirmed by reverting the behaviour it guards and observing the failure, not by inspection.

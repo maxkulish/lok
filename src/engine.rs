@@ -2209,17 +2209,50 @@ mod tests {
         );
     }
 
-    /// Warmup's write-back must land even if the cache is cleared after
-    /// `create_backend` populated it and before the probe returns.
+    /// Warmup's write-back must land even when the cache is cleared *while the
+    /// probe is in flight* — after `create_backend` populated the entry and
+    /// before the result comes back.
     ///
-    /// The unconditional `insert` in the write-back is what makes that hold, and
+    /// The clear is synchronised on the probe actually arriving at a local
+    /// server rather than on a sleep, so the window is real and the test is not
+    /// timing-dependent. An earlier version cleared before calling
+    /// `warmup_backends`, which then re-ran `create_backend` itself — so the
+    /// clear never fell inside the window at all and the test proved only that
+    /// the write-back key matches the read key.
+    ///
+    /// The unconditional `insert` in the write-back is what makes this hold, and
     /// it stays unconditional after CLO-653 precisely because it carries a
     /// completed probe: overwriting there improves an entry rather than erasing
     /// one, which is the opposite of the situation in `create_backend`.
     #[tokio::test]
-    async fn warmup_writeback_survives_a_cache_clear() {
+    async fn warmup_writeback_survives_a_clear_during_the_probe() {
         let _guard = acquire_test_lock().await;
         clear_health_cache();
+
+        // A listener that accepts, signals, then waits before answering. The
+        // probe is provably in flight for as long as we hold the release.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local addr");
+        let (arrived_tx, arrived_rx) = tokio::sync::oneshot::channel::<()>();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let _ = arrived_tx.send(());
+            let _ = release_rx.await;
+            // Any answer will do: warmup writes back whatever the probe decided.
+            let body = "{}";
+            let response = format!(
+                "HTTP/1.1 500 Server Error\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            use tokio::io::AsyncWriteExt;
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
 
         let mut config = Config::default();
         config.backends.clear();
@@ -2227,31 +2260,31 @@ mod tests {
             "ollama".to_string(),
             crate::config::BackendConfig {
                 enabled: true,
+                command: Some(format!("http://{addr}")),
                 ..Default::default()
             },
         );
-
-        // Stand in for the interleaving: something wipes the cache while the
-        // probe is in flight. Warmup has already taken its key by then.
         let key = key_from(&config, "ollama");
-        let _ = create_backend(
-            "ollama",
-            &config.backends["ollama"],
-            get_retry_policy(&config.backends["ollama"], &config.defaults),
-        )
-        .expect("construct");
-        clear_health_cache();
 
-        Engine::warmup_backends(&config).await.expect("warmup");
+        let warmup_config = config.clone();
+        let warmup = tokio::spawn(async move { Engine::warmup_backends(&warmup_config).await });
+
+        // The probe has reached the server, so create_backend has already run and
+        // filed its entry. Wipe the cache from underneath it.
+        arrived_rx.await.expect("probe should reach the server");
+        clear_health_cache();
+        let _ = release_tx.send(());
+
+        warmup.await.expect("join warmup").expect("warmup");
 
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
         let entry = lock
             .get(&key)
-            .expect("the probe should have landed despite the clear");
+            .expect("the probe should have landed despite the mid-flight clear");
         assert!(
             entry.health.is_some(),
-            "write-back was dropped after the cache was cleared"
+            "write-back was dropped after the cache was cleared mid-probe"
         );
 
         drop(lock);

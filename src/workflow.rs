@@ -5688,6 +5688,103 @@ model = "llama3"
         crate::backend::clear_health_cache();
     }
 
+    /// With two Ollama configurations cached, model validation must be skipped
+    /// rather than decided arbitrarily (CLO-653).
+    ///
+    /// This is the only path in the cache-keying change that rejects a user's
+    /// workflow. `Workflow::validate` has no `Config` in scope, so it can only
+    /// ask the cache by name; with several configurations of one name present,
+    /// answering from an arbitrary entry could reject a model that *is* on the
+    /// endpoint the step will call, or accept one that is absent from it.
+    ///
+    /// The model requested here is absent from *both* cached inventories, so
+    /// under the old name-only lookup it would be rejected no matter which entry
+    /// won. Loading must now succeed. Both insertion orders are exercised, since
+    /// `HashMap` iteration order is what a guessing implementation would follow.
+    #[tokio::test]
+    async fn ambiguous_ollama_configs_skip_model_validation() {
+        let _guard = crate::backend::acquire_test_lock().await;
+
+        let workflow_toml = r#"
+name = "test-workflow"
+
+[[steps]]
+name = "step1"
+backend = "ollama"
+prompt = "test"
+model = "absent-from-every-inventory"
+"#;
+
+        let inventory = |model: &str| crate::backend::HealthStatus {
+            available: true,
+            version: Some("0.1.48".to_string()),
+            mode: None,
+            diagnostic: None,
+            auth_method: None,
+            capabilities: None,
+            unusable_flags: Vec::new(),
+            models: vec![crate::backend::ModelInfo {
+                name: model.to_string(),
+                modified_at: None,
+                size: None,
+                digest: None,
+            }],
+        };
+
+        let config_for = |endpoint: &str| crate::config::BackendConfig {
+            enabled: true,
+            command: Some(endpoint.to_string()),
+            ..Default::default()
+        };
+
+        let west = config_for("http://west.invalid:11434");
+        let east = config_for("http://east.invalid:11434");
+        let retry = crate::backend::RetryPolicy::default();
+
+        for (first, second) in [(&west, &east), (&east, &west)] {
+            let dir = tempdir().unwrap();
+            let workflow_path = dir.path().join("test.toml");
+            std::fs::write(&workflow_path, workflow_toml).unwrap();
+
+            crate::backend::clear_health_cache();
+            crate::backend::set_mock_health(
+                &crate::backend::BackendKey::new("ollama", first, &retry),
+                inventory("llama3.2:latest"),
+            );
+            crate::backend::set_mock_health(
+                &crate::backend::BackendKey::new("ollama", second, &retry),
+                inventory("phi3:latest"),
+            );
+
+            let result = load_workflow(&workflow_path).await;
+            assert!(
+                result.is_ok(),
+                "validation rejected a workflow using an ambiguous backend name; \
+                 it must skip the check rather than answer from an arbitrary entry: {:?}",
+                result.err()
+            );
+        }
+
+        // A single configuration must still validate, so the skip is scoped to
+        // ambiguity rather than disabling the check outright.
+        let dir = tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+        std::fs::write(&workflow_path, workflow_toml).unwrap();
+
+        crate::backend::clear_health_cache();
+        crate::backend::set_mock_health(
+            &crate::backend::BackendKey::new("ollama", &west, &retry),
+            inventory("llama3.2:latest"),
+        );
+        let result = load_workflow(&workflow_path).await;
+        assert!(
+            result.is_err(),
+            "one cached configuration must still reject an absent model"
+        );
+
+        crate::backend::clear_health_cache();
+    }
+
     #[tokio::test]
     async fn test_timeout_at_minimum_allowed() {
         let dir = tempdir().unwrap();
