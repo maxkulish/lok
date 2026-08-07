@@ -363,6 +363,44 @@ phases:
     diff: '+3115 -203 across 24 files'
     linear_linked: true
     pre_flight_checks_passed: true
+    ci_passed: true
+    ci_checks:
+      - {name: 'CI Gate', result: pass}
+      - {name: 'MSRV check (1.83)', result: pass}
+      - {name: 'build / test (macos-latest)', result: pass}
+      - {name: 'build / test (ubuntu-latest)', result: pass}
+      - {name: 'library boundary', result: pass}
+      - {name: 'etxtbsy-stress', result: 'skipped - label-gated, deliberately outside CI Gate'}
+    reviews_addressed: 1
+    replies_posted: '1/1'
+    qodo_review:
+      review_id: 4882898255
+      commit: bac0dcc
+      state: COMMENTED
+      counts: 'Bugs 0, Rule violations 1, Requirement gaps 0, Skill insights 0'
+      stale: false   # ollama.rs unchanged between bac0dcc and head
+      findings:
+        - id: 3735802458
+          severity: Review recommended
+          claim: 'Public backend structs lack #[derive(Debug, Clone)], violating the declared public-API standard'
+          verified: 'premise partly true - the rule exists at .github/copilot-instructions.md:77, but it scopes to public *data types*'
+          disposition: declined with evidence
+          evidence: >-
+            All 8 public data types in backend/ derive Debug+Clone, including BackendKey which this PR adds. Zero of
+            the 6 public service types do, including RetryExecutor, whose struct this PR does not touch - the only
+            retry.rs change is to RetryPolicy, a data type. All five backend structs also lacked the derives on main,
+            so this PR did not introduce the state.
+          substantive_reason: >-
+            Clone specifically would undo a guarantee this PR adds. with_cache_key is pub(crate) so no external caller
+            can stamp an instance with another entry's identity; a public Clone hands out a duplicate carrying the
+            same key, which reports is_available() for a cache entry it is not in. It would also add nothing, since
+            create_backend hands out Arc<dyn Backend>, already cheap to clone.
+          reply_id: 3735832596
+    revalidation_requested: false
+    revalidation_skip_reason: >-
+      No code changed, so there is no post-push head for the Step 9.5 poll to gate on. Requesting /agentic_review
+      against the same SHA the existing review already covers would re-run the identical pass rather than validate
+      anything. The finding is declined on the record, not fixed.
   complete:
     status: pending
 history:
@@ -550,6 +588,24 @@ history:
     action: pr_created
     phase: pr
     details: 'PR #89 opened against main (+3115 -203 across 24 files); summary comment posted to CLO-653'
+  - timestamp: '2026-08-07T12:41:32.000Z'
+    action: review_received
+    phase: pr
+    details: >-
+      qodo-code-review posted on PR #89 against bac0dcc. Bugs 0, Rule violations 1, Requirement gaps 0. One inline
+      finding at Review recommended severity.
+  - timestamp: '2026-08-07T12:48:00.000Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      1/1 replies posted. The single finding was declined with evidence rather than fixed - the cited rule scopes to
+      public data types, which the codebase follows exactly (8/8 data types derive, 0/6 service types do, including
+      the untouched RetryExecutor), and a public Clone would reopen the identity-forging that pub(crate)
+      with_cache_key exists to prevent. No code change, so no re-validation requested.
+  - timestamp: '2026-08-07T12:48:00.000Z'
+    action: ci_passed
+    phase: pr
+    details: 'CI Gate, MSRV 1.83, build/test on macos and ubuntu, and library boundary all pass on 14d90b1'
 task_title: >-
   BACKEND_CACHE is keyed by name alone, so two library consumers in one process silently share one backend instance
 task_url: https://linear.app/cloud-ai/issue/CLO-653/backend-cache-is-keyed-by-name-alone-so-two-library-consumers-in-one
