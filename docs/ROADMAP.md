@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-07 (CLO-653 placed in Phase 12, reopening it at 5 of 6; Phase 14 at 9 tasks; Phase 13 at 2 of 3)
+**Last Updated**: 2026-08-07 (CLO-653 merged, closing Phase 12 at 6 of 6; Phase 14 at 9 tasks; Phase 13 at 2 of 3)
 
 ## Summary
 
@@ -17,7 +17,7 @@
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
 | Phase 11: Health Checks | 1 | 1 | Complete |
-| Phase 12: Library Extraction & CI | 6 | 5 | In progress |
+| Phase 12: Library Extraction & CI | 6 | 6 | Complete |
 | Phase 13: Release Readiness | 3 | 2 | In progress |
 | Phase 14: Orchestration Tooling Hardening | 9 | 1 | In progress |
 | Phase 15: Security Scan Remediation | 5 | 1 | In Progress |
@@ -44,9 +44,11 @@ Makes the `Backend` abstraction consumable by an external crate, and puts a CI g
 | [CLO-600](https://linear.app/cloud-ai/issue/CLO-600) | lok has never run a GitHub Actions workflow: no CI gate on any PR | Done | - |
 | [CLO-591](https://linear.app/cloud-ai/issue/CLO-591) | Strip CLI presentation from the library surface so consumers get no terminal chrome | Done | CLO-593 |
 | [CLO-592](https://linear.app/cloud-ai/issue/CLO-592) | Make the backend library consumable from crates.io with rustdoc, feature docs and a publish dry-run | Done | CLO-591 |
-| [CLO-653](https://linear.app/cloud-ai/issue/CLO-653) | `BACKEND_CACHE` is keyed by name alone, so two library consumers in one process silently share one backend instance | In Progress | CLO-591 |
+| [CLO-653](https://linear.app/cloud-ai/issue/CLO-653) | `BACKEND_CACHE` is keyed by name alone, so two library consumers in one process silently share one backend instance | Done | CLO-591 |
 
-CLO-653 reopened this phase on 2026-08-07. CLO-591 left it open deliberately and it was recorded as a standing constraint in `docs/DEPENDENCIES.md` rather than as an issue, which is why no backlog view showed it. It belongs here rather than in Phase 13: the two-consumers-one-process case is exactly what extracting the library was for, so the phase is not actually finished while it stands. It is the only known code defect on the library critical path.
+CLO-653 reopened this phase on 2026-08-07 and closed it the same day (PR #89, merged as `b413f57`). CLO-591 left it open deliberately and it was recorded as a standing constraint in `docs/DEPENDENCIES.md` rather than as an issue, which is why no backlog view showed it. It belonged here rather than in Phase 13: the two-consumers-one-process case is exactly what extracting the library was for, so the phase was not actually finished while it stood. It was the only known code defect on the library critical path, and the phase is now genuinely complete.
+
+Two bounds replaced the constraint it removed, both documented in `src/lib.rs` where a consumer meets them: `BackendKey` cannot capture ambient construction inputs (the resolved value behind `api_key_env`, Bedrock's AWS environment), and the cache is still process-global rather than owned by the embedding host. Handing a host its own cache handle is the better long-term library shape and was deliberately deferred — it is a superset of this work, not an alternative, since a host-owned cache still needs config-aware keying inside it.
 
 ## Phase 13: Release Readiness
 

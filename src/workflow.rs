@@ -5776,6 +5776,19 @@ model = "absent-from-every-inventory"
             &crate::backend::BackendKey::new("ollama", &west, &retry),
             inventory("llama3.2:latest"),
         );
+
+        // Check the precondition separately. This assertion holds only while
+        // exactly one ollama configuration is cached, and every cache-touching
+        // test in this binary must take `acquire_test_lock` for that to be true.
+        // When one did not, this arrived as a baffling "validation did not
+        // reject" rather than pointing at the cache state that caused it.
+        assert!(
+            crate::backend::unambiguous_cached_health("ollama").is_some(),
+            "precondition: exactly one ollama configuration must be cached here. \
+             Another test mutating the global cache without acquire_test_lock \
+             will break this"
+        );
+
         let result = load_workflow(&workflow_path).await;
         assert!(
             result.is_err(),
@@ -7164,8 +7177,15 @@ prompt = "p"
         ));
     }
 
-    #[test]
-    fn test_codex_unusable_flags_warning() {
+    /// Takes `acquire_test_lock` because the body calls `lock.clear()`, which
+    /// wipes the whole process-global cache and not just this test's entry.
+    /// Without the lock it races every other cache-touching test in this binary:
+    /// it cleared `ambiguous_ollama_configs_skip_model_validation`'s seeded
+    /// entry mid-test on a macOS runner, turning "one configuration cached" into
+    /// "none cached" so validation skipped instead of rejecting.
+    #[tokio::test]
+    async fn test_codex_unusable_flags_warning() {
+        let _guard = crate::backend::acquire_test_lock().await;
         let cache = crate::backend::get_backend_cache();
         let mut lock = cache.write().expect("lock poisoned");
         lock.clear();

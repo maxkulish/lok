@@ -26,8 +26,8 @@ linear:
   branch_actual: fix/clo-653-backend-cache
   priority: 2
 workflow:
-  current_phase: pr
-  status: in_progress
+  current_phase: complete
+  status: complete
   created_at: '2026-08-07T08:10:25.000Z'
   updated_at: '2026-08-07T12:34:00.000Z'
 pre_decisions:
@@ -402,7 +402,42 @@ phases:
       against the same SHA the existing review already covers would re-run the identical pass rather than validate
       anything. The finding is declined on the record, not fixed.
   complete:
-    status: pending
+    status: complete
+    aggregation_files_updated: true
+    merged_at: '2026-08-07T19:05:54Z'
+    merge_commit: b413f57
+    pr_number: 89
+    pr_commits: 8
+    final_summary: >-
+      BACKEND_CACHE now keys on BackendKey { name, config, retry } rather than name alone, so two consumers in one
+      process each get an instance honouring their own configuration. RetryPolicy is part of the identity because it
+      decides the RetryExecutor wrapper and derives from Config::defaults rather than BackendConfig - the ticket's
+      proposed BackendConfig-only hash would still have collided. Owned values rather than a digest, because a
+      digest collision silently returns the wrong instance, which is the defect under repair.
+    scope_vs_ticket: >-
+      The ticket described two call sites; there were eight production sites reading or writing the cache by name,
+      and providers retain no BackendConfig, so each had to be handed its key. Two further pre-existing defects
+      surfaced while designing - create_backend erasing a completed probe, and warmup's write-back key diverging
+      from its read key. And workflow.rs:237 turned out to be a hard UnknownModel error that rejects a user's
+      workflow, not the diagnostic an earlier draft called it.
+    modules:
+      - src/backend/mod.rs - BackendKey, cache map type, create_backend, cache_or_keep_incumbent, is_backend_available, set_mock_health
+      - src/backend/config.rs, src/backend/retry.rs - Eq + Hash derives on the key's constituents
+      - src/backend/{ollama,codex,claude,gemini,bedrock}.rs - key field, pub(crate) builder, is_available
+      - src/engine.rs - warmup key threading, get_cached_health, unambiguous_cached_health, test helpers
+      - src/workflow.rs - both name-only health reads, each skipping on an ambiguous answer
+      - src/lib.rs, src/main.rs - crate docs and the doctor call site
+      - tests/backend_public_api.rs - external-consumer proof of all three migrations
+    known_bounds_documented:
+      - BackendKey cannot capture ambient construction inputs (resolved api_key_env value, Bedrock's AWS environment)
+      - The cache remains process-global rather than host-owned; Approach C deferred as a superset, not an alternative
+    followups_filed:
+      - CLO-655 - shell ${#VAR} parses as an unterminated Jinja comment, killing the design-review pipeline
+      - CLO-656 - every template failure reported as UnknownVariable naming the first {{ }} in the template
+      - CLO-660 - three planning docs describe the crate as unpublished; it has 28 published versions
+    followups_placed_in_aggregation_files: false
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/90
+    finalize_pr_number: 90
 history:
   - timestamp: '2026-08-07T08:10:25.000Z'
     action: workflow_started
@@ -606,6 +641,21 @@ history:
     action: ci_passed
     phase: pr
     details: 'CI Gate, MSRV 1.83, build/test on macos and ubuntu, and library boundary all pass on 14d90b1'
+  - timestamp: '2026-08-07T19:05:54.000Z'
+    action: pr_merged
+    phase: pr
+    details: 'PR #89 merged to main as b413f57 (merge commit, 8 commits)'
+  - timestamp: '2026-08-07T19:20:00.000Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      PROJECT.md moved CLO-653 to Recently Completed and cleared Active Work; ROADMAP.md set it Done and closed
+      Phase 12 at 6 of 6; DEPENDENCIES.md header updated - its standing-constraint entry was already retired in the
+      merged PR. CLO-653 blocked nothing, so no task became ready as a result.
+  - timestamp: '2026-08-07T19:20:00.000Z'
+    action: workflow_complete
+    phase: complete
+    details: Task CLO-653 fully completed
 task_title: >-
   BACKEND_CACHE is keyed by name alone, so two library consumers in one process silently share one backend instance
 task_url: https://linear.app/cloud-ai/issue/CLO-653/backend-cache-is-keyed-by-name-alone-so-two-library-consumers-in-one
