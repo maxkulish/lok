@@ -1,6 +1,6 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-06 (CLO-638 done via PR #86, squashed as `6e17ee2`; Phase 13 at 2 of 3)
+**Last Updated**: 2026-08-07 (CLO-651 and CLO-652 filed; Phase 14 now 9 tasks; Phase 13 at 2 of 3)
 
 ## Active Work (WIP Limit: 3)
 
@@ -14,6 +14,7 @@
 |----------|------|-------|--------------|--------|
 | High | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields) | Escape or remove step output interpolated into workflow shell fields — `shell_escape` is registered as a filter and used nowhere, so model output reaches `sh -c` as source | None — codex-security scan finding | Next (HITL) |
 | High | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632/gate-project-layer-loktoml-backend-commands-behind-a-trust-boundary) | Gate project-layer `lok.toml` backend commands behind a trust boundary — a cloned repo's `./lok.toml` is the highest-precedence config layer and can replace a backend executable | None — codex-security scan finding | Next (HITL) |
+| High | [CLO-651](https://linear.app/cloud-ai/issue/CLO-651) | `gh pr checks --watch` reports failure instantly when a PR has no checks yet, so `finalize.md` prints `CI_NOT_PASSED` in under a second and refuses to merge. Indistinguishable from a real red build | None - found during the 2026-08-06 Actions outage | Next |
 | Medium | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested) | Make pr-review-cycle shell snippets executable and tested — extract the gate logic to `.pi/scripts/`, shellcheck in CI, fixture tests asserting each gate fails *closed*, and collapse the skill/`/pr:review` duplication | None — PR #71 merged | Next |
 | Medium | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624/distinguish-a-bad-reviewer-invocation-from-an-empty-model-response) | Distinguish a bad reviewer invocation from an empty model response — `REVIEW_FAILED` on empty stdout regardless of cause is what hid the retired-gemini-CLI breakage for weeks | None — PR #71 merged | Next |
 | Medium | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627/completemd-edits-the-aggregation-files-then-checks-out-main-with-them) | `complete.md` edits the aggregation files at Step 3, then checks out main at Step 4 with them uncommitted — in worktree mode the same three files get edited twice in two places | None — CLO-625 merged | Next |
@@ -23,6 +24,7 @@
 | Medium | [CLO-639](https://linear.app/cloud-ai/issue/CLO-639) | `commit_file` returns an empty string as a successful SHA when `git rev-parse HEAD` fails (`src/tasks/implement.rs:761-767`). CLO-633 made the slice safe; the error handling is still wrong | None - CLO-633 follow-up | Next |
 | Medium | [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | Deduplicate `FILE_REF_RE` and `extract_file_references` across `tasks/context.rs` and `tasks/fix.rs`. The verbatim copy is the drift hazard that turned CLO-633's Defect 2 into two sites | None - CLO-633 follow-up | Next |
 | Medium | [CLO-649](https://linear.app/cloud-ai/issue/CLO-649) | spec-review workflow drops the Ollama leg when Linear text contains a single quote — the sed template dies on the quote and the synthesis silently proceeds with one reviewer | None — independent harness fix | Next |
+| Medium | [CLO-652](https://linear.app/cloud-ai/issue/CLO-652) | Pre-PR validation reports emit absolute machine paths, leaking `/Users/<name>` into PR comments. Qodo caught it once and it returned on the next workflow run, because nothing in the template constrains the path form | None - independent agent-template fix | Next |
 | Low | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610/attest-release-binaries-so-their-checksums-prove-origin-not-only) | Attest release binaries so their checksums prove origin, not only transfer — re-running a tag replaces the archive and its `.sha256` together, so a matching digest proves the pair is self-consistent and nothing more | None — standalone `release.yml` change | Next (CLO-609 landed 2026-08-03) |
 
 ## Recently Completed

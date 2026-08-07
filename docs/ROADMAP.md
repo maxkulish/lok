@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-06 (CLO-638 done via PR #86; Phase 13 at 2 of 3)
+**Last Updated**: 2026-08-07 (CLO-649, CLO-650, CLO-651 and CLO-652 placed in Phase 14, now 9 tasks; Phase 13 at 2 of 3)
 
 ## Summary
 
@@ -19,7 +19,7 @@
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
 | Phase 13: Release Readiness | 3 | 2 | In progress |
-| Phase 14: Orchestration Tooling Hardening | 5 | 1 | In progress |
+| Phase 14: Orchestration Tooling Hardening | 9 | 1 | In progress |
 | Phase 15: Security Scan Remediation | 5 | 1 | In Progress |
 | Phase 16: Task-Pipeline Cleanup | 2 | 0 | Not started |
 
@@ -59,7 +59,7 @@ CLO-638 joined this phase on 2026-08-06. It arrived as a CLO-633 follow-up, but 
 
 ## Phase 14: Orchestration Tooling Hardening
 
-Five defects in the markdown-defined orchestration commands, all found by running them rather than reading them, and all sharing one root cause: procedural instructions that nothing executes or tests until they fail in production. CLO-623 is the structural fix; the others are the individual failures that motivated it.
+Nine defects in the markdown-defined orchestration commands, all found by running them rather than reading them, and all sharing one root cause: procedural instructions that nothing executes or tests until they fail in production. CLO-623 is the structural fix; the others are the individual failures that motivated it.
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
@@ -68,8 +68,16 @@ Five defects in the markdown-defined orchestration commands, all found by runnin
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | complete.md edits the aggregation files, then checks out main with them uncommitted | Not started | - |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | gh pr merge --delete-branch silently skips the remote deletion when its local checkout fails | Not started | - |
 | [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | Done | - |
+| [CLO-649](https://linear.app/cloud-ai/issue/CLO-649) | spec-review workflow drops the Ollama leg when Linear text contains a single quote | Not started | - |
+| [CLO-650](https://linear.app/cloud-ai/issue/CLO-650) | Verify reviewer-bot identity exactly in the PR gates instead of substring matching | Not started | CLO-623 |
+| [CLO-651](https://linear.app/cloud-ai/issue/CLO-651) | gh pr checks --watch reports failure instantly when no checks exist yet | Not started | - |
+| [CLO-652](https://linear.app/cloud-ai/issue/CLO-652) | Pre-PR validation reports emit absolute machine paths into PR comments | Not started | - |
 
 CLO-637 joined this phase on 2026-08-06, filed out of CLO-633. It is the fourth individual failure of the same root cause: Step 9.5 waited for a review object on the new head SHA, but Qodo submits one only when a pass carries new inline findings. A clean re-review updates its comment in place, so the gate failed precisely on the success case. Observed on PR #80.
+
+Four more joined on 2026-08-07. CLO-649 and CLO-650 came out of the CLO-637 run; CLO-651 and CLO-652 out of the GitHub Actions outage on 2026-08-06 and the pre-PR reports that ran during it. Three of the four are the same shape as CLO-624 and CLO-637 — a gate reading absence of evidence as a verdict, or matching on a substring where an exact identity was meant. CLO-650 is the only task in the phase with a dependency: the bot-identity check belongs inside the script CLO-623 extracts, not in the markdown it replaces.
+
+The phase has grown from four defects to nine without CLO-623 moving. That is the argument for doing CLO-623 next rather than continuing to file against it: every new task here is another copy of shell that the extraction would have to absorb anyway.
 
 ## Phase 15: Security Scan Remediation
 
