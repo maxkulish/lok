@@ -12,6 +12,10 @@ pub struct OllamaBackend {
     client: Client,
     base_url: String,
     model: String,
+    /// Cache identity this instance was constructed under, when it came from
+    /// [`create_backend`](super::create_backend). `None` for a hand-built
+    /// instance, which is not in the cache and so reports unavailable.
+    key: Option<super::BackendKey>,
 }
 
 #[derive(Serialize)]
@@ -61,7 +65,18 @@ impl OllamaBackend {
             client,
             base_url,
             model,
+            key: None,
         })
+    }
+
+    /// Attach the cache identity this instance was constructed under.
+    ///
+    /// Crate-internal on purpose: a public setter would let a caller stamp one
+    /// instance with another entry's identity and read that entry's health back
+    /// through [`Backend::is_available`](super::Backend::is_available).
+    pub(crate) fn with_cache_key(mut self, key: super::BackendKey) -> Self {
+        self.key = Some(key);
+        self
     }
 
     async fn chat(
@@ -177,7 +192,9 @@ impl Backend for OllamaBackend {
     }
 
     fn is_available(&self) -> bool {
-        super::is_backend_available(self.name())
+        // Function reference rather than `|k| ...`: clippy's `redundant_closure`
+        // is denied in CI, and the closure form trips it.
+        self.key.as_ref().is_some_and(super::is_backend_available)
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {

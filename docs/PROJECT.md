@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-07 (CLO-651 and CLO-652 filed; Phase 14 now 9 tasks; Phase 13 at 2 of 3)
+**Last Updated**: 2026-08-07 (CLO-653 filed and started; Phase 12 reopened at 5 of 6; Phase 14 at 9 tasks; Phase 13 at 2 of 3)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-653](https://linear.app/cloud-ai/issue/CLO-653) | `BACKEND_CACHE` is keyed by name alone, so two library consumers in one process silently share one backend instance | In Progress | Phase 12 | - |
 
 ## Up Next (Prioritized Backlog)
 

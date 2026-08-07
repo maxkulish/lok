@@ -7,7 +7,13 @@ use std::time::Duration;
 ///
 /// This struct is intentionally independent from lok's orchestration `Config`
 /// so it can be used by library consumers that only want to run queries.
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+/// `PartialEq + Eq + Hash` make this usable inside
+/// [`BackendKey`](crate::backend::BackendKey), which keys the backend cache on
+/// configuration rather than on name alone. Every field is a `bool`, integer,
+/// `String`, `Vec<String>` or `Duration`, all of which are `Eq + Hash`; adding a
+/// floating-point field would break the derive and require a decision about how
+/// to hash it.
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct BackendConfig {
     /// Whether this backend may be selected. Defaults to `true`.

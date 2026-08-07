@@ -15,7 +15,13 @@ use tokio::time::{sleep, Duration};
 /// Pass a `RetryPolicy` to [`create_backend`](crate::create_backend) to wrap
 /// the backend in a [`RetryExecutor`] automatically. Set `max_retries: 0` to
 /// disable retries entirely.
-#[derive(Debug, Clone)]
+/// `PartialEq + Eq + Hash` make this usable inside
+/// [`BackendKey`](crate::backend::BackendKey). The policy belongs in the cache
+/// key because it decides whether the cached value is wrapped in a
+/// [`RetryExecutor`], and it is derived from `Config::defaults` rather than from
+/// `BackendConfig` - so two consumers with identical `BackendConfig` can still
+/// need different instances.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RetryPolicy {
     /// Maximum number of retry attempts (0 means no retries)
     pub max_retries: usize,

@@ -101,12 +101,11 @@ fn codex_unusable_flag_warnings(step: &Step) -> Vec<String> {
             continue;
         }
 
-        let status = match crate::backend::get_backend_cache()
-            .read()
-            .expect("backend cache lock poisoned")
-            .get(&backend_name)
-            .and_then(|e| e.health.clone())
-        {
+        // No `Config` is in scope here, so the cache can only be asked by name.
+        // `None` covers both "not cached" and "cached under several
+        // configurations"; in the ambiguous case a warning derived from an
+        // arbitrary configuration would be worse than silence.
+        let status = match crate::backend::unambiguous_cached_health(&backend_name) {
             Some(s) => s,
             None => continue,
         };
@@ -219,28 +218,35 @@ impl Workflow {
             for backend_name in step.get_backends() {
                 if backend_name == "ollama" {
                     if let Some(ref model_name) = step.model {
-                        let cache = crate::backend::get_backend_cache();
-                        let lock = cache.read().expect("backend cache lock poisoned");
-                        if let Some(entry) = lock.get("ollama") {
-                            if let Some(ref status) = entry.health {
-                                if status.available {
-                                    let latest_name = if !model_name.contains(':') {
-                                        Some(format!("{}:latest", model_name))
-                                    } else {
-                                        None
-                                    };
-                                    let has_model = status.models.iter().any(|m| {
-                                        m.name == *model_name
-                                            || latest_name.as_ref() == Some(&m.name)
+                        // This path rejects the user's workflow, so it must not
+                        // guess. `unambiguous_cached_health` answers `None` when
+                        // several ollama configurations are cached, and `None`
+                        // skips validation entirely rather than picking one:
+                        // choosing arbitrarily could reject a model that is
+                        // present on the endpoint this step will actually call,
+                        // or accept one that is absent from it. Failing open
+                        // matches what already happens when nothing is cached,
+                        // and a real error from the endpoint beats a validation
+                        // error naming the wrong one.
+                        if let Some(status) =
+                            crate::backend::unambiguous_cached_health(&backend_name)
+                        {
+                            if status.available {
+                                let latest_name = if !model_name.contains(':') {
+                                    Some(format!("{}:latest", model_name))
+                                } else {
+                                    None
+                                };
+                                let has_model = status.models.iter().any(|m| {
+                                    m.name == *model_name || latest_name.as_ref() == Some(&m.name)
+                                });
+                                if !has_model {
+                                    return Err(WorkflowError::UnknownModel {
+                                        workflow: self.name.clone(),
+                                        step: step.name.clone(),
+                                        backend: backend_name.clone(),
+                                        model: model_name.clone(),
                                     });
-                                    if !has_model {
-                                        return Err(WorkflowError::UnknownModel {
-                                            workflow: self.name.clone(),
-                                            step: step.name.clone(),
-                                            backend: backend_name.clone(),
-                                            model: model_name.clone(),
-                                        });
-                                    }
                                 }
                             }
                         }
@@ -5618,7 +5624,7 @@ timeout = 0
                 },
             ],
         };
-        crate::backend::set_mock_health("ollama", status);
+        crate::backend::set_mock_health(&crate::backend::BackendKey::for_test("ollama"), status);
 
         // Test 1: Valid model "llama3.2" (matches "llama3.2:latest") should pass
         std::fs::write(
@@ -5679,6 +5685,103 @@ model = "llama3"
         ));
 
         // Clean up
+        crate::backend::clear_health_cache();
+    }
+
+    /// With two Ollama configurations cached, model validation must be skipped
+    /// rather than decided arbitrarily (CLO-653).
+    ///
+    /// This is the only path in the cache-keying change that rejects a user's
+    /// workflow. `Workflow::validate` has no `Config` in scope, so it can only
+    /// ask the cache by name; with several configurations of one name present,
+    /// answering from an arbitrary entry could reject a model that *is* on the
+    /// endpoint the step will call, or accept one that is absent from it.
+    ///
+    /// The model requested here is absent from *both* cached inventories, so
+    /// under the old name-only lookup it would be rejected no matter which entry
+    /// won. Loading must now succeed. Both insertion orders are exercised, since
+    /// `HashMap` iteration order is what a guessing implementation would follow.
+    #[tokio::test]
+    async fn ambiguous_ollama_configs_skip_model_validation() {
+        let _guard = crate::backend::acquire_test_lock().await;
+
+        let workflow_toml = r#"
+name = "test-workflow"
+
+[[steps]]
+name = "step1"
+backend = "ollama"
+prompt = "test"
+model = "absent-from-every-inventory"
+"#;
+
+        let inventory = |model: &str| crate::backend::HealthStatus {
+            available: true,
+            version: Some("0.1.48".to_string()),
+            mode: None,
+            diagnostic: None,
+            auth_method: None,
+            capabilities: None,
+            unusable_flags: Vec::new(),
+            models: vec![crate::backend::ModelInfo {
+                name: model.to_string(),
+                modified_at: None,
+                size: None,
+                digest: None,
+            }],
+        };
+
+        let config_for = |endpoint: &str| crate::config::BackendConfig {
+            enabled: true,
+            command: Some(endpoint.to_string()),
+            ..Default::default()
+        };
+
+        let west = config_for("http://west.invalid:11434");
+        let east = config_for("http://east.invalid:11434");
+        let retry = crate::backend::RetryPolicy::default();
+
+        for (first, second) in [(&west, &east), (&east, &west)] {
+            let dir = tempdir().unwrap();
+            let workflow_path = dir.path().join("test.toml");
+            std::fs::write(&workflow_path, workflow_toml).unwrap();
+
+            crate::backend::clear_health_cache();
+            crate::backend::set_mock_health(
+                &crate::backend::BackendKey::new("ollama", first, &retry),
+                inventory("llama3.2:latest"),
+            );
+            crate::backend::set_mock_health(
+                &crate::backend::BackendKey::new("ollama", second, &retry),
+                inventory("phi3:latest"),
+            );
+
+            let result = load_workflow(&workflow_path).await;
+            assert!(
+                result.is_ok(),
+                "validation rejected a workflow using an ambiguous backend name; \
+                 it must skip the check rather than answer from an arbitrary entry: {:?}",
+                result.err()
+            );
+        }
+
+        // A single configuration must still validate, so the skip is scoped to
+        // ambiguity rather than disabling the check outright.
+        let dir = tempdir().unwrap();
+        let workflow_path = dir.path().join("test.toml");
+        std::fs::write(&workflow_path, workflow_toml).unwrap();
+
+        crate::backend::clear_health_cache();
+        crate::backend::set_mock_health(
+            &crate::backend::BackendKey::new("ollama", &west, &retry),
+            inventory("llama3.2:latest"),
+        );
+        let result = load_workflow(&workflow_path).await;
+        assert!(
+            result.is_err(),
+            "one cached configuration must still reject an absent model"
+        );
+
         crate::backend::clear_health_cache();
     }
 
@@ -7067,7 +7170,7 @@ prompt = "p"
         let mut lock = cache.write().expect("lock poisoned");
         lock.clear();
         lock.insert(
-            "codex".to_string(),
+            crate::backend::BackendKey::for_test("codex"),
             crate::backend::CachedBackend {
                 backend: std::sync::Arc::new(crate::backend::StubBackend {
                     name: "codex".to_string(),

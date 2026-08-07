@@ -77,6 +77,105 @@ fn retry_defaults_match_lok_config_defaults() {
     assert_eq!(defaults.retry_delay_ms, 1000);
 }
 
+// ---------------------------------------------------------------------------
+// CLO-653: the cache is keyed by configuration, and a consumer can say so.
+//
+// Three things changed shape for downstream code, so all three are exercised
+// here through `lokomotiv::` paths only: `BackendKey`, the key type of
+// `get_backend_cache`, and `set_mock_health`'s signature.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn cache_is_keyed_by_configuration_not_name() {
+    use lokomotiv::backend::{acquire_test_lock, get_backend_cache, set_mock_health};
+    use lokomotiv::{BackendKey, HealthStatus};
+
+    let _guard = acquire_test_lock().await;
+
+    let retry = RetryPolicy {
+        max_retries: 0,
+        ..Default::default()
+    };
+
+    // Same backend name, two configurations a host might legitimately want at once.
+    let west = BackendConfig {
+        enabled: true,
+        command: Some("http://ollama-west.invalid:11434".to_string()),
+        model: Some("llama3.2".to_string()),
+        ..Default::default()
+    };
+    let east = BackendConfig {
+        enabled: true,
+        command: Some("http://ollama-east.invalid:11434".to_string()),
+        model: Some("llama3.2".to_string()),
+        ..Default::default()
+    };
+
+    let west_key = BackendKey::new("ollama", &west, &retry);
+    let east_key = BackendKey::new("ollama", &east, &retry);
+
+    assert_ne!(
+        west_key, east_key,
+        "two configurations of one name must be distinct identities"
+    );
+    assert_eq!(west_key.name(), "ollama");
+    assert_eq!(east_key.name(), "ollama");
+
+    // Health filed against one identity must not answer for the other.
+    set_mock_health(&west_key, HealthStatus::new_available());
+    set_mock_health(&east_key, HealthStatus::new_unavailable());
+
+    let lock = get_backend_cache().read().expect("cache lock");
+    let west_health = lock
+        .get(&west_key)
+        .and_then(|e| e.health.as_ref())
+        .expect("west entry present");
+    let east_health = lock
+        .get(&east_key)
+        .and_then(|e| e.health.as_ref())
+        .expect("east entry present");
+
+    assert!(west_health.available);
+    assert!(
+        !east_health.available,
+        "the second configuration's health was overwritten by the first"
+    );
+}
+
+#[test]
+fn backend_key_equality_follows_configuration_and_retry() {
+    use lokomotiv::BackendKey;
+
+    let cfg = BackendConfig {
+        enabled: true,
+        command: Some("http://localhost:11434".to_string()),
+        ..Default::default()
+    };
+    let quiet = RetryPolicy {
+        max_retries: 0,
+        ..Default::default()
+    };
+    let persistent = RetryPolicy {
+        max_retries: 5,
+        ..Default::default()
+    };
+
+    assert_eq!(
+        BackendKey::new("ollama", &cfg, &quiet),
+        BackendKey::new("ollama", &cfg, &quiet),
+        "the same inputs must produce the same identity"
+    );
+
+    // The retry policy comes from the orchestration defaults rather than from
+    // BackendConfig, so a key ignoring it would hand two consumers one instance
+    // wrapped for whichever of them constructed first.
+    assert_ne!(
+        BackendKey::new("ollama", &cfg, &quiet),
+        BackendKey::new("ollama", &cfg, &persistent),
+        "retry policy must participate in cache identity"
+    );
+}
+
 /// Ask the Ollama server which models it has locally.
 ///
 /// One request doubles as the liveness probe: `None` means nothing answered,

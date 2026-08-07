@@ -1,0 +1,237 @@
+# CLO-653 Implementation Plan: Key BACKEND_CACHE on configuration, not name alone
+
+**Linear Task**: https://linear.app/cloud-ai/issue/CLO-653
+**Design Document**: docs/designs/clo-653-backend-cache-key.md
+**Discovery Report**: docs/discovery/clo-653.md
+**Created**: 2026-08-07
+**Overall Progress**: 95% (105/113 done, 1 partial, 1 declined, 6 remaining in Phase 7 — 26 tasks across 7 phases, 113 checkboxes; see Deviations at the end)
+
+---
+
+## Architecture Context
+
+`BACKEND_CACHE` memoizes constructed backends by name alone, so a second consumer asking for `"ollama"` with a different configuration silently receives the first one's instance. This replaces the `String` key with an owned `BackendKey { name, config, retry }`, gives each provider the key it was cached under so `is_available` can find itself, and closes two defects the design review surfaced: a construction race that erases completed health probes, and a name-only health read feeding a hard `UnknownModel` error.
+
+The library crate is only `pub mod backend`. `main.rs:24` aliases `engine` as `backend`, so `engine.rs`, `workflow.rs` and `conductor.rs` are binary-only. That splits the work into a small public surface and a larger internal one.
+
+Ordering is not arbitrary. Phase 1 must be observed failing before Phase 2 exists, and Phase 2 breaks compilation across the tree until Phase 4 lands — expect a red tree in between and do not treat it as a regression.
+
+---
+
+## Tasks
+
+### Phase 1: Failing test first
+
+- [x] Task 1: Build a recording HTTP server fixture
+  - [x] Subtask 1.1: Add a dev-dependency for a local mock server (`wiremock`, or a hand-rolled `hyper` listener if the dependency budget is tight — check `Cargo.toml` for an existing option before adding one)
+  - [x] Subtask 1.2: Write a helper in `src/backend/mod.rs` tests that starts a server on an ephemeral port and records every request body it receives
+  - [x] Subtask 1.3: Confirm the helper works against a single `OllamaBackend` before using it to prove anything
+
+- [x] Task 2: Write the proof-of-defect test
+  - [x] Subtask 2.1: Add `two_configs_same_name_honour_their_own_endpoint_and_model` — two servers, two `BackendConfig`s differing in `command` (endpoint) and `model`
+  - [x] Subtask 2.2: Call `query` on each returned backend and assert each server received exactly one request carrying its own model
+  - [x] Subtask 2.3: Take `acquire_test_lock` and clear the cache, matching the existing convention
+
+- [x] Task 3: Observe it failing
+  - [x] Subtask 3.1: Run against unmodified `main`; confirm it fails because both requests reach the first server
+  - [x] Subtask 3.2: Record the exact failure output in the workflow YAML — pointer inequality would not have proved this, so the failure mode itself is the evidence
+
+### Phase 2: The key
+
+- [x] Task 4: Make the key types hashable
+  - [x] Subtask 4.1: Add `PartialEq, Eq, Hash` to the `BackendConfig` derive (`src/backend/config.rs:10`)
+  - [x] Subtask 4.2: Add `PartialEq, Eq, Hash` to the `RetryPolicy` derive (`src/backend/retry.rs:18`)
+
+- [x] Task 5: Introduce `BackendKey`
+  - [x] Subtask 5.1: Define `BackendKey { name: String, config: BackendConfig, retry: RetryPolicy }` with `Clone, Debug, PartialEq, Eq, Hash`
+  - [x] Subtask 5.2: Add `new(&str, &BackendConfig, &RetryPolicy)` — borrow, not move; `RetryPolicy` is not `Copy` and every caller reads it again
+  - [x] Subtask 5.3: Add a `name()` accessor
+  - [x] Subtask 5.4: Write rustdoc covering why `RetryPolicy` participates and the ambient-credential bound
+
+- [x] Task 6: Rekey the cache
+  - [x] Subtask 6.1: Change `BACKEND_CACHE` to `HashMap<BackendKey, CachedBackend>` (`src/backend/mod.rs:430`)
+  - [x] Subtask 6.2: Update `get_backend_cache`'s return type (`mod.rs:433`)
+  - [x] Subtask 6.3: Build the key once at the top of `create_backend` and use it for the read
+
+- [x] Task 7: Double-checked insert
+  - [x] Subtask 7.1: Import `std::collections::hash_map::Entry`
+  - [x] Subtask 7.2: Replace the unconditional `insert` (`mod.rs:405`) with `match lock.entry(key)` — `Occupied` returns the incumbent's `Arc` and discards the candidate, `Vacant` inserts
+  - [x] Subtask 7.3: Keep construction outside the lock; the write guard covers only the map operation
+  - [x] Subtask 7.4: Comment why, referencing that `set_mock_health` (`mod.rs:495`) already uses this shape
+
+- [x] Task 8: Migrate `set_mock_health`
+  - [x] Subtask 8.1: Change the signature to take `&BackendKey` (`mod.rs:491`) — public under `test-support`, so this is part of the break
+  - [x] Subtask 8.2: Keep the existing `entry().and_modify().or_insert()` body, which already preserves the cached backend
+
+### Phase 3: Provider identity
+
+- [x] Task 9: Give each provider a key
+  - [x] Subtask 9.1: Add `key: Option<BackendKey>` to `OllamaBackend`, `CodexBackend`, `ClaudeBackend`, `GeminiBackend` and `BedrockBackend`
+  - [x] Subtask 9.2: Add `pub(crate) fn with_cache_key(self, key: BackendKey) -> Self` to each — crate-internal, so no caller can forge another entry's identity
+  - [x] Subtask 9.3: Leave all five `new(config)` signatures unchanged
+  - [x] Subtask 9.4: Wire `with_cache_key` into each arm of `create_backend`'s match
+
+- [x] Task 10: Rework `is_backend_available`
+  - [x] Subtask 10.1: Change it to take `&BackendKey` (`mod.rs:564`)
+  - [x] Subtask 10.2: Point all five provider `is_available` impls at `self.key`, using the closure form
+  - [x] Subtask 10.3: Confirm `RetryExecutor::is_available` (`retry.rs:146`) still delegates correctly and needs no key
+
+- [x] Task 11: Re-verify the behavioural change
+  - [x] Subtask 11.1: Re-grep for `.is_available()` on hand-built providers; confirm the design-time finding still holds against the tree as it now stands
+  - [x] Subtask 11.2: Confirm `conductor.rs:74` and `spawn.rs:74` still only use `api_details()`
+
+### Phase 4: Binary-side call sites
+
+- [x] Task 12: Fix the warmup write-back
+  - [x] Subtask 12.1: Build the key alongside `retry_policy` in the `warmup_backends` loop (`engine.rs:107`)
+  - [x] Subtask 12.2: Use it for the skip-check at `engine.rs:100`
+  - [x] Subtask 12.3: Move the key into the future so the write-back is keyed identically, replacing `backend.name()` (`engine.rs:136-161`)
+  - [x] Subtask 12.4: Use `key.name()` in the warning messages so operator-visible output is unchanged
+
+- [x] Task 13: Rekey `get_cached_health`
+  - [x] Subtask 13.1: Change it to take `&BackendKey` (`engine.rs:195`)
+  - [x] Subtask 13.2: Build the key at `main.rs:795` from `backend_config` and `config.defaults` via `get_retry_policy`
+
+- [x] Task 14: Add the unambiguous health helper
+  - [x] Subtask 14.1: Write `unambiguous_cached_health(name) -> Option<HealthStatus>` in `engine.rs`, binary-only, returning `None` when zero or more than one entry matches
+  - [x] Subtask 14.2: Document that `None` means "cannot answer" and that it must never select an instance
+
+- [x] Task 15: Move the two `workflow.rs` reads
+  - [x] Subtask 15.1: `codex_unusable_flag_warnings` (`workflow.rs:104-108`) uses the helper and emits no warning on `None`
+  - [x] Subtask 15.2: Ollama model validation (`workflow.rs:222-224`) uses the helper and **skips the check** on `None`, never reaching `UnknownModel`
+  - [x] Subtask 15.3: Comment at the Ollama site that this path returns a hard error, which is why ambiguity must fail open
+
+- [x] Task 16: Update test helpers
+  - [x] Subtask 16.1: `Engine::is_backend_available` (`engine.rs:178`, `#[cfg(test)]`) takes a key
+  - [x] Subtask 16.2: `assert_probed` (`engine.rs:457`) takes a key
+  - [x] Subtask 16.3: `MockSyscallBackend` (`engine.rs:1115`) carries a key
+  - [x] Subtask 16.4: Migrate the roughly thirty call sites that insert or assert on bare names; the compiler enumerates them
+
+### Phase 5: Documentation
+
+- [x] Task 17: Remove the stale constraint
+  - [x] Subtask 17.1: Rewrite the backend-cache section of the crate docs (`src/lib.rs:73-79`)
+  - [x] Subtask 17.2: Rewrite the `create_backend` caching rustdoc (`mod.rs:344-353`)
+  - [x] Subtask 17.3: Rewrite the `BACKEND_CACHE` known-constraint block (`mod.rs:420-430`)
+
+- [x] Task 18: Document what replaced it
+  - [x] Subtask 18.1: Document the ambient-credential bound — `api_key_env` holds a name, not a value; `ClaudeBackend` captures `env::var` at construction and `BedrockBackend` loads ambient AWS config — with distinct `api_key_env` names as the host-side answer
+  - [x] Subtask 18.2: Record the deferred host-owned-handle decision (Approach C) and why it is a superset rather than an alternative
+  - [x] Subtask 18.3: Note that `acquire_test_lock` stays, because the global stays
+  - [x] Subtask 18.4: Document the `set_mock_health` signature change for `test-support` consumers
+
+- [x] Task 19: Retire the standing constraint
+  - [x] Subtask 19.1: Remove the `BACKEND_CACHE` bullet from `docs/DEPENDENCIES.md` standing constraints, leaving the lib/bin one in place
+
+### Phase 6: Testing & Validation
+
+- [x] Task 20: Add the remaining evaluation tests
+  - [x] Subtask 20.1: Test 2 — same endpoint, different model; two recorded requests carrying different models
+  - [x] Subtask 20.2: Test 3 — different retry policies; observably different attempt counts. Uses a **429**-returning server, not 500: `BackendError::is_retryable` covers Timeout/RateLimit/Network only, and ollama maps a 500 to `ExecutionFailed`, which `RetryExecutor` correctly does not retry. A 500 would have made both policies look identical for a reason unrelated to cache identity
+  - [x] Subtask 20.3: Test 4 — concurrent construction with a probe in between leaves `health: Some(..)` and returns one `Arc`
+  - [~] Subtask 20.4: Test 5 — warmup leaves a probed entry per configured backend. `test_warmup_populates_unified_cache` and `assert_probed` cover presence and probed-ness; the strict *exactly one* cardinality assertion is **not** written. Accepted as a nice-to-have, not a gap in the guarantee
+  - [x] Subtask 20.5: Test 6 — `is_available` true after warmup for a config-keyed entry
+  - [x] Subtask 20.6: Test 7 — provider built via `new()` alone reports `is_available() == false`
+  - [x] Subtask 20.7: Test 8 — `unambiguous_cached_health` answers with one config cached
+  - [x] Subtask 20.8: Test 9 — returns `None` with two configs cached, run repeatedly to defeat `HashMap` ordering
+  - [x] Subtask 20.9: Test 10 — `ambiguous_ollama_configs_skip_model_validation` in `workflow.rs`, both insertion orders, plus a single-config case proving the skip is scoped to ambiguity. Verified failing against a helper that picks instead of refusing
+
+- [x] Task 21: Cover the edge cases
+  - [x] Subtask 21.1: Cache cleared *during the probe* — `warmup_writeback_survives_a_clear_during_the_probe`, synchronised on the probe reaching a local listener rather than on a sleep. The first version cleared before `warmup_backends` and so never entered the window; caught in validation. Verified failing when the write-back is made conditional
+  - [x] Subtask 21.2: `health: None` versus `Some(unavailable)` distinction still drives warmup's skip logic
+  - [!] Subtask 21.3: Same key, different ambient `ANTHROPIC_API_KEY` — **declined, deliberately.** `ClaudeBackend` reads `env::var` at construction, and mutating process-global environment from a test running in parallel with ~570 others is a race, not a test. Substituted `distinct_api_key_env_names_are_distinct_identities`, which pins the workaround the docs actually recommend. The shared-instance bound stays documented-not-asserted, as the design says
+
+- [x] Task 22: Extend the public-surface test
+  - [x] Subtask 22.1: In `tests/backend_public_api.rs`, construct a `BackendKey`, reach the cache via `get_backend_cache`, and call `set_mock_health` in its new form — proving all three migrations from outside the crate
+
+- [x] Task 23: Run the full CI contract
+  - [x] Subtask 23.1: `cargo fmt --check`
+  - [x] Subtask 23.2: `cargo clippy --locked --all-targets -- -D warnings`
+  - [x] Subtask 23.3: `cargo test --locked`
+  - [x] Subtask 23.4: `cargo clippy --locked --all-targets --features bedrock -- -D warnings`
+  - [x] Subtask 23.5: `cargo test --locked --features bedrock`
+  - [x] Subtask 23.6: `cargo build --locked --lib --no-default-features`
+  - [x] Subtask 23.7: `cargo test --locked --lib --no-default-features`
+  - [x] Subtask 23.8: `cargo clippy --locked --lib --tests --no-default-features -- -D warnings`
+  - [x] Subtask 23.9: `RUSTDOCFLAGS='-D missing_docs' cargo doc --locked --no-deps --lib --all-features` — will reject `BackendKey` and its methods if undocumented
+  - [x] Subtask 23.10: MSRV 1.83 `cargo check --locked --all-targets`
+  - [x] Subtask 23.11: Bedrock MSRV 1.88 `cargo check --locked --all-targets --features bedrock`
+
+- [x] Task 24: Measure the hashing cost
+  - [x] Subtask 24.1: Time 10k `create_backend` calls on a warm cache; compare against the same loop with a pre-built key
+  - [x] Subtask 24.2: Record the number. If key construction exceeds 5% of `create_backend` wall time, file a follow-up to hoist the key at call sites — no design change needed, since all nine already hold the inputs
+
+- [x] Task 25: Manual verification
+  - [x] Subtask 25.1: `cargo run -- doctor` before and after; the health table must show the same backends with the same statuses. Treat this as a smoke test, not acceptance evidence — the output is not deterministic enough for that
+
+### Phase 7: Finalization
+
+- [ ] Task 26: Create the PR
+  - [ ] Subtask 26.1: Verify commits follow `fix(CLO-653): description`
+  - [ ] Subtask 26.2: Push `fix/clo-653-backend-cache`
+  - [ ] Subtask 26.3: Open the PR, calling out the three signature breaks and the one behavioural change explicitly in the body
+  - [ ] Subtask 26.4: Note in the PR that the library surface is unpublished, so the break reaches no consumer, and link CLO-660
+  - [ ] Subtask 26.5: Link the PR to CLO-653 and request review
+
+---
+
+## Module Structure
+
+**Library (public surface changes here):**
+- `src/backend/mod.rs` — `BackendKey`, cache map type, `create_backend`, `is_backend_available`, `set_mock_health`
+- `src/backend/config.rs` — derives on `BackendConfig`
+- `src/backend/retry.rs` — derives on `RetryPolicy`
+- `src/backend/{ollama,codex,claude,gemini,bedrock}.rs` — key field, builder, `is_available`
+- `src/lib.rs` — crate docs
+
+**Binary only (free to change):**
+- `src/engine.rs` — warmup keying, `get_cached_health`, `unambiguous_cached_health`, test helpers
+- `src/workflow.rs` — the two name-only health reads
+- `src/main.rs` — key construction at the `doctor` call site
+
+**Tests:**
+- `tests/backend_public_api.rs` — external-consumer proof
+
+**Docs:**
+- `docs/DEPENDENCIES.md` — retire the standing constraint
+
+---
+
+## Status Indicators
+
+- `[ ]` = To do
+- `[~]` = In progress
+- `[x]` = Done
+- `[!]` = Blocked (needs manual intervention)
+
+**To update progress**: Edit this file and change checkboxes. The overall percentage will be recalculated based on completed tasks.
+
+---
+
+## Notes
+
+- Phase 1 must be observed failing before Phase 2 begins, and it must fail on *configuration*, not on pointer identity. `OllamaBackend`'s `base_url` and `model` are private, so two distinct `Arc`s prove allocation and nothing else
+- The tree will not compile between Phase 2 and Phase 4. That is expected — rekeying the map breaks every reader at once. Do not partially revert to chase green
+- A cache write must never replace `health: Some(..)` with `health: None`. That is the defect Task 7 exists to prevent
+- Ambiguity in a name-only health read must fail open, never pick. The Ollama path rejects user workflows
+- Do not fix CLO-655, CLO-656 or CLO-660 on this branch, however tempting while the review pipeline is broken
+- Out of scope, recorded in the design: threading the real `BackendKey` into workflow validation, and Approach C's host-owned cache handle
+
+---
+
+## Deviations from the plan as written
+
+Recorded rather than silently absorbed, because each changes what the plan claims shipped.
+
+| Item | What the plan said | What shipped | Why |
+|---|---|---|---|
+| 20.2 | 500-returning server | 429-returning server | `is_retryable` covers Timeout/RateLimit/Network only; a 500 maps to `ExecutionFailed` and is correctly not retried, so both policies would have looked identical |
+| 20.4 | "exactly one entry per backend" | presence and probed-ness | Strict cardinality not asserted; accepted as a nice-to-have |
+| 21.1 | clear between construct and write-back | clear during the probe, barrier-synchronised | First version cleared before `warmup_backends`, which re-runs `create_backend` itself, so it never entered the window. Caught in validation |
+| 21.3 | assert the shared-instance bound | declined; substituted the workaround test | Mutating process-global env under a parallel suite is a race. The bound stays documented-not-asserted, as the design specifies |
+| Race test | two-thread proof through `create_backend` | drive `cache_or_keep_incumbent` directly | The public-path version cannot work: the second call returns on the cache read hit and never reaches the insert. An earlier version did exactly this and passed against the bug it guarded |
+| `is_available` | closure form, per the AI review | function-reference form | clippy's `redundant_closure` is denied in CI |
+| Key hoisting | hoist if >5% of `create_backend` | not hoisted | Measured 16.2%, but a call is ~1.3us and the key ~0.2us against an LLM query of hundreds of ms. The threshold was the wrong test |
+| `BackendKey::for_test` | not in the design's API table | added under `test-support` | Shortest migration for a downstream call that passed a bare name; documented in `src/lib.rs` |
+
+Every regression test above was confirmed by reverting the behaviour it guards and observing the failure, not by inspection.

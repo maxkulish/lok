@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-07 (CLO-651 and CLO-652 filed and placed in Phase 14. Fifteen open tasks, one blocked by design)
+**Last Updated**: 2026-08-07 (CLO-653 filed from the standing constraints list and started under Phase 12. Sixteen open tasks, one blocked by design)
 
 ## Current Blockers
 
@@ -58,15 +58,28 @@ without their issue IDs, which kept them out of every prioritised list until the
 
 ## Standing constraints
 
-Two items CLO-591 left open deliberately. Neither blocks a task, and both get more expensive once the crate is published:
+One item CLO-591 left open deliberately. It blocks no task, and gets more expensive once a release carries the library surface:
 
-- **`BACKEND_CACHE` is keyed by backend name alone**, so two consumers in one
-  process with different configs share an instance. Neither fix the ticket
-  proposed works as written; both need `is_backend_available` reworked. PR #66
-  shows it already bites in tests.
 - **The lib/bin boundary is convention, not compiler-enforced.** The
   `library-boundary` CI job is the compensating control. A workspace split
-  before publish is a refactor; after publish it is a rename and a yank.
+  before that release is a refactor; after it is a rename and a yank.
+
+The second, **`BACKEND_CACHE` keyed by backend name alone**, was resolved by
+[CLO-653](https://linear.app/cloud-ai/issue/CLO-653) on 2026-08-07. The cache now keys on
+`BackendKey { name, config, retry }`. Tracking it here as a constraint rather than as an
+issue is why it stayed invisible to every backlog view for as long as it did — the same
+failure mode is worth watching for in the remaining entry.
+
+Two bounds replaced it, both documented in `src/lib.rs` rather than here because a consumer
+needs them at the API: the key cannot capture ambient construction inputs (the resolved
+value behind `api_key_env`, Bedrock's AWS environment), and the cache is still
+process-global rather than owned by the embedding host.
+
+**Note on "once the crate is published"**: `lokomotiv` *is* published — 28 versions between
+2026-01-25 and 2026-02-08, none yanked. Every one is binary-only; the `[lib]` target
+arrived in `d828890` on 2026-07-26. The deadline these constraints are measured against is
+therefore the first release that ships a library target, not a first publish. Tracked as
+[CLO-660](https://linear.app/cloud-ai/issue/CLO-660).
 
 A third, from CLO-600 and CLO-625: **nobody can push to `main`**, including the repository owner. Ruleset 20153405 requires the `CI Gate` check with no bypass actors, so every change, docs included, arrives through a pull request.
 
