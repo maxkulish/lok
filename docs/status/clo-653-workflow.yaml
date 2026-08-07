@@ -436,6 +436,8 @@ phases:
       - CLO-656 - every template failure reported as UnknownVariable naming the first {{ }} in the template
       - CLO-660 - three planning docs describe the crate as unpublished; it has 28 published versions
     followups_placed_in_aggregation_files: false
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/90
+    finalize_pr_number: 90
 history:
   - timestamp: '2026-08-07T08:10:25.000Z'
     action: workflow_started
