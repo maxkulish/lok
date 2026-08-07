@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-06 (CLO-637 done via PR #84; Phase 14 at 1 of 5)
+**Last Updated**: 2026-08-06 (CLO-638 done via PR #86; Phase 13 at 2 of 3)
 
 ## Summary
 
@@ -18,7 +18,7 @@
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 5 | 5 | Complete |
-| Phase 13: Release Readiness | 3 | 1 | In progress |
+| Phase 13: Release Readiness | 3 | 2 | In progress |
 | Phase 14: Orchestration Tooling Hardening | 5 | 1 | In progress |
 | Phase 15: Security Scan Remediation | 5 | 1 | In Progress |
 | Phase 16: Task-Pipeline Cleanup | 2 | 0 | Not started |
@@ -52,7 +52,7 @@ What still stands between the crate as it is now and a release someone outside t
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-609](https://linear.app/cloud-ai/issue/CLO-609) | Point the crate's repository and homepage metadata at maxkulish/lok | Done | - |
-| [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs | Not started | - |
+| [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs | Done | - |
 | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610) | Attest release binaries so their checksums prove origin, not only transfer | Not started | - |
 
 CLO-638 joined this phase on 2026-08-06. It arrived as a CLO-633 follow-up, but it belongs here for the same reason as the other two: the oldest toolchain installed locally is 1.94 and `ci.yml` uses runner-stable, so `rust-version = "1.80"` is a claim nobody has tested. It costs nothing today and becomes a consumer-facing build failure the moment the crate is published.

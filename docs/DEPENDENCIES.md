@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-06 (CLO-637 done via PR #84. Fourteen open tasks, one blocked by design)
+**Last Updated**: 2026-08-06 (CLO-638 done via PR #86. Thirteen open tasks, one blocked by design)
 
 ## Current Blockers
 
@@ -22,7 +22,6 @@ One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-
 | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | None. Independent codex-security scan finding | 2026-08-03 |
-| [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | None. CLO-633 follow-up | 2026-08-03 |
 | [CLO-639](https://linear.app/cloud-ai/issue/CLO-639) | None. CLO-633 follow-up | 2026-08-03 |
 | [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | None. CLO-633 follow-up | 2026-08-03 |
 | [CLO-649](https://linear.app/cloud-ai/issue/CLO-649) | None. Independent spec-review harness fix | 2026-08-06 |
