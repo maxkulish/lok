@@ -2178,4 +2178,83 @@ mod tests {
 
         clear_health_cache();
     }
+
+    /// Distinct `api_key_env` *names* yield distinct cache identities.
+    ///
+    /// This is the workaround `BackendKey`'s documentation offers a host that
+    /// needs per-tenant credential isolation, so it needs to actually hold. The
+    /// value behind the variable is deliberately not covered: `ClaudeBackend`
+    /// reads it via `env::var` at construction, and mutating process environment
+    /// from a test that runs in parallel with 500 others is a race, not a test.
+    /// The bound that identical config plus differing credentials share an
+    /// instance is documented rather than asserted for that reason.
+    #[test]
+    fn distinct_api_key_env_names_are_distinct_identities() {
+        let tenant_a = crate::config::BackendConfig {
+            enabled: true,
+            api_key_env: Some("TENANT_A_ANTHROPIC_KEY".to_string()),
+            ..Default::default()
+        };
+        let tenant_b = crate::config::BackendConfig {
+            enabled: true,
+            api_key_env: Some("TENANT_B_ANTHROPIC_KEY".to_string()),
+            ..Default::default()
+        };
+
+        assert_ne!(
+            BackendKey::new("claude", &tenant_a, &RetryPolicy::default()),
+            BackendKey::new("claude", &tenant_b, &RetryPolicy::default()),
+            "per-tenant api_key_env names must not collide, or the documented \
+             isolation workaround does not work"
+        );
+    }
+
+    /// Warmup's write-back must land even if the cache is cleared after
+    /// `create_backend` populated it and before the probe returns.
+    ///
+    /// The unconditional `insert` in the write-back is what makes that hold, and
+    /// it stays unconditional after CLO-653 precisely because it carries a
+    /// completed probe: overwriting there improves an entry rather than erasing
+    /// one, which is the opposite of the situation in `create_backend`.
+    #[tokio::test]
+    async fn warmup_writeback_survives_a_cache_clear() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let mut config = Config::default();
+        config.backends.clear();
+        config.backends.insert(
+            "ollama".to_string(),
+            crate::config::BackendConfig {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+
+        // Stand in for the interleaving: something wipes the cache while the
+        // probe is in flight. Warmup has already taken its key by then.
+        let key = key_from(&config, "ollama");
+        let _ = create_backend(
+            "ollama",
+            &config.backends["ollama"],
+            get_retry_policy(&config.backends["ollama"], &config.defaults),
+        )
+        .expect("construct");
+        clear_health_cache();
+
+        Engine::warmup_backends(&config).await.expect("warmup");
+
+        let cache = get_backend_cache();
+        let lock = cache.read().expect("backend cache lock poisoned");
+        let entry = lock
+            .get(&key)
+            .expect("the probe should have landed despite the clear");
+        assert!(
+            entry.health.is_some(),
+            "write-back was dropped after the cache was cleared"
+        );
+
+        drop(lock);
+        clear_health_cache();
+    }
 }
