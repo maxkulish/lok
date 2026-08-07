@@ -26,10 +26,10 @@ linear:
   branch_actual: fix/clo-653-backend-cache
   priority: 2
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
   created_at: '2026-08-07T08:10:25.000Z'
-  updated_at: '2026-08-07T09:20:00.000Z'
+  updated_at: '2026-08-07T12:34:00.000Z'
 pre_decisions:
   cache_shape:
     chosen: config-hash key in the process-global cache
@@ -235,7 +235,7 @@ phases:
       The tree will not compile between Phase 2 and Phase 4 - rekeying the map breaks every reader at once. Expected,
       not a regression, and must not be chased with partial reverts.
   implement:
-    status: in_progress
+    status: complete
     commits:
       - 0a4e083
       - f17cb8a
@@ -355,7 +355,14 @@ phases:
         non-optional dependencies, so a hand-rolled listener costs nothing and survives every feature combination CI
         builds - including the --lib --no-default-features leg this test runs under.
   pr:
-    status: pending
+    status: in_progress
+    pr_number: 89
+    pr_url: https://github.com/maxkulish/lok/pull/89
+    base: main
+    head: fix/clo-653-backend-cache
+    diff: '+3115 -203 across 24 files'
+    linear_linked: true
+    pre_flight_checks_passed: true
   complete:
     status: pending
 history:
@@ -515,6 +522,34 @@ history:
       Plan at docs/plans/clo-653-backend-cache-key.md. 26 tasks across 7 phases, 113 checkboxes. Phase 1 is the
       failing-first proof and must fail on configuration rather than pointer identity; Phase 6 mirrors the eleven CI
       commands line by line.
+  - timestamp: '2026-08-07T12:23:00.000Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Pre-PR gate returned PASS_WITH_NOTES / PROCEED_WITH_FIXES. No correctness defect from either reviewer. Five
+      Must Fix items, all proof-obligation or record-accuracy, all valid on inspection.
+  - timestamp: '2026-08-07T12:31:00.000Z'
+    action: validation_fixes_applied
+    phase: implement
+    details: >-
+      One bounded iteration. Added ambiguous_ollama_configs_skip_model_validation and
+      distinct_retry_policies_produce_observably_different_attempt_counts, rewrote the cache-clear test with a real
+      barrier, corrected four overstated plan checkboxes and added a Deviations table, re-ran the full twelve-command
+      CI contract against the post-fix tree.
+  - timestamp: '2026-08-07T12:32:00.000Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      Six commits. 157 lib, 570 bin, 14 public-api tests; both MSRV legs, three no-default-features legs and the
+      missing_docs rustdoc leg all pass. Every regression test verified failing against the behaviour it guards.
+  - timestamp: '2026-08-07T12:33:00.000Z'
+    action: pushed_to_remote
+    phase: pr
+    details: fix/clo-653-backend-cache pushed to origin, upstream set
+  - timestamp: '2026-08-07T12:34:00.000Z'
+    action: pr_created
+    phase: pr
+    details: 'PR #89 opened against main (+3115 -203 across 24 files); summary comment posted to CLO-653'
 task_title: >-
   BACKEND_CACHE is keyed by name alone, so two library consumers in one process silently share one backend instance
 task_url: https://linear.app/cloud-ai/issue/CLO-653/backend-cache-is-keyed-by-name-alone-so-two-library-consumers-in-one
