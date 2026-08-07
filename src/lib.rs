@@ -92,7 +92,7 @@
 pub mod backend;
 
 pub use backend::{
-    create_backend, Backend, BackendConfig, BackendError, ClaudeBackend, CodexBackend,
+    create_backend, Backend, BackendConfig, BackendError, BackendKey, ClaudeBackend, CodexBackend,
     GeminiBackend, HealthStatus, Message, ModelInfo, OllamaBackend, QueryOutput, RetryDefaults,
     RetryExecutor, RetryPolicy, Role, SandboxMode, StepContext, StepOptions, TokenUsage,
     DEFAULT_TIMEOUT, NO_TIMEOUT, RETRY_LOG_TARGET,

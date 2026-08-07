@@ -792,7 +792,9 @@ async fn main() -> Result<()> {
                 if !backend_config.enabled {
                     continue;
                 }
-                if let Some(health) = backend::get_cached_health(name) {
+                let retry_policy = backend::get_retry_policy(backend_config, &config.defaults);
+                let key = lokomotiv::backend::BackendKey::new(name, backend_config, &retry_policy);
+                if let Some(health) = backend::get_cached_health(&key) {
                     if !health.available {
                         all_available = false;
                     }

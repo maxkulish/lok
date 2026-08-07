@@ -101,12 +101,11 @@ fn codex_unusable_flag_warnings(step: &Step) -> Vec<String> {
             continue;
         }
 
-        let status = match crate::backend::get_backend_cache()
-            .read()
-            .expect("backend cache lock poisoned")
-            .get(&backend_name)
-            .and_then(|e| e.health.clone())
-        {
+        // No `Config` is in scope here, so the cache can only be asked by name.
+        // `None` covers both "not cached" and "cached under several
+        // configurations"; in the ambiguous case a warning derived from an
+        // arbitrary configuration would be worse than silence.
+        let status = match crate::backend::unambiguous_cached_health(&backend_name) {
             Some(s) => s,
             None => continue,
         };
@@ -219,28 +218,35 @@ impl Workflow {
             for backend_name in step.get_backends() {
                 if backend_name == "ollama" {
                     if let Some(ref model_name) = step.model {
-                        let cache = crate::backend::get_backend_cache();
-                        let lock = cache.read().expect("backend cache lock poisoned");
-                        if let Some(entry) = lock.get("ollama") {
-                            if let Some(ref status) = entry.health {
-                                if status.available {
-                                    let latest_name = if !model_name.contains(':') {
-                                        Some(format!("{}:latest", model_name))
-                                    } else {
-                                        None
-                                    };
-                                    let has_model = status.models.iter().any(|m| {
-                                        m.name == *model_name
-                                            || latest_name.as_ref() == Some(&m.name)
+                        // This path rejects the user's workflow, so it must not
+                        // guess. `unambiguous_cached_health` answers `None` when
+                        // several ollama configurations are cached, and `None`
+                        // skips validation entirely rather than picking one:
+                        // choosing arbitrarily could reject a model that is
+                        // present on the endpoint this step will actually call,
+                        // or accept one that is absent from it. Failing open
+                        // matches what already happens when nothing is cached,
+                        // and a real error from the endpoint beats a validation
+                        // error naming the wrong one.
+                        if let Some(status) =
+                            crate::backend::unambiguous_cached_health(&backend_name)
+                        {
+                            if status.available {
+                                let latest_name = if !model_name.contains(':') {
+                                    Some(format!("{}:latest", model_name))
+                                } else {
+                                    None
+                                };
+                                let has_model = status.models.iter().any(|m| {
+                                    m.name == *model_name || latest_name.as_ref() == Some(&m.name)
+                                });
+                                if !has_model {
+                                    return Err(WorkflowError::UnknownModel {
+                                        workflow: self.name.clone(),
+                                        step: step.name.clone(),
+                                        backend: backend_name.clone(),
+                                        model: model_name.clone(),
                                     });
-                                    if !has_model {
-                                        return Err(WorkflowError::UnknownModel {
-                                            workflow: self.name.clone(),
-                                            step: step.name.clone(),
-                                            backend: backend_name.clone(),
-                                            model: model_name.clone(),
-                                        });
-                                    }
                                 }
                             }
                         }
@@ -5618,7 +5624,7 @@ timeout = 0
                 },
             ],
         };
-        crate::backend::set_mock_health("ollama", status);
+        crate::backend::set_mock_health(&crate::backend::BackendKey::for_test("ollama"), status);
 
         // Test 1: Valid model "llama3.2" (matches "llama3.2:latest") should pass
         std::fs::write(
@@ -7067,7 +7073,7 @@ prompt = "p"
         let mut lock = cache.write().expect("lock poisoned");
         lock.clear();
         lock.insert(
-            "codex".to_string(),
+            crate::backend::BackendKey::for_test("codex"),
             crate::backend::CachedBackend {
                 backend: std::sync::Arc::new(crate::backend::StubBackend {
                     name: "codex".to_string(),

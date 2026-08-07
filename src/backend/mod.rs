@@ -32,6 +32,7 @@ pub use retry::{RetryExecutor, RetryPolicy};
 
 use anyhow::Result;
 use async_trait::async_trait;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
@@ -347,10 +348,13 @@ pub trait Backend: Send + Sync {
 /// `"bedrock"` under the `bedrock` feature.
 ///
 /// # Caching
-/// Instances are memoised in [`BACKEND_CACHE`], a process-global keyed by name
-/// alone. Two callers in one process asking for the same name with different
-/// configurations therefore share the first instance built. See the
-/// `BACKEND_CACHE` documentation for why this is not yet keyed by config.
+/// Instances are memoised in [`BACKEND_CACHE`], keyed by [`BackendKey`] - the
+/// name together with the effective configuration and retry policy. Two callers
+/// in one process asking for the same name with different configurations each
+/// get an instance honouring their own.
+///
+/// Not every construction input is part of that identity. See [`BackendKey`] for
+/// the ambient state it cannot capture.
 ///
 /// # Errors
 /// Returns an error when `name` is unknown or the configuration cannot build
@@ -360,28 +364,37 @@ pub fn create_backend(
     config: &BackendConfig,
     retry_policy: RetryPolicy,
 ) -> Result<Arc<dyn Backend>> {
+    // Borrowed, not moved: `retry_policy` is read again below to decide on the
+    // `RetryExecutor` wrapper, and `RetryPolicy` is not `Copy`.
+    let key = BackendKey::new(name, config, &retry_policy);
+
     // Check unified cache first
     {
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
-        if let Some(entry) = lock.get(name) {
+        if let Some(entry) = lock.get(&key) {
             return Ok(Arc::clone(&entry.backend));
         }
     }
 
     let inner: Arc<dyn Backend> = match name {
-        "codex" => Arc::new(codex::CodexBackend::new(config)?),
-        "gemini" => Arc::new(gemini::GeminiBackend::new(config)?),
-        "claude" => Arc::new(claude::ClaudeBackend::new(config)?),
-        "ollama" => Arc::new(ollama::OllamaBackend::new(config)?),
+        "codex" => Arc::new(codex::CodexBackend::new(config)?.with_cache_key(key.clone())),
+        "gemini" => Arc::new(gemini::GeminiBackend::new(config)?.with_cache_key(key.clone())),
+        "claude" => Arc::new(claude::ClaudeBackend::new(config)?.with_cache_key(key.clone())),
+        "ollama" => Arc::new(ollama::OllamaBackend::new(config)?.with_cache_key(key.clone())),
         #[cfg(feature = "bedrock")]
         "bedrock" => {
             // BedrockBackend::new is async, need runtime
             let rt = tokio::runtime::Handle::current();
             let config = config.clone();
+            let bedrock_key = key.clone();
             tokio::task::block_in_place(|| {
                 rt.block_on(async {
-                    anyhow::Ok(Arc::new(bedrock::BedrockBackend::new(&config).await?) as Arc<dyn Backend>)
+                    anyhow::Ok(Arc::new(
+                        bedrock::BedrockBackend::new(&config)
+                            .await?
+                            .with_cache_key(bedrock_key),
+                    ) as Arc<dyn Backend>)
                 })
             })?
         }
@@ -390,47 +403,117 @@ pub fn create_backend(
         _ => anyhow::bail!("Unknown backend: {}", name),
     };
 
-    let backend = if retry_policy.max_retries > 0 {
+    let candidate = if retry_policy.max_retries > 0 {
         Arc::new(RetryExecutor::new(inner, retry_policy)) as Arc<dyn Backend>
     } else {
         inner
     };
 
-    // Write to unified cache; health stays None until warmup actually probes.
-    // Distinguishing "not probed" (None) from "probed and unavailable" (Some(unavailable))
-    // is what lets warmup_backends know to skip only entries that have already been probed.
-    {
-        let cache = get_backend_cache();
-        let mut lock = cache.write().expect("backend cache lock poisoned");
-        lock.insert(
-            name.to_string(),
-            CachedBackend {
-                backend: Arc::clone(&backend),
+    // Double-checked insert. Construction happened outside the lock, so another
+    // caller may have populated this key meanwhile - and may already have probed
+    // it. An unconditional `insert` here would write `health: None` over a
+    // completed probe, leaving the entry claiming unprobed: `is_available` would
+    // report a healthy backend as down and warmup would re-probe it. Keep the
+    // incumbent and drop our candidate; equal keys mean the two are equivalent.
+    //
+    // `set_mock_health` below already uses this shape for the same reason.
+    //
+    // Health stays None on a fresh insert until warmup actually probes.
+    // Distinguishing "not probed" (None) from "probed and unavailable"
+    // (Some(unavailable)) is what lets warmup_backends know to skip only entries
+    // that have already been probed.
+    let cache = get_backend_cache();
+    let mut lock = cache.write().expect("backend cache lock poisoned");
+    Ok(match lock.entry(key) {
+        Entry::Occupied(existing) => Arc::clone(&existing.get().backend),
+        Entry::Vacant(slot) => {
+            slot.insert(CachedBackend {
+                backend: Arc::clone(&candidate),
                 health: None,
                 checked_at: None,
-            },
-        );
+            });
+            candidate
+        }
+    })
+}
+
+/// Identity a backend instance is cached under.
+///
+/// Two callers that ask for the same name with an equal [`BackendConfig`] and an
+/// equal [`RetryPolicy`] share one instance; a difference in either yields a
+/// distinct instance. The retry policy participates because it decides whether
+/// the cached value is wrapped in a [`RetryExecutor`], and because it is derived
+/// from `Config::defaults` rather than from `BackendConfig` - so two consumers
+/// with byte-identical `BackendConfig` can still need different instances.
+///
+/// # What this identity does not capture
+/// Two providers read process-ambient state while constructing, which no value
+/// in this key can see:
+///
+/// - `ClaudeBackend` resolves `api_key_env` to a variable *name*, then reads
+///   that variable and stores the resulting secret. The key holds the name, not
+///   the value.
+/// - `BedrockBackend` loads the ambient AWS profile, region and credential
+///   chain.
+///
+/// So two consumers with identical configuration but different credentials in
+/// the environment still share one instance, carrying whichever credentials were
+/// live when it was first built. Hashing a resolved secret would put credential
+/// material into a map key and into `Debug` output, which is worse than the
+/// problem. A host that needs isolation should give each tenant a distinct
+/// `api_key_env` name, which *is* part of this key.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BackendKey {
+    name: String,
+    config: BackendConfig,
+    retry: RetryPolicy,
+}
+
+impl BackendKey {
+    /// Build the identity for `name` under `config` and `retry`.
+    ///
+    /// `retry` is borrowed rather than moved because every caller reads it again
+    /// after building the key and [`RetryPolicy`] is not `Copy`.
+    pub fn new(name: &str, config: &BackendConfig, retry: &RetryPolicy) -> Self {
+        Self {
+            name: name.to_string(),
+            config: config.clone(),
+            retry: retry.clone(),
+        }
     }
 
-    Ok(backend)
+    /// The backend name this key identifies.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The canonical key for `name` under a default configuration and retry
+    /// policy.
+    ///
+    /// A test that exercises cache mechanics rather than configuration
+    /// differences needs one stable key per name, and this provides it. It is
+    /// also the shortest migration for a downstream `test-support` consumer
+    /// whose calls previously passed a bare name.
+    ///
+    /// Do not use it to stand in for a real configuration: two names built this
+    /// way are distinct, but so is any *real* configuration of the same name.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_test(name: &str) -> Self {
+        Self::new(name, &BackendConfig::default(), &RetryPolicy::default())
+    }
 }
 
 /// Process-global cache of constructed backends and their health, keyed by
-/// backend name.
+/// [`BackendKey`].
 ///
-/// # Known constraint
-/// The key is the backend name alone, so two consumers in one process using
-/// the same name with different configurations silently share one instance.
-///
-/// Keying by configuration hash, or moving the cache out of the library, would
-/// both break `is_backend_available`, which looks entries up by name from
-/// inside each provider's `is_available` implementation and has no
-/// configuration to hash. Fixing this properly means reworking `is_available`;
-/// tracked as a follow-up rather than done here.
-pub static BACKEND_CACHE: OnceLock<RwLock<HashMap<String, CachedBackend>>> = OnceLock::new();
+/// The key carries the effective configuration and retry policy alongside the
+/// name, so two consumers in one process asking for the same backend with
+/// different configurations each get an instance honouring their own. See
+/// [`BackendKey`] for the ambient construction inputs it cannot represent.
+pub static BACKEND_CACHE: OnceLock<RwLock<HashMap<BackendKey, CachedBackend>>> = OnceLock::new();
 
 /// Access [`BACKEND_CACHE`], initialising it on first use.
-pub fn get_backend_cache() -> &'static RwLock<HashMap<String, CachedBackend>> {
+pub fn get_backend_cache() -> &'static RwLock<HashMap<BackendKey, CachedBackend>> {
     BACKEND_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(16)))
 }
 
@@ -486,19 +569,24 @@ pub fn clear_health_cache() {
     }
 }
 
-/// Helper to insert a mock entry into the cache during tests
+/// Helper to insert a mock entry into the cache during tests.
+///
+/// Takes the [`BackendKey`] the entry is filed under, matching how the cache is
+/// keyed. Build one with [`BackendKey::new`]; a bare name is no longer enough to
+/// identify an entry.
 #[cfg(any(test, feature = "test-support"))]
-pub fn set_mock_health(backend_name: &str, status: HealthStatus) {
+pub fn set_mock_health(key: &BackendKey, status: HealthStatus) {
     let cache = get_backend_cache();
     let mut lock = cache.write().expect("backend cache lock poisoned");
     let now = Some(Instant::now());
-    lock.entry(backend_name.to_string())
+    let stub_name = key.name().to_string();
+    lock.entry(key.clone())
         .and_modify(|entry| {
             entry.health = Some(status.clone());
             entry.checked_at = now;
         })
         .or_insert(CachedBackend {
-            backend: Arc::new(StubBackend::new(backend_name.to_string())) as Arc<dyn Backend>,
+            backend: Arc::new(StubBackend::new(stub_name)) as Arc<dyn Backend>,
             health: Some(status),
             checked_at: now,
         });
@@ -561,13 +649,18 @@ pub fn is_cache_entry_fresh(entry: &CachedBackend, ttl: Duration) -> bool {
 }
 
 /// Library-side cache availability check used by provider `is_available` impls.
-pub(crate) fn is_backend_available(name: &str) -> bool {
+///
+/// Takes the [`BackendKey`] the caller was constructed under, so it reports on
+/// the same identity the cache is keyed by. A provider built outside
+/// [`create_backend`] holds no key and is not in the cache, so its
+/// `is_available` answers `false`.
+pub(crate) fn is_backend_available(key: &BackendKey) -> bool {
     let Some(cache) = BACKEND_CACHE.get() else {
         return false;
     };
     let ttl = health_cache_ttl();
     let lock = cache.read().expect("backend cache lock poisoned");
-    let Some(entry) = lock.get(name) else {
+    let Some(entry) = lock.get(key) else {
         return false;
     };
     if !is_cache_entry_fresh(entry, ttl) {
@@ -896,5 +989,196 @@ mod library_tests {
         );
         assert_eq!(policy.max_retries, 3);
         assert_eq!(policy.base_delay, Duration::from_millis(2000));
+    }
+}
+
+/// Tests for CLO-653: the cache must distinguish configurations, not just names.
+#[cfg(test)]
+mod cache_key_tests {
+    use super::*;
+    use std::path::Path;
+    use std::sync::Mutex;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A chat reply that deliberately omits `model`.
+    ///
+    /// `OllamaBackend::chat` falls back to the *configured* model when the
+    /// response leaves the field out (`ollama.rs:144-146`), which turns
+    /// `QueryOutput::model` into a read-out of the configuration the instance
+    /// actually holds. That is the observable this suite needs: the backend's
+    /// own `base_url` and `model` fields are private with no accessor, so two
+    /// distinct `Arc`s would show distinct allocation and prove nothing about
+    /// which configuration each one honours.
+    const CHAT_REPLY_WITHOUT_MODEL: &str = r#"{"message":{"role":"assistant","content":"ok"}}"#;
+
+    /// Minimal HTTP server that records request bodies and answers each request
+    /// with a fixed payload.
+    ///
+    /// Hand-rolled on `tokio::net::TcpListener` rather than pulling in a
+    /// mock-server crate. `Cargo.toml` keeps dev-dependencies to this crate
+    /// alone on purpose - the comment there records that a dev-dependency
+    /// carrying default features silently re-enables `cli` during
+    /// `cargo test --no-default-features` - and `tokio` is already a
+    /// non-optional dependency, so this costs nothing and survives every
+    /// feature combination CI builds.
+    struct RecordingServer {
+        url: String,
+        bodies: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl RecordingServer {
+        async fn start() -> Self {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind ephemeral port");
+            let addr = listener.local_addr().expect("local addr");
+            let bodies = Arc::new(Mutex::new(Vec::new()));
+            let recorded = Arc::clone(&bodies);
+
+            tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        return;
+                    };
+                    let recorded = Arc::clone(&recorded);
+                    tokio::spawn(async move {
+                        let mut buf = Vec::new();
+                        let mut chunk = [0u8; 1024];
+
+                        // Read until the header terminator.
+                        let header_end = loop {
+                            match stream.read(&mut chunk).await {
+                                Ok(0) | Err(_) => return,
+                                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                            }
+                            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                                break pos + 4;
+                            }
+                        };
+
+                        let headers =
+                            String::from_utf8_lossy(&buf[..header_end]).to_ascii_lowercase();
+                        let content_length = headers
+                            .lines()
+                            .find_map(|l| l.trim_end().strip_prefix("content-length:"))
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                            .unwrap_or(0);
+
+                        while buf.len() < header_end + content_length {
+                            match stream.read(&mut chunk).await {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                            }
+                        }
+
+                        recorded
+                            .lock()
+                            .expect("recorder lock poisoned")
+                            .push(String::from_utf8_lossy(&buf[header_end..]).to_string());
+
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                            CHAT_REPLY_WITHOUT_MODEL.len(),
+                            CHAT_REPLY_WITHOUT_MODEL
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                    });
+                }
+            });
+
+            Self {
+                url: format!("http://{}", addr),
+                bodies,
+            }
+        }
+
+        fn url(&self) -> String {
+            self.url.clone()
+        }
+
+        fn bodies(&self) -> Vec<String> {
+            self.bodies.lock().expect("recorder lock poisoned").clone()
+        }
+    }
+
+    fn ollama_config(endpoint: String, model: &str) -> BackendConfig {
+        BackendConfig {
+            enabled: true,
+            command: Some(endpoint),
+            model: Some(model.to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn no_retry() -> RetryPolicy {
+        RetryPolicy {
+            max_retries: 0,
+            ..Default::default()
+        }
+    }
+
+    /// Two consumers asking for `"ollama"` with different endpoints and models
+    /// must each get an instance honouring their own configuration.
+    ///
+    /// Proof is the observed request traffic, not pointer identity. Against the
+    /// name-keyed cache this fails with server B never contacted at all, because
+    /// `create_backend` returns the first instance before it ever looks at the
+    /// second caller's config.
+    #[tokio::test]
+    async fn two_configs_same_name_honour_their_own_endpoint_and_model() {
+        let _guard = acquire_test_lock().await;
+        clear_health_cache();
+
+        let server_a = RecordingServer::start().await;
+        let server_b = RecordingServer::start().await;
+
+        let cfg_a = ollama_config(server_a.url(), "model-a");
+        let cfg_b = ollama_config(server_b.url(), "model-b");
+
+        let backend_a = create_backend("ollama", &cfg_a, no_retry()).expect("build first ollama");
+        let backend_b = create_backend("ollama", &cfg_b, no_retry()).expect("build second ollama");
+
+        let out_a = backend_a
+            .query(StepContext::from_prompt("ping", Path::new("."), None))
+            .await
+            .expect("first query succeeds");
+        let out_b = backend_b
+            .query(StepContext::from_prompt("ping", Path::new("."), None))
+            .await
+            .expect("second query succeeds");
+
+        let hits_a = server_a.bodies();
+        let hits_b = server_b.bodies();
+
+        assert_eq!(
+            hits_b.len(),
+            1,
+            "second consumer's endpoint was never contacted: the cache handed back \
+             the first instance, so both queries went to server A ({} requests there)",
+            hits_a.len()
+        );
+        assert_eq!(
+            hits_a.len(),
+            1,
+            "first consumer's endpoint got {} requests",
+            hits_a.len()
+        );
+
+        assert!(
+            hits_a[0].contains("model-a"),
+            "server A received the wrong model: {}",
+            hits_a[0]
+        );
+        assert!(
+            hits_b[0].contains("model-b"),
+            "server B received the wrong model: {}",
+            hits_b[0]
+        );
+
+        assert_eq!(out_a.model.as_deref(), Some("model-a"));
+        assert_eq!(out_b.model.as_deref(), Some("model-b"));
+
+        clear_health_cache();
     }
 }

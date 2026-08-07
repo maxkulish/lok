@@ -90,6 +90,14 @@ impl Engine {
                 continue;
             }
 
+            let retry_policy = get_retry_policy(backend_config, &config.defaults);
+            // One key for the skip-check, the construction and the write-back.
+            // Deriving the write-back key separately - from `backend.name()`, as
+            // this once did - was harmless while the cache was keyed by name and
+            // becomes a silent bug now: the probe would land under a different
+            // key than the one read, so `is_available` would never see it.
+            let key = BackendKey::new(name, backend_config, &retry_policy);
+
             // Skip only if this backend has already been probed and the entry is still fresh.
             // Entries inserted by create_backend (e.g. via display_backends_status or
             // get_backends) have health = None and still need a real probe here.
@@ -97,20 +105,18 @@ impl Engine {
                 let cache = get_backend_cache();
                 let lock = cache.read().expect("backend cache lock poisoned");
                 let ttl = health_cache_ttl();
-                if let Some(entry) = lock.get(name.as_str()) {
+                if let Some(entry) = lock.get(&key) {
                     if entry.health.is_some() && is_cache_entry_fresh(entry, ttl) {
                         continue;
                     }
                 }
             } // lock dropped before cross-backend work
 
-            let retry_policy = get_retry_policy(backend_config, &config.defaults);
             match create_backend(name, backend_config, retry_policy) {
                 Ok(backend) => {
                     futures.push(async move {
-                        let name = backend.name().to_string();
                         let res = backend.health_check().await;
-                        (name, Arc::clone(&backend), res)
+                        (key, Arc::clone(&backend), res)
                     });
                 }
                 Err(e) => {
@@ -132,21 +138,21 @@ impl Engine {
 
         // Process results outside the write lock to minimize lock hold time
         // (eprintln! can block on I/O, so it runs before the lock)
-        let mut updates: Vec<(String, Arc<dyn Backend>, HealthStatus)> =
+        let mut updates: Vec<(BackendKey, Arc<dyn Backend>, HealthStatus)> =
             Vec::with_capacity(results.len());
-        for (name, backend, res) in results {
+        for (key, backend, res) in results {
             match res {
                 Ok(status) => {
-                    updates.push((name, backend, status));
+                    updates.push((key, backend, status));
                 }
                 Err(e) => {
                     eprintln!(
                         "{} Health check failed for backend {}: {}",
                         "warning:".yellow(),
-                        name,
+                        key.name(),
                         e
                     );
-                    updates.push((name, backend, HealthStatus::new_unavailable()));
+                    updates.push((key, backend, HealthStatus::new_unavailable()));
                 }
             }
         }
@@ -154,12 +160,16 @@ impl Engine {
         // Update unified cache. Use insert() (not get_mut()) so the writeback is
         // idempotent: if another caller clears the cache between create_backend and
         // here, the probed result still lands instead of being silently dropped.
+        //
+        // Unconditional insert is correct here where it would be wrong in
+        // create_backend: this writes a completed probe, so overwriting an
+        // entry improves it rather than erasing it.
         let cache = get_backend_cache();
         let mut lock = cache.write().expect("backend cache lock poisoned");
         let now = Instant::now();
-        for (name, backend, status) in updates {
+        for (key, backend, status) in updates {
             lock.insert(
-                name,
+                key,
                 CachedBackend {
                     backend,
                     health: Some(status),
@@ -175,13 +185,13 @@ impl Engine {
     /// Returns `false` immediately if the cache hasn't been initialized yet,
     /// avoiding unnecessary RwLock+HashMap allocation.
     #[cfg(test)]
-    pub fn is_backend_available(name: &str) -> bool {
+    pub fn is_backend_available(key: &BackendKey) -> bool {
         let Some(cache) = BACKEND_CACHE.get() else {
             return false;
         };
         let ttl = health_cache_ttl();
         let lock = cache.read().expect("backend cache lock poisoned");
-        let Some(entry) = lock.get(name) else {
+        let Some(entry) = lock.get(key) else {
             return false;
         };
         if !is_cache_entry_fresh(entry, ttl) {
@@ -192,11 +202,44 @@ impl Engine {
 }
 
 /// Return the cached health status for a backend if it exists and is fresh.
-pub fn get_cached_health(name: &str) -> Option<HealthStatus> {
+pub fn get_cached_health(key: &BackendKey) -> Option<HealthStatus> {
     let cache = BACKEND_CACHE.get()?;
     let ttl = health_cache_ttl();
     let lock = cache.read().expect("backend cache lock poisoned");
-    let entry = lock.get(name)?;
+    let entry = lock.get(key)?;
+    if !is_cache_entry_fresh(entry, ttl) {
+        return None;
+    }
+    entry.health.clone()
+}
+
+/// Cached health for `name`, but only when exactly one configuration of it is
+/// cached.
+///
+/// Returns `None` when nothing matches and, deliberately, also when more than
+/// one configuration of that name is present. Callers hold only a name - no
+/// `BackendConfig` is in scope - so with several configurations cached there is
+/// no honest way to say which one the caller meant, and `HashMap` iteration
+/// order is not an answer.
+///
+/// Treat `None` as "cannot answer" and skip the cache-based check. That matters
+/// most on the Ollama model-validation path in `workflow.rs`, which turns this
+/// into a hard `WorkflowError::UnknownModel` that rejects the user's workflow:
+/// guessing there could reject a model that is present on the endpoint the step
+/// will actually use, or accept one that is absent from it.
+///
+/// Never use this to select an instance. Use the [`BackendKey`] the caller
+/// passed to [`create_backend`].
+pub fn unambiguous_cached_health(name: &str) -> Option<HealthStatus> {
+    let cache = BACKEND_CACHE.get()?;
+    let ttl = health_cache_ttl();
+    let lock = cache.read().expect("backend cache lock poisoned");
+
+    let mut matches = lock.iter().filter(|(key, _)| key.name() == name);
+    let (_, entry) = matches.next()?;
+    if matches.next().is_some() {
+        return None; // ambiguous: refuse rather than pick
+    }
     if !is_cache_entry_fresh(entry, ttl) {
         return None;
     }
@@ -454,11 +497,24 @@ mod tests {
     /// running on the machine executing the suite, so warmup's contract is that
     /// every enabled backend ends up probed and fresh in the cache - not that
     /// any particular provider is reachable.
-    fn assert_probed(name: &str) {
+    /// The key `name` is filed under given `config`, matching what
+    /// `create_backend` and `warmup_backends` derive. A test that runs warmup
+    /// over a real `Config` must look entries up this way; `BackendKey::for_test`
+    /// builds a *default* configuration and will not match.
+    fn key_from(config: &Config, name: &str) -> BackendKey {
+        let cfg = config
+            .backends
+            .get(name)
+            .unwrap_or_else(|| panic!("backend {name} is not configured"));
+        BackendKey::new(name, cfg, &get_retry_policy(cfg, &config.defaults))
+    }
+
+    fn assert_probed(key: &BackendKey) {
+        let name = key.name();
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
         let entry = lock
-            .get(name)
+            .get(key)
             .unwrap_or_else(|| panic!("warmup left no cache entry for {name}"));
         assert!(
             is_cache_entry_fresh(entry, health_cache_ttl()),
@@ -1063,33 +1119,56 @@ mod tests {
         assert!(unavailable.models.is_empty());
 
         // Verify they round-trip through cache correctly
-        set_mock_health("test-avail", HealthStatus::new_available());
-        assert!(Engine::is_backend_available("test-avail"));
+        set_mock_health(
+            &BackendKey::for_test("test-avail"),
+            HealthStatus::new_available(),
+        );
+        assert!(Engine::is_backend_available(&BackendKey::for_test(
+            "test-avail"
+        )));
 
-        set_mock_health("test-unavail", HealthStatus::new_unavailable());
-        assert!(!Engine::is_backend_available("test-unavail"));
+        set_mock_health(
+            &BackendKey::for_test("test-unavail"),
+            HealthStatus::new_unavailable(),
+        );
+        assert!(!Engine::is_backend_available(&BackendKey::for_test(
+            "test-unavail"
+        )));
     }
 
     #[tokio::test]
     async fn test_is_available_returns_false_for_empty_cache() {
         let _guard = acquire_test_lock().await;
         clear_health_cache();
-        assert!(!Engine::is_backend_available("nonexistent"));
-        assert!(!Engine::is_backend_available("ollama"));
-        assert!(!Engine::is_backend_available(""));
+        assert!(!Engine::is_backend_available(&BackendKey::for_test(
+            "nonexistent"
+        )));
+        assert!(!Engine::is_backend_available(&BackendKey::for_test(
+            "ollama"
+        )));
+        assert!(!Engine::is_backend_available(&BackendKey::for_test("")));
     }
 
     #[tokio::test]
     async fn test_health_cache_basic_read_write() {
         let _guard = acquire_test_lock().await;
         clear_health_cache();
-        assert!(!Engine::is_backend_available("test-backend"));
+        assert!(!Engine::is_backend_available(&BackendKey::for_test(
+            "test-backend"
+        )));
 
-        set_mock_health("test-backend", HealthStatus::new_available());
-        assert!(Engine::is_backend_available("test-backend"));
+        set_mock_health(
+            &BackendKey::for_test("test-backend"),
+            HealthStatus::new_available(),
+        );
+        assert!(Engine::is_backend_available(&BackendKey::for_test(
+            "test-backend"
+        )));
 
         clear_health_cache();
-        assert!(!Engine::is_backend_available("test-backend"));
+        assert!(!Engine::is_backend_available(&BackendKey::for_test(
+            "test-backend"
+        )));
     }
 
     #[tokio::test]
@@ -1099,6 +1178,7 @@ mod tests {
 
         struct MockSyscallBackend {
             probe_counter: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+            key: BackendKey,
         }
 
         #[async_trait]
@@ -1113,7 +1193,7 @@ mod tests {
                 unimplemented!()
             }
             fn is_available(&self) -> bool {
-                Engine::is_backend_available(self.name())
+                Engine::is_backend_available(&self.key)
             }
             async fn health_check(&self) -> std::result::Result<HealthStatus, BackendError> {
                 self.probe_counter
@@ -1125,6 +1205,7 @@ mod tests {
         let probe_counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let backend = MockSyscallBackend {
             probe_counter: probe_counter.clone(),
+            key: BackendKey::for_test("mock-syscall"),
         };
 
         // Before warmup, it must return false, and NO probe should have been executed.
@@ -1132,7 +1213,10 @@ mod tests {
         assert_eq!(probe_counter.load(std::sync::atomic::Ordering::SeqCst), 0);
 
         // Set mock health directly. is_available should now be true, and still NO probe executed (no syscalls).
-        set_mock_health("mock-syscall", HealthStatus::new_available());
+        set_mock_health(
+            &BackendKey::for_test("mock-syscall"),
+            HealthStatus::new_available(),
+        );
         assert!(backend.is_available());
         assert_eq!(probe_counter.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
@@ -1155,7 +1239,7 @@ mod tests {
         Engine::warmup_backends(&config).await.unwrap();
 
         // Assert that warmup probed ollama and recorded the result
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
     }
 
     #[tokio::test]
@@ -1174,16 +1258,19 @@ mod tests {
 
         // Run warmup first time — ollama is probed and the result recorded.
         Engine::warmup_backends(&config).await.unwrap();
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
 
         // Overwrite with Some(unavailable) — simulating a probed-but-unhealthy entry.
-        set_mock_health("ollama", HealthStatus::new_unavailable());
-        assert!(!Engine::is_backend_available("ollama"));
+        set_mock_health(
+            &key_from(&config, "ollama"),
+            HealthStatus::new_unavailable(),
+        );
+        assert!(!Engine::is_backend_available(&key_from(&config, "ollama")));
 
         // Run warmup second time. Since ollama's health is Some(_) (already probed),
         // warmup skips it — status stays unavailable and is NOT re-probed.
         Engine::warmup_backends(&config).await.unwrap();
-        assert!(!Engine::is_backend_available("ollama"));
+        assert!(!Engine::is_backend_available(&key_from(&config, "ollama")));
 
         // Conversely, if we reset health back to None (unprobed), warmup MUST re-probe.
         // This guards against the CONSTRUCTED_BACKENDS-era bug where a pre-populated
@@ -1192,14 +1279,14 @@ mod tests {
         {
             let cache = get_backend_cache();
             let mut lock = cache.write().expect("backend cache lock poisoned");
-            lock.get_mut("ollama")
+            lock.get_mut(&key_from(&config, "ollama"))
                 .expect("ollama should be cached")
                 .health = None;
         }
-        assert!(!Engine::is_backend_available("ollama"));
+        assert!(!Engine::is_backend_available(&key_from(&config, "ollama")));
         Engine::warmup_backends(&config).await.unwrap();
         // warmup must re-probe entries whose health is None
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
     }
 
     #[tokio::test]
@@ -1233,7 +1320,7 @@ mod tests {
 
         // Step 1: warmup → ollama is probed and recorded
         Engine::warmup_backends(&config).await.unwrap();
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
 
         // Step 2: clear health cache only → ollama should NOT be available
         // (constructed backends remain intact, but health status is gone)
@@ -1241,16 +1328,16 @@ mod tests {
             let mut lock = cache.write().expect("backend cache lock poisoned");
             lock.clear();
         }
-        assert!(!Engine::is_backend_available("ollama"));
+        assert!(!Engine::is_backend_available(&key_from(&config, "ollama")));
 
         // Step 3: warmup again → ollama is probed and recorded again
         Engine::warmup_backends(&config).await.unwrap();
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
 
         // Step 4: get_backends should include ollama. It filters on availability,
         // which depends on whether ollama is actually running here, so pin the
         // health status to exercise the selection logic itself.
-        set_mock_health("ollama", HealthStatus::new_available());
+        set_mock_health(&key_from(&config, "ollama"), HealthStatus::new_available());
         let backends = super::get_backends(&config, None).unwrap();
         let names: Vec<&str> = backends.iter().map(|b| b.name()).collect();
         assert!(
@@ -1279,7 +1366,7 @@ mod tests {
         assert!(!pre_cache
             .read()
             .expect("lock poisoned")
-            .contains_key("ollama"));
+            .contains_key(&key_from(&config, "ollama")));
 
         Engine::warmup_backends(&config).await.unwrap();
 
@@ -1287,12 +1374,12 @@ mod tests {
         let cache = get_backend_cache();
         let lock = cache.read().expect("lock poisoned");
         assert!(
-            lock.contains_key("ollama"),
+            lock.contains_key(&key_from(&config, "ollama")),
             "Expected ollama in BACKEND_CACHE after warmup"
         );
 
         // Verify the cached backend reports the same name
-        if let Some(entry) = lock.get("ollama") {
+        if let Some(entry) = lock.get(&key_from(&config, "ollama")) {
             assert_eq!(entry.backend.name(), "ollama");
         }
     }
@@ -1328,12 +1415,12 @@ mod tests {
         Engine::warmup_backends(&config).await.unwrap();
 
         // ollama should be probed (it was enabled and health-checked)
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
 
         // claude should NOT be in the health cache (it was disabled)
         // Note: is_backend_available returns false for any backend not in the cache
         assert!(
-            !Engine::is_backend_available("claude"),
+            !Engine::is_backend_available(&key_from(&config, "claude")),
             "claude (disabled) should not be available after warmup"
         );
 
@@ -1343,9 +1430,12 @@ mod tests {
         // test can control.
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
-        assert!(lock.contains_key("ollama"), "Cache should contain ollama");
         assert!(
-            !lock.contains_key("claude"),
+            lock.contains_key(&key_from(&config, "ollama")),
+            "Cache should contain ollama"
+        );
+        assert!(
+            !lock.contains_key(&key_from(&config, "claude")),
             "Cache should NOT contain claude"
         );
     }
@@ -1373,14 +1463,16 @@ mod tests {
 
         // Backend should be marked as unavailable in the cache
         assert!(
-            !Engine::is_backend_available("gemini"),
+            !Engine::is_backend_available(&key_from(&config, "gemini")),
             "gemini should be unavailable after failed health check"
         );
 
         // Verify the cache has the entry with available = false
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
-        let status = lock.get("gemini").expect("gemini should be in cache");
+        let status = lock
+            .get(&key_from(&config, "gemini"))
+            .expect("gemini should be in cache");
         let health = status
             .health
             .as_ref()
@@ -1413,7 +1505,9 @@ mod tests {
 
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
-        let status = lock.get("codex").expect("codex should be in cache");
+        let status = lock
+            .get(&key_from(&config, "codex"))
+            .expect("codex should be in cache");
         let health = status
             .health
             .as_ref()
@@ -1461,18 +1555,20 @@ mod tests {
         Engine::warmup_backends(&config).await.unwrap();
 
         // ollama should be probed
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
 
         // Unknown backend should not be in the cache
-        assert!(!Engine::is_backend_available("nonexistent-backend-name"));
+        assert!(!Engine::is_backend_available(&BackendKey::for_test(
+            "nonexistent-backend-name"
+        )));
 
         // Scoped to the keys this test owns; see the note in the disabled-backend
         // test above on why the cache's total size is not this test's to assert.
         let cache = get_backend_cache();
         let lock = cache.read().expect("backend cache lock poisoned");
-        assert!(lock.contains_key("ollama"));
+        assert!(lock.contains_key(&key_from(&config, "ollama")));
         assert!(
-            !lock.contains_key("nonexistent-backend-name"),
+            !lock.contains_key(&BackendKey::for_test("nonexistent-backend-name")),
             "unknown backend must not be cached"
         );
     }
@@ -1486,18 +1582,20 @@ mod tests {
         clear_health_cache();
 
         // After triple-clear, cache should be empty, is_backend_available returns false
-        assert!(!Engine::is_backend_available("anything"));
+        assert!(!Engine::is_backend_available(&BackendKey::for_test(
+            "anything"
+        )));
 
         // Now populate and clear again
-        set_mock_health("test", HealthStatus::new_available());
-        assert!(Engine::is_backend_available("test"));
+        set_mock_health(&BackendKey::for_test("test"), HealthStatus::new_available());
+        assert!(Engine::is_backend_available(&BackendKey::for_test("test")));
 
         clear_health_cache();
-        assert!(!Engine::is_backend_available("test"));
+        assert!(!Engine::is_backend_available(&BackendKey::for_test("test")));
 
         // Double-clear after population
         clear_health_cache();
-        assert!(!Engine::is_backend_available("test"));
+        assert!(!Engine::is_backend_available(&BackendKey::for_test("test")));
     }
 
     #[tokio::test]
@@ -1526,14 +1624,14 @@ mod tests {
         );
 
         Engine::warmup_backends(&config).await.unwrap();
-        assert_probed("ollama");
-        assert_probed("gemini");
+        assert_probed(&key_from(&config, "ollama"));
+        assert_probed(&key_from(&config, "gemini"));
 
         // get_backends drops anything the health cache reports as unavailable,
         // which depends on what is installed here. Pin both so the assertions
         // below measure the filter, not the machine.
-        set_mock_health("ollama", HealthStatus::new_available());
-        set_mock_health("gemini", HealthStatus::new_available());
+        set_mock_health(&key_from(&config, "ollama"), HealthStatus::new_available());
+        set_mock_health(&key_from(&config, "gemini"), HealthStatus::new_available());
 
         // Filter for ollama only
         let backends = super::get_backends(&config, Some("ollama")).unwrap();
@@ -1575,7 +1673,7 @@ mod tests {
 
         // Warmup marks it unavailable
         Engine::warmup_backends(&config).await.unwrap();
-        assert!(!Engine::is_backend_available("gemini"));
+        assert!(!Engine::is_backend_available(&key_from(&config, "gemini")));
 
         // get_backends should bail since no backends are available
         let result = super::get_backends(&config, None);
@@ -1627,7 +1725,7 @@ mod tests {
         let cache = get_backend_cache();
         let lock = cache.read().expect("lock poisoned");
         let entry = lock
-            .get("ollama")
+            .get(&key_from(&config, "ollama"))
             .expect("ollama should be in BACKEND_CACHE");
         assert!(
             entry.health.is_none(),
@@ -1638,15 +1736,18 @@ mod tests {
         // Verify health status round-trips through the unified cache via set_mock_health
         drop(lock);
         clear_health_cache();
-        set_mock_health("ollama", HealthStatus::new_available());
-        assert!(Engine::is_backend_available("ollama"));
+        set_mock_health(&key_from(&config, "ollama"), HealthStatus::new_available());
+        assert!(Engine::is_backend_available(&key_from(&config, "ollama")));
 
-        set_mock_health("ollama", HealthStatus::new_unavailable());
-        assert!(!Engine::is_backend_available("ollama"));
+        set_mock_health(
+            &key_from(&config, "ollama"),
+            HealthStatus::new_unavailable(),
+        );
+        assert!(!Engine::is_backend_available(&key_from(&config, "ollama")));
 
         // Repeated set_mock_health for one name replaces rather than accumulates.
         let lock = cache.read().expect("lock poisoned");
-        assert!(lock.contains_key("ollama"));
+        assert!(lock.contains_key(&key_from(&config, "ollama")));
     }
 
     #[tokio::test]
@@ -1661,11 +1762,11 @@ mod tests {
         Engine::warmup_backends(&config).await.unwrap();
 
         // At minimum, ollama is probed (it's always enabled and present)
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
 
         // get_backends only returns backends the cache reports as available, so
         // pin ollama to keep this independent of what is running here.
-        set_mock_health("ollama", HealthStatus::new_available());
+        set_mock_health(&key_from(&config, "ollama"), HealthStatus::new_available());
 
         // get_backends should return at least 1 backend
         let backends = super::get_backends(&config, None).unwrap();
@@ -1680,7 +1781,11 @@ mod tests {
         for (name, cfg) in &config.backends {
             if cfg.enabled {
                 assert!(
-                    lock.contains_key(name),
+                    lock.contains_key(&BackendKey::new(
+                        name,
+                        cfg,
+                        &get_retry_policy(cfg, &config.defaults)
+                    )),
                     "Enabled backend '{}' should be in health cache after warmup",
                     name
                 );
@@ -1692,10 +1797,6 @@ mod tests {
     async fn test_warmup_mixed_precached_and_new_backends() {
         let _guard = acquire_test_lock().await;
         clear_health_cache();
-
-        // Pre-populate unified cache with gemini (already available)
-        // so warmup skips re-checking it
-        set_mock_health("gemini", HealthStatus::new_available());
 
         let mut config = Config::default();
         config.backends.clear();
@@ -1718,25 +1819,38 @@ mod tests {
             },
         );
 
+        // Pre-populate unified cache with gemini (already available) so warmup
+        // skips re-checking it. Seeded only once the config is final: the key
+        // must be the one warmup will derive from *this* gemini config, not from
+        // the default that `Config::default()` started with, or warmup files its
+        // probe under a different key and the skip never happens.
+        set_mock_health(&key_from(&config, "gemini"), HealthStatus::new_available());
+
         // Before warmup: gemini is available (mock), ollama is not
-        assert!(Engine::is_backend_available("gemini"));
-        assert!(!Engine::is_backend_available("ollama"));
+        assert!(Engine::is_backend_available(&key_from(&config, "gemini")));
+        assert!(!Engine::is_backend_available(&key_from(&config, "ollama")));
 
         // Warmup should skip gemini (already cached) and health-check ollama
         Engine::warmup_backends(&config).await.unwrap();
 
         // After warmup: ollama has been probed, gemini is untouched
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
         assert!(
-            Engine::is_backend_available("gemini"),
+            Engine::is_backend_available(&key_from(&config, "gemini")),
             "gemini should still be available (was pre-cached)"
         );
 
         // Verify warmup didn't re-check gemini
         let cache = get_backend_cache();
         let lock = cache.read().expect("locked");
-        assert!(lock.contains_key("ollama"), "ollama should be cached");
-        assert!(lock.contains_key("gemini"), "gemini should still be cached");
+        assert!(
+            lock.contains_key(&key_from(&config, "ollama")),
+            "ollama should be cached"
+        );
+        assert!(
+            lock.contains_key(&key_from(&config, "gemini")),
+            "gemini should still be cached"
+        );
     }
 
     #[tokio::test]
@@ -1745,22 +1859,25 @@ mod tests {
         clear_health_cache();
 
         // Set initial health and verify
-        set_mock_health("test", HealthStatus::new_available());
-        assert!(Engine::is_backend_available("test"));
+        set_mock_health(&BackendKey::for_test("test"), HealthStatus::new_available());
+        assert!(Engine::is_backend_available(&BackendKey::for_test("test")));
 
         // Overwrite with unavailable and verify
-        set_mock_health("test", HealthStatus::new_unavailable());
-        assert!(!Engine::is_backend_available("test"));
+        set_mock_health(
+            &BackendKey::for_test("test"),
+            HealthStatus::new_unavailable(),
+        );
+        assert!(!Engine::is_backend_available(&BackendKey::for_test("test")));
 
         // Overwrite back to available and verify
-        set_mock_health("test", HealthStatus::new_available());
-        assert!(Engine::is_backend_available("test"));
+        set_mock_health(&BackendKey::for_test("test"), HealthStatus::new_available());
+        assert!(Engine::is_backend_available(&BackendKey::for_test("test")));
 
         // Overwrites replace the "test" entry rather than accumulating under it.
         let cache = get_backend_cache();
         let lock = cache.read().expect("locked");
         assert!(
-            lock.contains_key("test"),
+            lock.contains_key(&BackendKey::for_test("test")),
             "Expected the test entry to survive"
         );
     }
@@ -1796,12 +1913,18 @@ mod tests {
         // Both should be in the cache
         let cache = get_backend_cache();
         let lock = cache.read().expect("locked");
-        assert!(lock.contains_key("ollama"), "ollama should be cached");
-        assert!(lock.contains_key("gemini"), "gemini should be cached");
+        assert!(
+            lock.contains_key(&key_from(&config, "ollama")),
+            "ollama should be cached"
+        );
+        assert!(
+            lock.contains_key(&key_from(&config, "gemini")),
+            "gemini should be cached"
+        );
 
         // ollama should be probed and recorded, whatever the verdict
         assert!(
-            lock.get("ollama")
+            lock.get(&key_from(&config, "ollama"))
                 .map(|s| s.health.is_some())
                 .unwrap_or(false),
             "ollama should have been probed and recorded"
@@ -1811,7 +1934,7 @@ mod tests {
         // Some(unavailable) and None must be distinguished here — None would mean warmup
         // never wrote a result, which is the bug Option<HealthStatus> exists to prevent.
         let gemini_health = lock
-            .get("gemini")
+            .get(&key_from(&config, "gemini"))
             .and_then(|s| s.health.as_ref())
             .expect("gemini should have been probed and recorded as unavailable");
         assert!(!gemini_health.available, "gemini should be unavailable");
@@ -1920,19 +2043,19 @@ mod tests {
     async fn test_is_backend_available_expired() {
         let _guard = acquire_test_lock().await;
         clear_health_cache();
-        set_mock_health("test", HealthStatus::new_available());
-        assert!(Engine::is_backend_available("test"));
+        set_mock_health(&BackendKey::for_test("test"), HealthStatus::new_available());
+        assert!(Engine::is_backend_available(&BackendKey::for_test("test")));
 
         // Backdate checked_at so the entry is stale
         {
             let cache = get_backend_cache();
             let mut lock = cache.write().expect("lock poisoned");
-            let entry = lock.get_mut("test").unwrap();
+            let entry = lock.get_mut(&BackendKey::for_test("test")).unwrap();
             entry.checked_at =
                 Some(Instant::now() - DEFAULT_HEALTH_CACHE_TTL - Duration::from_secs(1));
         }
         assert!(
-            !Engine::is_backend_available("test"),
+            !Engine::is_backend_available(&BackendKey::for_test("test")),
             "stale entry should be treated as unavailable"
         );
     }
@@ -1952,22 +2075,24 @@ mod tests {
             },
         );
 
-        // Insert the real OllamaBackend into cache (health & checked_at are None initially)
-        let retry_policy = RetryPolicy::default();
+        // Insert the real OllamaBackend into cache (health & checked_at are None initially).
+        // The retry policy must be derived the same way `key_from` derives it,
+        // or the entry lands under a different key than the assertions read.
+        let retry_policy = get_retry_policy(&config.backends["ollama"], &config.defaults);
         let _ = create_backend("ollama", &config.backends["ollama"], retry_policy).unwrap();
 
         // Manually mark it available but backdate checked_at so it's stale
         {
             let cache = get_backend_cache();
             let mut lock = cache.write().expect("lock poisoned");
-            let entry = lock.get_mut("ollama").unwrap();
+            let entry = lock.get_mut(&key_from(&config, "ollama")).unwrap();
             entry.health = Some(HealthStatus::new_available());
             entry.checked_at =
                 Some(Instant::now() - DEFAULT_HEALTH_CACHE_TTL - Duration::from_secs(1));
         }
 
         assert!(
-            !Engine::is_backend_available("ollama"),
+            !Engine::is_backend_available(&key_from(&config, "ollama")),
             "pre-condition: ollama should appear stale"
         );
 
@@ -1975,6 +2100,6 @@ mod tests {
         Engine::warmup_backends(&config).await.unwrap();
 
         // After re-probe, the entry is fresh again and carries a recorded result
-        assert_probed("ollama");
+        assert_probed(&key_from(&config, "ollama"));
     }
 }

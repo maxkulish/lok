@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-07 (CLO-651 and CLO-652 filed and placed in Phase 14. Fifteen open tasks, one blocked by design)
+**Last Updated**: 2026-08-07 (CLO-653 filed from the standing constraints list and started under Phase 12. Sixteen open tasks, one blocked by design)
 
 ## Current Blockers
 
@@ -60,10 +60,13 @@ without their issue IDs, which kept them out of every prioritised list until the
 
 Two items CLO-591 left open deliberately. Neither blocks a task, and both get more expensive once the crate is published:
 
-- **`BACKEND_CACHE` is keyed by backend name alone**, so two consumers in one
-  process with different configs share an instance. Neither fix the ticket
-  proposed works as written; both need `is_backend_available` reworked. PR #66
-  shows it already bites in tests.
+- ~~**`BACKEND_CACHE` is keyed by backend name alone**~~ — filed as
+  [CLO-653](https://linear.app/cloud-ai/issue/CLO-653) on 2026-08-07 and now in
+  progress under Phase 12. Two consumers in one process with different configs
+  share an instance. Neither fix the ticket proposed works as written; both need
+  `is_backend_available` reworked first. PR #66 shows it already bites in tests.
+  Tracking it as a constraint here rather than as an issue is why it stayed
+  invisible to every backlog view for as long as it did.
 - **The lib/bin boundary is convention, not compiler-enforced.** The
   `library-boundary` CI job is the compensating control. A workspace split
   before publish is a refactor; after publish it is a rename and a yank.

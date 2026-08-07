@@ -1,0 +1,427 @@
+task_id: clo-653
+task_type: development
+classification_reason: >-
+  Blast radius is ~9-10 files (5 provider is_available impls, backend/mod.rs, engine.rs, lib.rs, workflow.rs, docs),
+  crossing the >5-file escalation threshold. The issue asks for an explicit recorded decision on the embedding-host
+  cache shape, which is an architecture decision the design phase exists to capture. User confirmed development
+  workflow over the leaner specification path.
+task_profile:
+  has_backend: true
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  related_to:
+    - CLO-591
+    - CLO-589
+    - CLO-593
+  branch_suggested: kmamemo/clo-653-backend_cache-is-keyed-by-name-alone-so-two-library
+  branch_actual: fix/clo-653-backend-cache
+  priority: 2
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-08-07T08:10:25.000Z'
+  updated_at: '2026-08-07T09:20:00.000Z'
+pre_decisions:
+  cache_shape:
+    chosen: config-hash key in the process-global cache
+    detail: >-
+      Key BACKEND_CACHE on (name, hash-of-effective-BackendConfig) rather than name alone. Providers thread their own
+      cache-key identity into is_available instead of passing a bare name. Rejected alternative: a host-owned
+      BackendCache handle, which is the better long-term library shape but a breaking public API change touching all
+      16 create_backend call sites.
+    decided_at: '2026-08-07T08:10:25.000Z'
+    decided_by: user
+    revisit_in_phase: design
+  cache_key_content:
+    chosen: owned BackendKey { name, config, retry } with derived PartialEq + Eq + Hash
+    detail: >-
+      Key on the values themselves rather than a u64 digest. Removes the collision surface entirely, where a collision
+      would reproduce the exact silent-wrong-instance bug being fixed, and removes the hash-stability question the
+      issue raised (moot anyway - the cache is in-memory, so cross-run stability is not a requirement). Includes
+      RetryPolicy because create_backend wraps in RetryExecutor based on it and it is derived from config.defaults,
+      which is not part of BackendConfig. Cost is one BackendConfig clone per entry at roughly 16 entries.
+    decided_at: '2026-08-07T08:20:00.000Z'
+    decided_by: user
+issue_corrections:
+  - field: is_backend_available call sites
+    claim: 'Issue cites src/engine.rs:178 pub fn is_backend_available as a second production call site.'
+    reality: >-
+      That function is #[cfg(test)]-gated (src/engine.rs:177-178), so it is a test-only helper. The single production
+      path is src/backend/mod.rs:564 (pub(crate)), called from five provider is_available impls: ollama.rs:180,
+      bedrock.rs:233, codex.rs:350, claude.rs:324, gemini.rs:820.
+    impact: >-
+      Acceptance criterion "is_backend_available reports on the same identity the cache keys on, at both call sites"
+      resolves to one production site plus one test helper, not two production sites.
+    found_in_phase: init
+  - field: name-keyed cache access surface
+    claim: The issue frames the rework as touching is_backend_available at two call sites.
+    reality: >-
+      Eight production sites read or write the cache by name - backend/mod.rs:367 (create_backend read),
+      backend/mod.rs:405 (create_backend insert), backend/mod.rs:570 (is_backend_available, reached from five provider
+      impls), engine.rs:100 (warmup skip-check), engine.rs:161 (warmup write-back), engine.rs:199 (get_cached_health,
+      public, called from main.rs:795), workflow.rs:107 (health lookup) and workflow.rs:224 (hardcoded
+      lock.get("ollama") with no config in scope).
+    impact: >-
+      get_cached_health is public API, so the config-hash option is not fully non-breaking as assumed at init.
+      workflow.rs:224 has no config available and needs one threaded in or a different lookup.
+    found_in_phase: discovery
+  - field: provider config retention
+    claim: Providers can identify themselves to the cache the way the cache keys them.
+    reality: >-
+      Providers retain derived fields only - OllamaBackend is { client, base_url, model }. None keeps its
+      BackendConfig, so is_available cannot compute or reconstruct a key. Each provider struct must carry a key field
+      populated at construction.
+    impact: Every provider struct and constructor changes, not just the shared helper.
+    found_in_phase: discovery
+  - field: warmup write-back keying
+    claim: Health probing is orthogonal to the cache key.
+    reality: >-
+      warmup_backends reads at engine.rs:100 using the config map key but writes back at engine.rs:161 using
+      backend.name(). The two are identical under name keying and diverge under config keying, which would make warmup
+      insert a second entry that is_available never reads.
+    impact: >-
+      This is the concrete mechanism by which a naive fix silently breaks the health-probe layer the issue asks to
+      preserve. It is the highest-risk site in the change.
+    found_in_phase: discovery
+  - field: RetryPolicy in the cache key
+    claim: 'Issue proposes "a hash of the effective BackendConfig" as the cache key.'
+    reality: >-
+      create_backend also takes RetryPolicy, derived by get_retry_policy(backend_config, &config.defaults). Two
+      consumers with identical BackendConfig but different defaults.max_retries get differently-wrapped RetryExecutor
+      instances that a BackendConfig-only key still collides.
+    impact: Key must include RetryPolicy or the ticket's own acceptance criterion stays partly unmet.
+    found_in_phase: discovery
+phases:
+  discovery:
+    status: complete
+    skip_reason: null
+    problem_framed: true
+    prd_exists: false
+    prd_file: null   # no PRD written; user chose the direct-report path over /prd create
+    prd_created: false
+    discovery_report: docs/discovery/clo-653.md
+    discovery_debt: 0   # zero killer assumptions; one open design question, two acceptable answers
+    baseline_score: 6
+    approaches_identified: 4
+    approach_chosen: >-
+      Approach A - owned BackendKey { name, config, retry } keying the existing process-global, with the host-owned
+      BackendCache handle (Approach C) recorded as a deliberate deferral rather than a rejection.
+    open_design_questions:
+      - >-
+        How workflow.rs:107 (codex_unusable_flag_warnings) and workflow.rs:224 (hardcoded lock.get("ollama") for model
+        validation) identify their cache entries with no config in scope. Both are diagnostic reads rather than
+        instance selection, so a by-name scan is defensible, but it must be a named documented helper rather than an
+        incidental lock.get(name) that reads like the old behaviour.
+    discovery_method: >-
+      Direct report written from call-site reading. /prd create and the 7-agent /prd-discovery were skipped by user
+      choice - the approach was already decided and the constraints came from the code, not from estimation.
+    approved: true
+  design:
+    status: complete
+    finalized_at: '2026-08-07T09:12:00.000Z'
+    design_doc: docs/designs/clo-653-backend-cache-key.md
+    draft_ready: true
+    draft_source: manual
+    discovery_context_used: true
+    finalized: true
+    human_review_completed: true
+    review_completed: true
+    review_ollama: docs/reviews/clo-653-review-ollama.md
+    review_synthesis: docs/reviews/clo-653-review-synthesis.md
+    review_verdict: NEEDS_REVISION
+    review_verdict_history:
+      - {round: 1, source: 'Codex via Ollama (glm-5.2:cloud)', verdict: APPROVE_WITH_SUGGESTIONS}
+      - {round: 2, source: 'user-supplied adversarial review', verdict: NEEDS_REVISION}
+    review_round_2:
+      verdict: NEEDS_REVISION
+      all_points_validated_against_code: true
+      findings:
+        - >-
+          P1 HIGH CONFIRMED - the accepted construction race erases health. create_backend writes health: None
+          unconditionally (mod.rs:399-407) while warmup writes Some (engine.rs:154-163), so a losing racer wipes a
+          completed probe. Round-1 reasoning covered the backend field and missed the mutable health beside it.
+          Fixed with a double-checked entry() insert; the earlier rejection of or_insert_with conflated holding the
+          lock across construction with inserting an already-built value.
+        - >-
+          P2 HIGH CONFIRMED - workflow.rs:237 returns Err(WorkflowError::UnknownModel), a hard error, not a
+          diagnostic. Only workflow.rs:107 is warnings-only. The round-1 "prefer a probed-available entry" change made
+          it worse. Replaced with unambiguous_cached_health, which returns None when a name has multiple configs, and
+          both callers skip their check on None.
+        - >-
+          P3 HIGH CONFIRMED - the pseudocode moved retry_policy into BackendKey::new then read it again. RetryPolicy
+          derives only Debug+Clone, so that is a compile error. Signature now takes &RetryPolicy.
+        - >-
+          P4 MEDIUM CONFIRMED - API accounting was understated. set_mock_health is pub under test-support
+          (mod.rs:491), which lib.rs:71 advertises to downstream test suites; with_cache_key demoted to pub(crate)
+          because a public builder lets a caller forge another entry's health identity; the name-only helper moved to
+          binary-side engine.rs. Three signature breaks plus one behavioural change, not two.
+        - >-
+          P5 MEDIUM CONFIRMED - OllamaBackend's base_url and model are private with no accessor, so pointer
+          inequality proved allocation, not configuration. Tests rebuilt around recording HTTP servers. Also
+          documented that ClaudeBackend captures env::var at construction (claude.rs:86-104) and BedrockBackend loads
+          ambient AWS config (bedrock.rs:99), neither of which BackendKey captures.
+        - >-
+          P6 MEDIUM CONFIRMED - Phase 6 omitted --locked, the no-default-features legs, -D missing_docs rustdoc, and
+          both MSRV checks that ci.yml already requires. missing_docs is load-bearing here because BackendKey is a new
+          public item. Phase 6 now mirrors the CI contract line by line.
+        - >-
+          P7 CONFIRMED and reclassified from Low - the design claimed the crate was never published. False. 28
+          published versions, none yanked. The conclusion survives only because no published version has a library
+          target ([lib] landed 2026-07-26, five months after the last publish). Filed as CLO-660.
+      user_review_correction: >-
+        The round-2 review rated the publication finding Low. Reclassified as High here - it falsified a load-bearing
+        claim in the design and the same wrong premise sits in three planning docs.
+    review_method: >-
+      Ollama leg run by hand - `lok run .lok/workflows/design-review.toml` is broken (CLO-655, CLO-656) and dies
+      upstream of its own Claude fallback, so the pipeline produced nothing. Manual run needed
+      `-c model_reasoning_effort=high` to override the xhigh in ~/.codex/config.toml, which glm-5.2:cloud rejects.
+    review_applied: true
+    applied_suggestions:
+      - >-
+        Finding 1 (blocker-adjacent, f64 fields would break the Eq+Hash derive) - disproven. Enumerated every field of
+        both types, none is a float, and proved it by adding the derives and running cargo check --all-targets with
+        and without the bedrock feature, then reverting. Field table added to the design doc.
+      - >-
+        Finding 2 (read-then-write TOCTOU) - documented as accepted, with the nuance the review missed: equal keys
+        imply equivalent instances, so last-writer-wins is safe here where it was not under name keying. Rejected the
+        suggested entry().or_insert_with fix, which would hold the write lock across bedrock's block_in_place.
+      - Finding 3 (cache now bounded by distinct configs, not provider count) - documented as accepted in Constraints.
+      - >-
+        Finding 4 (is_available becomes false for hand-built providers) - verified no production caller relies on the
+        old behaviour; both create_claude_backend consumers use api_details(), and the two production is_available
+        calls operate on create_backend output. Affected sites are test-only. Re-check added to Phase 3.
+      - Finding 5 (config cloned into both map and provider) - noted, with Arc<BackendConfig> as the escape hatch.
+      - Finding 6 (any_cached_health_by_name returns a HashMap-order entry) - now prefers a probed-available entry.
+      - Editorial - closure form in the is_available snippet for readability.
+      - Editorial - cargo test --test backend_public_api added to the AC verification command to match Phase 6.
+      - >-
+        Editorial - confirmed get_backend_cache is genuinely pub (backend/mod.rs:433), so the API table's semver claim
+        stands as written.
+    flagged_suggestions: []
+    review_conflicts: 0
+    resolved_open_questions:
+      - >-
+        workflow.rs:107 and workflow.rs:224 use a new any_cached_health_by_name(&str) helper documented as diagnostics
+        only. Threading Config into Workflow::validate was rejected - validate takes no Config and is called from
+        load_workflow_from_source_with_depth, itself config-free and recursive through extends.
+      - >-
+        Providers receive their key via a with_cache_key builder rather than a constructor argument, so the public
+        new(config) signature is unchanged. engine.rs:24 and roughly fifteen unit tests construct providers directly.
+        An instance built outside create_backend holds key: None and honestly reports is_available() == false.
+      - RetryPolicy is in the key, closing the gap the ticket's BackendConfig-only proposal leaves open.
+    public_breaks:
+      - backend::BACKEND_CACHE map type changes from String to BackendKey
+      - backend::get_backend_cache return type follows it
+    public_breaks_note: >-
+      Both are free today - the crate has never been published and Phase 13 tracks the publish. After publish they are
+      a semver-major rename-and-yank. create_backend and all five provider new() signatures are unchanged.
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-653-backend-cache-key.md
+    approved: true
+    phases: 7
+    tasks: 26
+    checkboxes: 113
+    ordering_constraint: >-
+      The tree will not compile between Phase 2 and Phase 4 - rekeying the map breaks every reader at once. Expected,
+      not a regression, and must not be chased with partial reverts.
+  implement:
+    status: in_progress
+    commits: []
+    last_phase_completed: 'Phase 1: Failing test first'
+    proof_of_defect:
+      test: backend::cache_key_tests::two_configs_same_name_honour_their_own_endpoint_and_model
+      location: src/backend/mod.rs
+      observed_failing_against: 'unmodified main (src/ otherwise byte-identical to HEAD)'
+      failure_output: >-
+        assertion `left == right` failed: second consumer's endpoint was never contacted: the cache handed back the
+        first instance, so both queries went to server A (2 requests there). left: 0, right: 1
+      why_this_proof: >-
+        Server B received zero requests and server A received two, so the failure is the defect itself rather than a
+        proxy for it. Pointer inequality was rejected as the mechanism because OllamaBackend's base_url and model are
+        private with no accessor, so distinct Arcs would have shown distinct allocation and said nothing about which
+        configuration each instance honours.
+      observable: >-
+        The fake server omits `model` from its reply, so OllamaBackend::chat's fallback at ollama.rs:144-146 puts the
+        configured model into QueryOutput::model, turning it into a read-out of the instance's own configuration.
+    dependency_decision:
+      question: mock server for the recording fixture
+      chosen: hand-rolled tokio::net::TcpListener, no new dependency
+      reason: >-
+        Cargo.toml:107-109 records that a dev-dependency carrying default features re-enables `cli` during
+        cargo test --no-default-features and quietly tests the wrong build. tokio, reqwest and serde_json are all
+        non-optional dependencies, so a hand-rolled listener costs nothing and survives every feature combination CI
+        builds - including the --lib --no-default-features leg this test runs under.
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-08-07T08:10:25.000Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-653 as development
+  - timestamp: '2026-08-07T08:10:25.000Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development. Blast radius ~9-10 files crosses the >5-file escalation threshold and the issue
+      requires an explicit recorded architecture decision on cache shape. User chose development over specification.
+  - timestamp: '2026-08-07T08:10:25.000Z'
+    action: init_decision_recorded
+    phase: init
+    details: >-
+      Cache shape pre-decided by user: config-hash key inside the existing process-global, not a host-owned cache
+      handle. To be validated against the health-probe constraint during design.
+  - timestamp: '2026-08-07T08:10:25.000Z'
+    action: init_issue_correction
+    phase: init
+    details: >-
+      engine.rs:178 is_backend_available is #[cfg(test)]-gated, contradicting the issue's "both call sites" framing.
+      One production site (backend/mod.rs:564) reached from five provider is_available impls.
+  - timestamp: '2026-08-07T08:12:00.000Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      PROJECT.md/ROADMAP.md/DEPENDENCIES.md synced. CLO-653 had never been placed (filed 08:01 today), so sync placed
+      it as well as started it: added to PROJECT.md Active Work (1/3), added to ROADMAP.md Phase 12 which reopens at 5
+      of 6, and converted the DEPENDENCIES.md standing-constraint bullet into a pointer at the now-filed issue.
+      Validations passed - WIP was 0/3 and CLO-653 is in no Current Blockers row.
+  - timestamp: '2026-08-07T08:12:00.000Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-08-07T08:18:00.000Z'
+    action: problem_framed
+    phase: discovery
+    details: >-
+      Problem statement validated by user. Three code-grounded findings expanded the scope the issue described - eight
+      production name-keyed sites rather than two, providers retaining no BackendConfig, and a warmup write-back that
+      diverges from its own read key under config keying.
+  - timestamp: '2026-08-07T08:20:00.000Z'
+    action: discovery_key_decision
+    phase: discovery
+    details: >-
+      Cache key content decided - owned BackendKey { name, config, retry } over a u64 digest, closing the RetryPolicy
+      gap the issue's BackendConfig-only proposal leaves open.
+  - timestamp: '2026-08-07T08:26:00.000Z'
+    action: discovery_report_complete
+    phase: discovery
+    details: >-
+      Report at docs/discovery/clo-653.md. Four approaches, baseline 6/10, zero killer assumptions, one open design
+      question (how workflow.rs:107 and workflow.rs:224 identify entries with no config in scope). Established that
+      main.rs:24 aliases engine as backend, so engine.rs and workflow.rs are binary-only and the public break is
+      limited to BACKEND_CACHE and get_backend_cache.
+  - timestamp: '2026-08-07T08:28:00.000Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach A approved at checkpoint. Baseline 6/10, zero killer assumptions, four approaches considered, one open
+      design question carried forward.
+  - timestamp: '2026-08-07T08:28:00.000Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-08-07T08:40:00.000Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft at docs/designs/clo-653-backend-cache-key.md. All three carried open questions resolved. Six evaluation
+      tests specified, the first being the required failing-first proof. /spec check skipped - the design-doc path was
+      already chosen at init and the decomposition lives in the doc.
+  - timestamp: '2026-08-07T08:31:00.000Z'
+    action: design_review_failed
+    phase: design
+    details: >-
+      /design-doc:review could not run - the design-review workflow itself is broken. `${#OUTPUT}` at
+      .lok/workflows/design-review.toml:40 is parsed by MiniJinja as an unterminated comment, since `{#` opens one.
+      The template fails before ollama_review executes, which is upstream of the Claude fallback, so the pipeline
+      produced no review files at all instead of degrading to one reviewer. Root-caused by bisect against a minimal
+      repro; the reported error named steps.health_check.output, which is innocent.
+  - timestamp: '2026-08-07T08:33:00.000Z'
+    action: followups_filed
+    phase: design
+    details: >-
+      CLO-655 (High) for the ${#VAR} template breakage and CLO-656 (Medium) for map_template_error reporting every
+      template failure as UnknownVariable naming the first {{ }} in the template. Cross-linked, and CLO-655 related to
+      CLO-653. Neither will land on this branch.
+  - timestamp: '2026-08-07T08:34:00.000Z'
+    action: baseline_established
+    phase: design
+    details: >-
+      Pre-change `cargo test` is green - unit, 7 integration and doc-tests all pass. This is the state Evaluation
+      test 1 must be observed failing against.
+  - timestamp: '2026-08-07T08:40:00.000Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Verdict APPROVE_WITH_SUGGESTIONS from Codex via Ollama (glm-5.2:cloud), 47s. Six findings plus four editorial
+      items. Single-reviewer synthesis - the Claude fallback was unreachable behind the broken pipeline.
+  - timestamp: '2026-08-07T08:44:00.000Z'
+    action: review_applied
+    phase: design
+    details: >-
+      Nine items applied, zero conflicts with prior decisions. The one blocker-adjacent finding (f64 fields breaking
+      the Eq+Hash derive) was disproven by compiling the derives with and without the bedrock feature, then
+      reverting; src/ is byte-identical to HEAD.
+  - timestamp: '2026-08-07T09:00:00.000Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Round 2, user-supplied adversarial review. Verdict NEEDS_REVISION. All seven points validated against the code
+      and all seven confirmed - two of them defects the round-1 review missed entirely and that the design had
+      explicitly blessed as safe.
+  - timestamp: '2026-08-07T09:03:00.000Z'
+    action: followups_filed
+    phase: design
+    details: >-
+      CLO-660 (High) - three planning docs describe the crate as unpublished while crates.io has 28 published
+      versions. Related to CLO-653 and CLO-609. Not fixed on this branch.
+  - timestamp: '2026-08-07T09:03:00.000Z'
+    action: linear_status_synced
+    phase: design
+    details: >-
+      CLO-653 moved Backlog -> In Progress in Linear. Round 2 caught that local workflow state and Linear had drifted
+      since init; /project:sync only touches local files by design.
+  - timestamp: '2026-08-07T09:05:00.000Z'
+    action: design_revised
+    phase: design
+    details: >-
+      Design revised against all seven points. Structural changes - double-checked entry() insert to stop health
+      erasure; unambiguous_cached_health replacing the arbitrary-match helper and moving to binary-side engine.rs;
+      BackendKey::new takes &RetryPolicy; with_cache_key demoted to pub(crate); test plan rebuilt around recording
+      HTTP servers instead of pointer inequality; Phase 6 mirrors the full CI contract; ambient-credential bound
+      documented; publication status corrected with evidence. Draft ready for round-3 review.
+  - timestamp: '2026-08-07T09:12:00.000Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      User approved the revision. A final consistency sweep caught four stale references left by the edits - the
+      mermaid diagram still placed the helper in the library subgraph, two Affected Components rows named the removed
+      any_cached_health_by_name, and a Must-not still called it diagnostics-only - plus three code-block slips: a
+      public with_cache_key contradicting the corrected API table, a chained read guard that would outlive its
+      statement on the 2021 edition, and a Phase 4 reference for the set_mock_health migration that now lands in
+      Phase 2. All corrected.
+  - timestamp: '2026-08-07T09:12:00.000Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-08-07T09:16:00.000Z'
+    action: plan_created
+    phase: plan
+    details: >-
+      Plan at docs/plans/clo-653-backend-cache-key.md. 26 tasks across 7 phases, 113 checkboxes. Phase 1 is the
+      failing-first proof and must fail on configuration rather than pointer identity; Phase 6 mirrors the eleven CI
+      commands line by line.
+task_title: >-
+  BACKEND_CACHE is keyed by name alone, so two library consumers in one process silently share one backend instance
+task_url: https://linear.app/cloud-ai/issue/CLO-653/backend-cache-is-keyed-by-name-alone-so-two-library-consumers-in-one

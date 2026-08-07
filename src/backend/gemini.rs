@@ -23,6 +23,10 @@ pub struct GeminiBackend {
     /// use a generous budget and stay deterministic under parallel CPU load,
     /// rather than racing the 1s boundary when the suite saturates the machine.
     version_probe_timeout: Duration,
+    /// Cache identity this instance was constructed under, when it came from
+    /// [`create_backend`](super::create_backend). `None` for a hand-built
+    /// instance, which is not in the cache and so reports unavailable.
+    key: Option<super::BackendKey>,
 }
 
 /// Private representation of the legacy Gemini CLI JSON envelope emitted when
@@ -61,7 +65,18 @@ impl GeminiBackend {
             args,
             default_model: config.model.clone(),
             version_probe_timeout: Duration::from_secs(1),
+            key: None,
         })
+    }
+
+    /// Attach the cache identity this instance was constructed under.
+    ///
+    /// Crate-internal on purpose: a public setter would let a caller stamp one
+    /// instance with another entry's identity and read that entry's health back
+    /// through [`Backend::is_available`](super::Backend::is_available).
+    pub(crate) fn with_cache_key(mut self, key: super::BackendKey) -> Self {
+        self.key = Some(key);
+        self
     }
 
     fn normalize_model(model: &str) -> String {
@@ -817,7 +832,9 @@ impl super::Backend for GeminiBackend {
     }
 
     fn is_available(&self) -> bool {
-        super::is_backend_available(self.name())
+        // Function reference rather than `|k| ...`: clippy's `redundant_closure`
+        // is denied in CI, and the closure form trips it.
+        self.key.as_ref().is_some_and(super::is_backend_available)
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {

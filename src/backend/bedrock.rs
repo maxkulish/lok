@@ -13,6 +13,10 @@ pub struct BedrockBackend {
     client: Client,
     /// Bedrock model identifier this instance invokes.
     pub model_id: String,
+    /// Cache identity this instance was constructed under, when it came from
+    /// [`create_backend`](super::create_backend). `None` for a hand-built
+    /// instance, which is not in the cache and so reports unavailable.
+    key: Option<super::BackendKey>,
 }
 
 #[derive(Serialize)]
@@ -104,7 +108,21 @@ impl BedrockBackend {
             .clone()
             .unwrap_or_else(|| "us.anthropic.claude-sonnet-4-20250514-v1:0".to_string());
 
-        Ok(Self { client, model_id })
+        Ok(Self {
+            client,
+            model_id,
+            key: None,
+        })
+    }
+
+    /// Attach the cache identity this instance was constructed under.
+    ///
+    /// Crate-internal on purpose: a public setter would let a caller stamp one
+    /// instance with another entry's identity and read that entry's health back
+    /// through [`Backend::is_available`](super::Backend::is_available).
+    pub(crate) fn with_cache_key(mut self, key: super::BackendKey) -> Self {
+        self.key = Some(key);
+        self
     }
 
     #[allow(dead_code)]
@@ -230,7 +248,9 @@ impl super::Backend for BedrockBackend {
     }
 
     fn is_available(&self) -> bool {
-        super::is_backend_available(self.name())
+        // Function reference rather than `|k| ...`: clippy's `redundant_closure`
+        // is denied in CI, and the closure form trips it.
+        self.key.as_ref().is_some_and(super::is_backend_available)
     }
 
     async fn health_check(&self) -> std::result::Result<super::HealthStatus, super::BackendError> {
