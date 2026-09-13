@@ -27,7 +27,7 @@ phases:
     token_usage:                                              # optional, observational
       - recorded_at: "2026-05-16T12:00:00Z"
         provider: "ollama"
-        model: "glm-5.2:cloud"
+        model: "glm-5.3:cloud"
         prompt_tokens: 0
         completion_tokens: 0
         task_label: "spec-review"
@@ -141,7 +141,7 @@ update_workflow_state({
     flagged_suggestions: [...]
   },
   token_usage: [
-    { provider: "ollama", model: "glm-5.2:cloud", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-ollama" },
+    { provider: "ollama", model: "glm-5.3:cloud", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-ollama" },
     { provider: "claude", model: "claude-opus-5", prompt_tokens: <p>, completion_tokens: <c>, task_label: "spec-review-synthesis" }
   ]
 })

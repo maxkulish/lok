@@ -17,7 +17,7 @@ Always include this table first. Shows which reviewers ran, succeeded, or failed
 
 | Reviewer | Status | Detail |
 |----------|--------|--------|
-| Codex/Ollama (glm-5.2:cloud) | [OK / REVIEW_FAILED / SKIPPED] | [If failed: reason from REVIEW_FAILED line. If skipped: "Pre-flight check failed"] |
+| Codex/Ollama (glm-5.3:cloud) | [OK / REVIEW_FAILED / SKIPPED] | [If failed: reason from REVIEW_FAILED line. If skipped: "Pre-flight check failed"] |
 | Claude (fallback) | [OK / SKIPPED] | [If OK: "External reviewer failed, fallback activated". If skipped: "External reviewer succeeded"] |
 | [Persona name] (if --persona used) | [OK / SKIPPED] | [Same] |
 

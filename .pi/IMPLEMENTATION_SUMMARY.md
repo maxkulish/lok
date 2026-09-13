@@ -164,7 +164,7 @@ Optional environment overrides:
 | Variable | Default | Purpose |
 |---|---|---|
 | `CODEX_MODEL` | `gpt-5.6-sol` | Codex reviewer model (via `codex exec`) |
-| `OLLAMA_MODEL` | `glm-5.2:cloud` | Local/cloud Ollama reviewer model (`design-review`, `spec-review`) |
+| `OLLAMA_MODEL` | `glm-5.3:cloud` | Local/cloud Ollama reviewer model (`design-review`, `spec-review`) |
 
 Pipeline shape: `health_check` -> `codex_review` -> `claude_fallback`
 (only when Codex failed) -> `synthesis` -> `write_reports` (with a hard

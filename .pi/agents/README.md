@@ -20,8 +20,8 @@ table is a routing aid.
 | Phase                   | Persona                 | Default model               | Transport | Role            | Output                                              |
 |-------------------------|-------------------------|-----------------------------|-----------|-----------------|-----------------------------------------------------|
 | `design`                | `claude-designer.md`    | Claude Opus 5               | `claude`  | Drafter         | `docs/designs/clo-XX-<slug>.md`                     |
-| `design`                | `ollama-rust-reviewer.md` | `glm-5.2:cloud`           | `ollama`  | Design reviewer | `docs/reviews/clo-XX-review-ollama.md`              |
-| `spec`                  | `ollama-rust-reviewer.md` | `glm-5.2:cloud`           | `ollama`  | Spec reviewer   | `docs/reviews/clo-XX-spec-review-ollama.md`         |
+| `design`                | `ollama-rust-reviewer.md` | `glm-5.3:cloud`           | `ollama`  | Design reviewer | `docs/reviews/clo-XX-review-ollama.md`              |
+| `spec`                  | `ollama-rust-reviewer.md` | `glm-5.3:cloud`           | `ollama`  | Spec reviewer   | `docs/reviews/clo-XX-spec-review-ollama.md`         |
 | `implement` (step 4)    | `codex-pre-pr.md`       | `gpt-5.6-sol`               | `codex`   | Validation gate | `docs/reviews/clo-XX-codex-validation.md`           |
 | `implement` (step 4)    | `security-reviewer.md`  | Claude Opus 5               | `claude`  | Conditional - LLM backend / secret handling changes | inline in validation synthesis |
 | `implement` (step 4)    | `ops-reviewer.md`       | Claude Opus 5               | `claude`  | Conditional - rarely (lok is a CLI; only applies to deploy / packaging changes) | inline in validation synthesis |

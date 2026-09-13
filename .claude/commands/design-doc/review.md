@@ -242,7 +242,7 @@ This produces:
 # Design Review: CLO-XX - [Title]
 
 **Reviewed**: [Current Date YYYY-MM-DD]
-**Reviewer**: [Codex via Ollama (glm-5.2:cloud) | Claude (fallback)]
+**Reviewer**: [Codex via Ollama (glm-5.3:cloud) | Claude (fallback)]
 **Design Document**: docs/design-docs/clo-XX-[description].md
 **Review Duration**: [X seconds]
 
@@ -393,11 +393,11 @@ For deeper diagnostics:
 
 | Provider | Model | Integration | Notes |
 |----------|-------|-------------|-------|
-| Ollama | `glm-5.2:cloud` | Codex | `ollama launch codex --model MODEL --oss --local-provider ollama` |
+| Ollama | `glm-5.3:cloud` | Codex | `ollama launch codex --model MODEL --oss --local-provider ollama` |
 
 ### Environment Variables
 
-- `OLLAMA_MODEL` - Override default Ollama model (default: `glm-5.2:cloud`)
+- `OLLAMA_MODEL` - Override default Ollama model (default: `glm-5.3:cloud`)
 - `OLLAMA_TIMEOUT` - Override Ollama timeout in seconds (default: 300)
 
 ---
@@ -435,7 +435,7 @@ PROJECT CONTEXT: Rust CLI tool for multi-LLM orchestration. Linear workspace: cl
 
 # Run Ollama/Codex
 start=$(date +%s)
-env -u CLAUDECODE timeout 300 ollama launch codex --model glm-5.2:cloud -- \
+env -u CLAUDECODE timeout 300 ollama launch codex --model glm-5.3:cloud -- \
   exec "$REVIEW_PROMPT" \
   --sandbox read-only \
   --oss --local-provider ollama \

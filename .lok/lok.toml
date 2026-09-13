@@ -19,7 +19,10 @@ args = []
 [backends.codex]
 enabled = true
 command = "codex"
-args = ["exec"]
+model = "gpt-5.6-sol"
+# The key is `model_reasoning_effort`. Codex accepts any `-c` key without
+# complaint, so `reasoning.effort` is silently ignored.
+args = ["exec", "-c", "model_reasoning_effort=\"high\""]
 timeout = 900
 
 [backends.gemini]
@@ -37,7 +40,7 @@ timeout = 600
 [backends.ollama]
 enabled = true
 command = "http://localhost:11434"
-model = "glm-5.2:cloud"
+model = "glm-5.3:cloud"
 timeout = 300
 
 [roles.code_review]
