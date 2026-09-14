@@ -26,10 +26,10 @@ linear:
   branch_actual: fix/clo-655-var-parse
   priority: 2
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
   created_at: '2026-09-14T10:02:23.000Z'
-  updated_at: '2026-09-14T13:25:00.000Z'
+  updated_at: '2026-09-14T13:45:00.000Z'
 phases:
   discovery:
     status: skipped
@@ -72,7 +72,7 @@ phases:
         design-review.toml claude_fallback guards ported from spec-review.toml, because CLO-655's own acceptance
         criteria require review files on both the success and fallback paths
   implement:
-    status: in_progress
+    status: complete
     plan_source: spec decomposition (specs/2026-09-14-clo-655-jinja-comment-syntax.md section 4)
     last_phase_completed: sub-task 6 (full gate and live verification)
     full_gate:
@@ -94,6 +94,16 @@ phases:
         2m step timeout (spec-review uses 5m, pre-pr-validation 10m), so the fallback file holds the timeout
         error, not a review. Timeouts were out of scope by the approved spec.
     live_artifacts: deleted after the runs, not committed
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-655-codex-validation.md
+    validation_synthesis_report: docs/reviews/clo-655-validation-synthesis.md
+    validation_synthesis_verdict: PASS
+    validation_notes: >-
+      Codex FAIL rested on AC13/AC14 live gates, which the synthesis ruled non-blocking under the spec's escalation
+      clause. PR conditions: state gate results, include a Behaviour change heading, do not use a closing keyword
+      for CLO-655 (CLO-656 may close). Codex LOW on truncation (120 chars plus ellipsis) classified as optional
+      polish and not applied.
     commits:
       - c337530 docs(CLO-655) approved spec, spec review and workflow state
       - d35e795 fix(CLO-655) disable Jinja comment syntax in workflow templates
@@ -174,3 +184,11 @@ history:
       cloud session usage limit (external). Gate 3 reached the fallback but it timed out at design-review's 2m
       timeout. Recorded as follow-ups per the spec's escalation rule; CLO-655 is not to be closed as done on
       merge until gates 2 and 3 pass.
+  - timestamp: '2026-09-14T13:45:00.000Z'
+    action: codex_validation_complete
+    phase: implement
+    details: Codex gpt-5.6-sol FAIL (399s); Claude fallback skipped; synthesis PASS with no Must Fix items.
+  - timestamp: '2026-09-14T13:45:00.000Z'
+    action: implementation_complete
+    phase: implement
+    details: Spec sub-tasks 1-6 done; transitioning to PR with CLO-655 to remain open until live gates 2 and 3 pass.
