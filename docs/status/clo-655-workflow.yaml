@@ -29,7 +29,7 @@ workflow:
   current_phase: implement
   status: in_progress
   created_at: '2026-09-14T10:02:23.000Z'
-  updated_at: '2026-09-14T11:30:00.000Z'
+  updated_at: '2026-09-14T13:25:00.000Z'
 phases:
   discovery:
     status: skipped
@@ -72,7 +72,35 @@ phases:
         design-review.toml claude_fallback guards ported from spec-review.toml, because CLO-655's own acceptance
         criteria require review files on both the success and fallback paths
   implement:
-    status: pending
+    status: in_progress
+    plan_source: spec decomposition (specs/2026-09-14-clo-655-jinja-comment-syntax.md section 4)
+    last_phase_completed: sub-task 6 (full gate and live verification)
+    full_gate:
+      make_check: pass
+      msrv_1_83_check: pass
+      lok_bin_tests: 578 passed
+    live_gates:
+      gate_1_template_rendering: >-
+        PASS on three runs (clo-655-live-ok, clo-655-live-fallback, clo-655-live-ok2). Every step rendered and
+        ran, including ollama_review, synthesis and write_reviews.
+      gate_2_success_path_completion: >-
+        NOT VERIFIED LIVE. Both success-path attempts hit the Ollama cloud session usage limit ("rate limit
+        exceeded ... session usage limit"), so Ollama never succeeded and the fallback was never skipped. The
+        skipped-fallback path was verified offline by running design-review.toml's real synthesis prompt head and
+        write_reviews with stub steps: SKIPPED rendered, ollama and synthesis files written, no fallback file.
+      gate_3_fallback_path_completion: >-
+        PARTIAL. claude_fallback executed and all three files were written on every run, so the pipeline no
+        longer dies upstream of the fallback. The fallback itself timed out on all attempts at design-review's
+        2m step timeout (spec-review uses 5m, pre-pr-validation 10m), so the fallback file holds the timeout
+        error, not a review. Timeouts were out of scope by the approved spec.
+    live_artifacts: deleted after the runs, not committed
+    commits:
+      - c337530 docs(CLO-655) approved spec, spec review and workflow state
+      - d35e795 fix(CLO-655) disable Jinja comment syntax in workflow templates
+      - c78cfb0 fix(CLO-656) report template errors by kind without naming the wrong variable
+      - b411563 test(CLO-655) run a shell step that uses ${#VAR} end to end
+      - 8663a5d fix(CLO-655) let the design-review pipeline finish on both reviewer paths
+      - a24535c docs(CLO-655) document literal braces, disabled comments and raw-block limits
   pr:
     status: pending
   complete:
@@ -130,3 +158,19 @@ history:
     action: spec_approved
     phase: spec
     details: User approved the revised spec, including the claude_fallback guard port. Proceeding to implement.
+  - timestamp: '2026-09-14T12:40:00.000Z'
+    action: phase_completed
+    phase: implement
+    details: >-
+      Sub-tasks 1-5 committed. 578 lok binary tests pass, 6 new; integration test passes. Revert checks: comment
+      test and integration test fail without set_syntax; all 5 map_template_error tests fail against the old
+      mapping; the render-failure test fails without the ParseError narrowing. design-review.toml write_reviews
+      exercised offline with stub steps on both paths, including an apostrophe in fallback output.
+  - timestamp: '2026-09-14T13:25:00.000Z'
+    action: phase_completed
+    phase: implement
+    details: >-
+      Sub-task 6: make check and cargo +1.83.0 check pass. Live gate 1 passed. Gate 2 blocked by the Ollama
+      cloud session usage limit (external). Gate 3 reached the fallback but it timed out at design-review's 2m
+      timeout. Recorded as follow-ups per the spec's escalation rule; CLO-655 is not to be closed as done on
+      merge until gates 2 and 3 pass.
