@@ -12,8 +12,8 @@ task_profile:
   has_external_deps: false
   skip_probe: false
 pending_human_action: >-
-  Decide how to finalize CLO-655 now that PR #101 is merged: the complete phase would mark the task done, but
-  live design-review gates 2 and 3 are still pending and the ticket is meant to stay open.
+  Rerun design-review live gates 2 and 3 once Ollama quota is available and the design-review fallback timeout
+  follow-up has landed; then move CLO-655 to Done in Linear and to Recently Completed in docs/PROJECT.md.
 linear:
   team: Cloud-ai
   project: Lok
@@ -29,12 +29,13 @@ linear:
     14:36Z; follow-up PR #102 (field name in template error messages) merged as 6536a8c at 15:10Z.
   branch_suggested: kmamemo/clo-655-shell-var-in-a-workflow-step-body-is-parsed-as-an
   branch_actual: fix/clo-655-var-parse
+  status_at_complete: In Review (kept open pending live gates 2 and 3)
   priority: 2
 workflow:
-  current_phase: pr
-  status: merged_pending_finalize
+  current_phase: complete
+  status: awaiting_live_verification
   created_at: '2026-09-14T10:02:23.000Z'
-  updated_at: '2026-09-14T15:40:00.000Z'
+  updated_at: '2026-09-14T16:05:00.000Z'
 phases:
   discovery:
     status: skipped
@@ -117,7 +118,7 @@ phases:
       - 8663a5d fix(CLO-655) let the design-review pipeline finish on both reviewer paths
       - a24535c docs(CLO-655) document literal braces, disabled comments and raw-block limits
   pr:
-    status: in_progress
+    status: complete
     pr_url: https://github.com/maxkulish/lok/pull/101
     pr_number: 101
     merged_at: '2026-09-14T14:07:20Z'
@@ -142,7 +143,23 @@ phases:
       Do not use a Linear closing keyword for CLO-655; it stays open until live gates 2 and 3 pass. CLO-656 may
       close on merge.
   complete:
-    status: pending
+    status: complete
+    merged_at: '2026-09-14T14:07:20Z'
+    merge_commit: 3b1b3e3ed889127a96de4838862e90f9c5fb2a5c
+    aggregation_files_updated: true
+    aggregation_notes: >-
+      PROJECT.md: CLO-655 moved from Active Work to Blocked, CLO-656 added to Recently Completed. DEPENDENCIES.md:
+      CLO-655 added to Current Blockers. ROADMAP.md has no row for either task and was not changed.
+    linear_update: CLO-655 deliberately left In Review; not set to Done
+    finalize_branch: docs/clo-655-finalize
+    lessons_file: docs/lessons/clo-655-l1.md .. clo-655-l6.md
+    lessons_learned:
+      - Assert diagnostics exactly and probe library error metadata through lok's real call path
+      - cargo test --lib passes with zero tests for bin-only modules; use --bin lok
+      - Claim a bundled ticket in Linear when the bundling decision is made
+      - File a follow-up at the moment an out-of-scope fix is dropped
+      - A when-skipped step leaves no result; guard references with is defined
+      - The Ollama leg's REVIEW_FAILED shows the Codex banner, not the cause
 history:
   - timestamp: '2026-09-14T10:02:23.000Z'
     action: workflow_started
@@ -263,3 +280,15 @@ history:
       Verified on GitHub and Linear: PR #100 closed, PR #102 merged as 6536a8c, CLO-656 Done with #101 attached.
       Main now reports the field in TemplateSyntax and TemplateRender messages. CLO-655 remains open pending live
       gates 2 and 3.
+  - timestamp: '2026-09-14T16:00:00.000Z'
+    action: lessons_captured
+    phase: complete
+    details: session:wrap distilled 18 note entries into 6 lessons (docs/lessons/clo-655-l1..l6); capture state proposed.
+  - timestamp: '2026-09-14T16:05:00.000Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      Finalize on docs/clo-655-finalize from main 6536a8c. CLO-655 moved to Blocked (live verification pending),
+      CLO-656 to Recently Completed, CLO-655 added to DEPENDENCIES Current Blockers. Linear CLO-655 kept In Review
+      by Max's choice. Built in the CLO-655 worktree rather than the main checkout, because cd and git -C are not
+      allowed in this environment.
