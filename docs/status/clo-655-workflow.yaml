@@ -155,8 +155,8 @@ phases:
       2m step timeout (Up Next follow-up in docs/PROJECT.md). Gate 1 (template rendering) passed on three runs.
     first_finalize_pr_number: 104
     finalize_branch: docs/clo-655-finalize
-    finalize_pr_url: null
-    finalize_pr_number: null
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/106
+    finalize_pr_number: 106
     lessons_file: docs/lessons/clo-655-l1.md .. clo-655-l6.md
     lessons_learned:
       - Assert diagnostics exactly and probe library error metadata through lok's real call path
