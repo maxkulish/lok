@@ -1,0 +1,24 @@
+name = "test-shell-hash-expansion"
+description = "Shell ${#VAR} in a step body renders as shell, not as a template comment (CLO-655)"
+
+[[steps]]
+name = "health_check"
+continue_on_error = true
+shell = """
+echo "ollama=true"
+"""
+
+[[steps]]
+name = "ollama_review"
+continue_on_error = true
+depends_on = ["health_check"]
+shell = """
+if echo '{{ steps.health_check.output }}' | grep -q 'ollama=false'; then
+  exit 0
+fi
+OUTPUT="hello"
+if [ ${#OUTPUT} -lt 100 ]; then
+  echo "short"
+fi
+echo "$OUTPUT"
+"""
