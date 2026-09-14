@@ -327,7 +327,18 @@ config.push_commands        = ['/agentic_review']
 
 `pr_commands` runs on PR open. `push_commands` would run on each new commit, but only when `handle_push_trigger` is `True`, and it is `False`. Pushing a fix therefore leaves Qodo's findings sitting against the old head SHA forever unless you ask for a new pass.
 
-After pushing fixes and posting replies, request one re-review for the whole PR:
+After pushing fixes and posting replies, request one re-review for the whole PR.
+
+**Check for a billing-blocked Qodo first.** When the workspace is out of credits, Qodo answers every PR, and every `/agentic_review`, by posting or editing one comment containing `<!-- qodo:billing-blocked -->`. The request cannot produce a review, and the poll below would run its full 10 minutes:
+
+```bash
+gh api repos/{owner}/{repo}/issues/[number]/comments --paginate --slurp \
+  | jq -e '[.[][] | select(.user.login|test("qodo"))
+           | select(.body|contains("<!-- qodo:billing-blocked -->"))] | length > 0' >/dev/null \
+  && { echo "qodo-code-review is billing-blocked on this PR; skip the re-review request and ask the user"; exit 1; }
+```
+
+If it is billing-blocked, do not post. Ask the user. When they approve proceeding without a bot review, record `bot_rereview_head_sha: "none"` with that rationale. The notice stays on the PR after credits are restored, so if the user says reviews are back, run the request and poll below anyway.
 
 Post the request and keep the timestamp **GitHub** assigns it:
 
