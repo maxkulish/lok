@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-08-07 (CLO-654, CLO-655, CLO-656 and CLO-660 added to Up Next; CLO-654 and CLO-660 flagged as overlapping — every open Lok task in Linear now has a row here)
+**Last Updated**: 2026-09-14 (CLO-656 started, moved from Up Next to Active Work)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-656](https://linear.app/cloud-ai/issue/CLO-656) | `map_template_error` reports every template failure as `UnknownVariable` naming the first `{{ }}` in the template | In Progress | Spec | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -27,7 +27,6 @@
 | Medium | [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | Deduplicate `FILE_REF_RE` and `extract_file_references` across `tasks/context.rs` and `tasks/fix.rs`. The verbatim copy is the drift hazard that turned CLO-633's Defect 2 into two sites | None - CLO-633 follow-up | Next |
 | Medium | [CLO-649](https://linear.app/cloud-ai/issue/CLO-649) | spec-review workflow drops the Ollama leg when Linear text contains a single quote — the sed template dies on the quote and the synthesis silently proceeds with one reviewer | None — independent harness fix | Next |
 | Medium | [CLO-652](https://linear.app/cloud-ai/issue/CLO-652) | Pre-PR validation reports emit absolute machine paths, leaking `/Users/<name>` into PR comments. Qodo caught it once and it returned on the next workflow run, because nothing in the template constrains the path form | None - independent agent-template fix | Next |
-| Medium | [CLO-656](https://linear.app/cloud-ai/issue/CLO-656) | `map_template_error` reports every template failure as `UnknownVariable` naming the first `{{ }}` in the template, so the real error is never surfaced — it is why CLO-655 was misdiagnosed on first contact | None - filed during CLO-653 | Next |
 | Low | [CLO-654](https://linear.app/cloud-ai/issue/CLO-654) | The workspace-split decision record assumes lokomotiv is unpublished, but 28 versions are on crates.io. **Overlaps CLO-660**, which found the same false premise across three planning docs independently — merge the two in Linear before starting either | None - docs correction | Fold into CLO-660 |
 | Low | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610/attest-release-binaries-so-their-checksums-prove-origin-not-only) | Attest release binaries so their checksums prove origin, not only transfer — re-running a tag replaces the archive and its `.sha256` together, so a matching digest proves the pair is self-consistent and nothing more | None — standalone `release.yml` change | Next (CLO-609 landed 2026-08-03) |
 
