@@ -3,7 +3,20 @@ mod filters;
 
 pub use context::TemplateContext;
 
+use minijinja::syntax::SyntaxConfig;
 use minijinja::UndefinedBehavior;
+
+/// Comment start delimiter that no workflow text is expected to contain.
+///
+/// MiniJinja's default comment opener `{#` is ordinary text in the fields lok renders:
+/// shell uses `${#VAR}` for string length, and markdown uses `{#id}` for heading
+/// attributes. MiniJinja rejects an empty comment delimiter, so comments are disabled
+/// by moving the delimiters to this placeholder. `{#` and `#}` are then plain text,
+/// and anything between them is rendered like any other template text.
+const COMMENT_START: &str = "{#lok-comments-disabled";
+
+/// Comment end delimiter paired with [`COMMENT_START`].
+const COMMENT_END: &str = "lok-comments-disabled#}";
 
 /// Errors that can occur during template rendering.
 #[derive(Debug, thiserror::Error)]
@@ -67,8 +80,16 @@ impl TemplateEngine {
     /// test can intercept missing values, while rendering an undefined value as the final
     /// output still errors - preserving the strict-undefined contract for
     /// `WorkflowError::UnknownVariable` reporting.
+    ///
+    /// Jinja comment syntax is disabled; see [`COMMENT_START`].
     pub fn new() -> Self {
         let mut env = minijinja::Environment::new();
+        env.set_syntax(
+            SyntaxConfig::builder()
+                .comment_delimiters(COMMENT_START, COMMENT_END)
+                .build()
+                .expect("comment delimiters are distinct from the variable and block delimiters"),
+        );
         env.set_undefined_behavior(UndefinedBehavior::SemiStrict);
         filters::register_filters(&mut env);
         Self { env }
@@ -167,6 +188,31 @@ mod tests {
             .unwrap();
         std::env::remove_var("LOK_TEST_TMPL_VAR");
         assert_eq!(result, "out-envval-argval");
+    }
+
+    #[test]
+    fn test_comment_openers_render_verbatim() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("x".to_string(), make_step("x", "out", true));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        let template =
+            "[ ${#OUTPUT} -lt 100 ] ${#} ${##}\n## Setup {#setup}\n{# note #} {{ steps.x.output }}";
+        let result = engine.render(template, &ctx).unwrap();
+        assert_eq!(
+            result,
+            "[ ${#OUTPUT} -lt 100 ] ${#} ${##}\n## Setup {#setup}\n{# note #} out"
+        );
+    }
+
+    #[test]
+    fn test_if_else_blocks_render() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("x".to_string(), make_step("x", "out", false));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        let template = "{% if steps.x.success %}yes{% else %}no{% endif %}";
+        assert_eq!(engine.render(template, &ctx).unwrap(), "no");
     }
 
     #[test]
