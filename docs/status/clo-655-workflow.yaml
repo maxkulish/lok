@@ -152,6 +152,8 @@ phases:
       CLO-655 added to Current Blockers. ROADMAP.md has no row for either task and was not changed.
     linear_update: CLO-655 deliberately left In Review; not set to Done
     finalize_branch: docs/clo-655-finalize
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/104
+    finalize_pr_number: 104
     lessons_file: docs/lessons/clo-655-l1.md .. clo-655-l6.md
     lessons_learned:
       - Assert diagnostics exactly and probe library error metadata through lok's real call path
