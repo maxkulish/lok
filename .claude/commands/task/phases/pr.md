@@ -20,7 +20,7 @@ phases:
     bot_review_wait_completed: true
     bot_review_wait_completed_at: "[ISO-8601]"
     reviews_addressed: true
-    bot_rereview_head_sha: "[sha]"    # "none" only when no reviewer bots are installed
+    bot_rereview_head_sha: "[sha]"    # "none" only when no reviewer bots are installed, or Qodo is billing-blocked and the user approved proceeding
     bot_rereview_at: "[ISO-8601]"
     pre_merge_refetch_passed: true
     pre_merge_refetch_at: "[ISO-8601]"
@@ -114,9 +114,10 @@ gh run list --branch [branch-name] --limit 1
 
 1. **Probe which bots are installed**: scan the last 10 PRs in any state *plus this PR's own issue comments* for `qodo-code-review|copilot-pull-request-reviewer`. A closed-PR-only scan reports "not installed" for a newly installed bot.
 2. **If none are installed**: record `bot_review_wait_completed: true` with the absence rationale and skip to Step 4.4.
-3. **If any is installed**: poll `repos/maxkulish/lok/pulls/[n]/reviews` for a review by that bot whose `commit_id` equals the **current** head SHA. A timeout is not proof that review is clean.
-4. **If the poll times out and Qodo is installed**: post `/agentic_review` as a PR comment, keep the `created_at` GitHub returns, and poll again for a review on the current head submitted at or after that timestamp. This is the normal path whenever Step 4.2 pushed a CI fix.
-5. **If still nothing**: block for user guidance. Do NOT record `bot_review_wait_completed`.
+3. **If Qodo is billing-blocked**: this PR has a Qodo comment containing `<!-- qodo:billing-blocked -->` ("workspace is out of credits"). No review is coming, so do not poll. Block for user guidance at once. If the user approves proceeding without a bot review, record `bot_review_wait_completed: true` with that rationale, skip the re-review request in Step 4.4, and record `bot_rereview_head_sha: "none"`.
+4. **If any is installed**: poll `repos/maxkulish/lok/pulls/[n]/reviews` for a review by that bot whose `commit_id` equals the **current** head SHA. A timeout is not proof that review is clean.
+5. **If the poll times out and Qodo is installed**: post `/agentic_review` as a PR comment, keep the `created_at` GitHub returns, and poll again for a review on the current head submitted at or after that timestamp. This is the normal path whenever Step 4.2 pushed a CI fix.
+6. **If still nothing**: block for user guidance. Do NOT record `bot_review_wait_completed`.
 
 The full procedure, with the exact `gh` calls and the `wait_for_bot_review` helper, is `.pi/skills/pr-review-cycle.md` steps 1-2. It is runtime-agnostic; read it rather than reinventing the polling here.
 
@@ -133,7 +134,7 @@ On success:
 4. Re-run pre-flight checks (Step 4.0) before pushing.
 5. Update `phases.pr.reviews_addressed: true`; add history entry: `review_addressed`.
 6. Record the re-validation separately once observed:
-   - `phases.pr.bot_rereview_head_sha: [sha the bot reviewed]` (`"none"` when no bots are installed)
+   - `phases.pr.bot_rereview_head_sha: [sha the bot reviewed]` (`"none"` when no bots are installed, or Qodo is billing-blocked and the user approved proceeding)
    - `phases.pr.bot_rereview_at: [ISO-8601]`
    - Add history entry: `bot_rereview_verified`
 

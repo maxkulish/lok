@@ -15,7 +15,7 @@ phases:
     bot_review_wait_completed: true
     bot_review_wait_completed_at: "<ISO-8601>"
     reviews_addressed: true
-    bot_rereview_head_sha: "<sha>"    # "none" only when no reviewer bots are installed
+    bot_rereview_head_sha: "<sha>"    # "none" only when no reviewer bots are installed, or Qodo is billing-blocked and the user approved proceeding
     bot_rereview_at: "<ISO-8601>"
     pre_merge_refetch_passed: true
     pre_merge_refetch_at: "<ISO-8601>"
