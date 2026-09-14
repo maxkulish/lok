@@ -51,6 +51,23 @@ fn test_interpolation_workflow() {
 }
 
 #[test]
+fn test_shell_hash_expansion_workflow() {
+    let (success, output) = run_workflow("tests/workflows/test_shell_hash_expansion.toml");
+
+    assert!(success, "Workflow failed: {}", output);
+    assert!(
+        output.contains("[OK] ollama_review"),
+        "ollama_review did not run: {}",
+        output
+    );
+    assert!(
+        output.contains("  short\n  hello"),
+        "Missing ${{#OUTPUT}} branch output in step results: {}",
+        output
+    );
+}
+
+#[test]
 fn test_conditionals_workflow() {
     let (success, output) = run_workflow("tests/workflows/test_conditionals.toml");
 

@@ -3,7 +3,20 @@ mod filters;
 
 pub use context::TemplateContext;
 
+use minijinja::syntax::SyntaxConfig;
 use minijinja::UndefinedBehavior;
+
+/// Comment start delimiter that no workflow text is expected to contain.
+///
+/// MiniJinja's default comment opener `{#` is ordinary text in the fields lok renders:
+/// shell uses `${#VAR}` for string length, and markdown uses `{#id}` for heading
+/// attributes. MiniJinja rejects an empty comment delimiter, so comments are disabled
+/// by moving the delimiters to this placeholder. `{#` and `#}` are then plain text,
+/// and anything between them is rendered like any other template text.
+const COMMENT_START: &str = "{#lok-comments-disabled";
+
+/// Comment end delimiter paired with [`COMMENT_START`].
+const COMMENT_END: &str = "lok-comments-disabled#}";
 
 /// Errors that can occur during template rendering.
 #[derive(Debug, thiserror::Error)]
@@ -22,31 +35,53 @@ pub enum TemplateError {
 }
 
 impl TemplateError {
+    /// Classify a MiniJinja error.
+    ///
+    /// Only `SyntaxError` is a parse error. Render-time failures such as
+    /// `InvalidOperation` also carry a line number, so the line alone does not
+    /// distinguish them from syntax errors.
     fn from_minijinja(err: minijinja::Error) -> Self {
         match err.kind() {
             minijinja::ErrorKind::UndefinedError => TemplateError::UndefinedVariable(err),
-            minijinja::ErrorKind::SyntaxError | minijinja::ErrorKind::InvalidOperation
-                if err.line().is_some() =>
-            {
+            minijinja::ErrorKind::SyntaxError if err.line().is_some() => {
                 TemplateError::ParseError(err)
             }
             _ => TemplateError::RenderError(err),
         }
     }
 
-    /// Byte range in the original template source where the error occurred.
-    ///
-    /// Returns the span of the failing expression (e.g. `steps.missing.output` for
-    /// an undefined-variable error) so callers can extract the exact offending token
-    /// instead of guessing it from the template. Returns `None` if MiniJinja could
-    /// not associate the error with a source span.
-    pub fn source_range(&self) -> Option<std::ops::Range<usize>> {
-        let inner = match self {
+    fn inner(&self) -> &minijinja::Error {
+        match self {
             TemplateError::UndefinedVariable(e)
             | TemplateError::ParseError(e)
             | TemplateError::RenderError(e) => e,
-        };
-        inner.range()
+        }
+    }
+
+    /// Byte range of the failing expression in the rendered template source.
+    ///
+    /// This is a location, not a variable name. For `{{ steps.missing.output }}` it
+    /// covers `.missing.output`, and for `{{ steps.x.absent | upper }}` it covers
+    /// `upper`. For a syntax error at the end of input it can point past the end of
+    /// the source. Returns `None` if MiniJinja could not associate the error with a
+    /// source span.
+    pub fn source_range(&self) -> Option<std::ops::Range<usize>> {
+        self.inner().range()
+    }
+
+    /// 1-based line in the template source where the error occurred, if known.
+    pub fn line(&self) -> Option<usize> {
+        self.inner().line()
+    }
+
+    /// MiniJinja's error kind and detail, such as `syntax error: unknown statement frob`,
+    /// without the `(in <string>:N)` location suffix of its `Display` form.
+    pub fn message(&self) -> String {
+        let inner = self.inner();
+        match inner.detail() {
+            Some(detail) => format!("{}: {}", inner.kind(), detail),
+            None => inner.kind().to_string(),
+        }
     }
 }
 
@@ -67,8 +102,16 @@ impl TemplateEngine {
     /// test can intercept missing values, while rendering an undefined value as the final
     /// output still errors - preserving the strict-undefined contract for
     /// `WorkflowError::UnknownVariable` reporting.
+    ///
+    /// Jinja comment syntax is disabled; see [`COMMENT_START`].
     pub fn new() -> Self {
         let mut env = minijinja::Environment::new();
+        env.set_syntax(
+            SyntaxConfig::builder()
+                .comment_delimiters(COMMENT_START, COMMENT_END)
+                .build()
+                .expect("comment delimiters are distinct from the variable and block delimiters"),
+        );
         env.set_undefined_behavior(UndefinedBehavior::SemiStrict);
         filters::register_filters(&mut env);
         Self { env }
@@ -167,6 +210,31 @@ mod tests {
             .unwrap();
         std::env::remove_var("LOK_TEST_TMPL_VAR");
         assert_eq!(result, "out-envval-argval");
+    }
+
+    #[test]
+    fn test_comment_openers_render_verbatim() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("x".to_string(), make_step("x", "out", true));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        let template =
+            "[ ${#OUTPUT} -lt 100 ] ${#} ${##}\n## Setup {#setup}\n{# note #} {{ steps.x.output }}";
+        let result = engine.render(template, &ctx).unwrap();
+        assert_eq!(
+            result,
+            "[ ${#OUTPUT} -lt 100 ] ${#} ${##}\n## Setup {#setup}\n{# note #} out"
+        );
+    }
+
+    #[test]
+    fn test_if_else_blocks_render() {
+        let engine = TemplateEngine::new();
+        let mut steps = HashMap::new();
+        steps.insert("x".to_string(), make_step("x", "out", false));
+        let ctx = TemplateContext::new(&steps, &[], &[]);
+        let template = "{% if steps.x.success %}yes{% else %}no{% endif %}";
+        assert_eq!(engine.render(template, &ctx).unwrap(), "no");
     }
 
     #[test]

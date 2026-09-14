@@ -37,7 +37,7 @@ OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MOD
   --oss --local-provider ollama \
   --ephemeral < /dev/null 2>/tmp/lok-ollama-stderr.log)
 
-if [ -z "$OUTPUT" ] || [ ${#OUTPUT} -lt 100 ]; then
+if [ -z "$OUTPUT" ] || [ "$(printf '%s' "$OUTPUT" | wc -c)" -lt 100 ]; then
   STDERR=$(head -5 /tmp/lok-ollama-stderr.log 2>/dev/null || echo "no stderr")
   echo "REVIEW_FAILED: Empty or trivially short output from Ollama (stderr: $STDERR)"
   exit 0
@@ -154,8 +154,9 @@ Report the status of each reviewer first:
 OLLAMA REVIEW (success={{ steps.ollama_review.success }}):
 {{ steps.ollama_review.output }}
 
-CLAUDE FALLBACK (success={{ steps.claude_fallback.success }}):
-{{ steps.claude_fallback.output }}
+{% if steps.claude_fallback is defined %}CLAUDE FALLBACK (success={{ steps.claude_fallback.success }}):
+{{ steps.claude_fallback.output }}{% else %}CLAUDE FALLBACK:
+SKIPPED - the Ollama review succeeded{% endif %}
 
 INSTRUCTIONS:
 
@@ -227,13 +228,17 @@ cat >> docs/reviews/{{ arg.2 }}-review-ollama.md << 'ENDOLLAMA'
 {{ steps.ollama_review.output }}
 ENDOLLAMA
 
-FALLBACK_OUTPUT='{{ steps.claude_fallback.output }}'
-if [ -n "$FALLBACK_OUTPUT" ] && ! echo "$FALLBACK_OUTPUT" | grep -q 'REVIEW_FAILED'; then
-  printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Claude (fallback)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Note**: External reviewers failed; this is the fallback review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-claude-fallback.md
-  cat >> docs/reviews/{{ arg.2 }}-review-claude-fallback.md << 'ENDFALLBACK'
+{% if steps.claude_fallback is defined %}
+FALLBACK_FILE=docs/reviews/{{ arg.2 }}-review-claude-fallback.md
+cat > "$FALLBACK_FILE.tmp" << 'ENDFALLBACK'
 {{ steps.claude_fallback.output }}
 ENDFALLBACK
+if grep -q '[^[:space:]]' "$FALLBACK_FILE.tmp" && ! grep -q 'REVIEW_FAILED' "$FALLBACK_FILE.tmp"; then
+  printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Claude (fallback)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Note**: External reviewers failed; this is the fallback review' '' '---' '' > "$FALLBACK_FILE"
+  cat "$FALLBACK_FILE.tmp" >> "$FALLBACK_FILE"
 fi
+rm -f "$FALLBACK_FILE.tmp"
+{% endif %}
 
 printf '%s\n' '# Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Reviewers**: Codex/Ollama (glm-5.3:cloud), Claude (fallback if needed)' '' '---' '' > docs/reviews/{{ arg.2 }}-review-synthesis.md
 cat >> docs/reviews/{{ arg.2 }}-review-synthesis.md << 'ENDSYNTH'

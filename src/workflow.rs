@@ -47,6 +47,22 @@ pub enum WorkflowError {
         variable: String,
     },
 
+    #[error("Workflow '{workflow}': step '{step}' failed to parse its template on line {line}: {detail}\n  hint: lok parses {{{{ }}}} and {{% %}} in prompt, shell and verify fields; see \"Template Variables\" in docs/guides/lok-setup-guide.md")]
+    TemplateSyntax {
+        workflow: String,
+        step: String,
+        line: usize,
+        detail: String,
+    },
+
+    #[error("Workflow '{workflow}': step '{step}' failed to render its template{}: {detail}", .line.map(|l| format!(" on line {l}")).unwrap_or_default())]
+    TemplateRender {
+        workflow: String,
+        step: String,
+        line: Option<usize>,
+        detail: String,
+    },
+
     #[error("Workflow '{workflow}': duplicate step names: {}\n  hint: each step must have a unique name", duplicates.join(", "))]
     DuplicateStepNames {
         workflow: String,
@@ -2926,7 +2942,7 @@ impl WorkflowRunner {
     /// before rendering so they pass through unchanged for [`interpolate_loop_vars`] to
     /// substitute later inside `for_each` iterations.
     ///
-    /// Any remaining undefined variable surfaces as [`WorkflowError::UnknownVariable`].
+    /// Render failures are mapped by [`map_template_error`].
     fn interpolate_with_fields(
         &self,
         template: &str,
@@ -3114,39 +3130,120 @@ fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
-/// Convert a [`crate::template::TemplateError`] into a [`WorkflowError::UnknownVariable`].
+/// Convert a [`crate::template::TemplateError`] into a [`WorkflowError`].
 ///
-/// Prefers the byte range exposed by MiniJinja (`TemplateError::source_range`), which
-/// points to the exact failing expression such as `steps.missing.output`. This handles
-/// templates with multiple interpolations correctly, where the first `{{ ... }}` in the
-/// source may not be the one that errored. Falls back to the first interpolation in the
-/// template, then to the error's `Display` form when no range is available.
+/// - A parse error becomes [`WorkflowError::TemplateSyntax`] with MiniJinja's message
+///   and line.
+/// - An undefined value becomes [`WorkflowError::UnknownVariable`] only when
+///   [`attributed_variable`] can name the failing path reliably.
+/// - Everything else becomes [`WorkflowError::TemplateRender`], which quotes the
+///   enclosing expression when MiniJinja reports a location and never names a
+///   variable.
+///
+/// `template` must be the exact text that was rendered, because error ranges are
+/// byte offsets into it.
 fn map_template_error(
     err: crate::template::TemplateError,
     template: &str,
     workflow_name: &str,
     current_step: &str,
 ) -> WorkflowError {
-    static GENERIC_VAR_RE: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"\{\{\s*([^}]+?)\s*\}\}").unwrap());
+    use crate::template::TemplateError;
 
-    let variable = err
-        .source_range()
-        .and_then(|range| template.get(range))
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    let workflow = workflow_name.to_string();
+    let step = current_step.to_string();
+    let line = err.line();
+    let range = err.source_range();
+
+    if let (TemplateError::ParseError(_), Some(line)) = (&err, line) {
+        return WorkflowError::TemplateSyntax {
+            workflow,
+            step,
+            line,
+            detail: err.message(),
+        };
+    }
+
+    if let (TemplateError::UndefinedVariable(_), Some(range)) = (&err, range.clone()) {
+        if let Some(variable) = attributed_variable(template, range) {
+            return WorkflowError::UnknownVariable {
+                workflow,
+                step,
+                variable,
+            };
+        }
+    }
+
+    let detail = match range.and_then(|range| expression_context(template, range, line)) {
+        Some(context) => format!("{} in `{}`", err.message(), context),
+        None => err.message(),
+    };
+    WorkflowError::TemplateRender {
+        workflow,
+        step,
+        line,
+        detail,
+    }
+}
+
+/// Rebuild the variable path an undefined-value error points at, when it can be trusted.
+///
+/// MiniJinja's range marks the failing expression, not a variable name. For attribute
+/// access it covers `.missing.output` without the `steps` root, and when a filter
+/// receives an undefined value it covers the filter name. The start is extended left
+/// over path characters, and the result is accepted only when it has one of the forms
+/// the [`WorkflowError::UnknownVariable`] hint lists.
+fn attributed_variable(template: &str, range: std::ops::Range<usize>) -> Option<String> {
+    static PATH_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"^(?:steps|env|arg|workflow)(?:\.[A-Za-z0-9_]+)+$").unwrap()
+    });
+
+    template.get(range.clone())?;
+    let start = template[..range.start]
+        .trim_end_matches(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+        .len();
+    let candidate = &template[start..range.end];
+    PATH_RE.is_match(candidate).then(|| candidate.to_string())
+}
+
+/// Quote the `{{ }}` or `{% %}` tag that contains `range`, or the source line when no
+/// enclosing tag is found. Long quotes are truncated.
+fn expression_context(
+    template: &str,
+    range: std::ops::Range<usize>,
+    line: Option<usize>,
+) -> Option<String> {
+    const MAX_CHARS: usize = 120;
+
+    let tag = match (template.get(..range.start), template.get(range.end..)) {
+        (Some(before), Some(after)) => {
+            let open = [before.rfind("{{"), before.rfind("{%")]
+                .into_iter()
+                .flatten()
+                .max();
+            let close = [after.find("}}"), after.find("%}")]
+                .into_iter()
+                .flatten()
+                .min();
+            open.zip(close)
+                .map(|(open, close)| &template[open..range.end + close + 2])
+        }
+        _ => None,
+    };
+    let snippet = tag
         .or_else(|| {
-            GENERIC_VAR_RE
-                .captures(template)
-                .and_then(|c| c.get(1))
-                .map(|m| m.as_str().to_string())
+            line.and_then(|l| template.lines().nth(l.checked_sub(1)?))
+                .map(str::trim)
         })
-        .unwrap_or_else(|| err.to_string());
+        .filter(|s| !s.is_empty())?;
 
-    WorkflowError::UnknownVariable {
-        workflow: workflow_name.to_string(),
-        step: current_step.to_string(),
-        variable,
+    if snippet.chars().count() > MAX_CHARS {
+        Some(format!(
+            "{}...",
+            snippet.chars().take(MAX_CHARS).collect::<String>()
+        ))
+    } else {
+        Some(snippet.to_string())
     }
 }
 
@@ -4844,21 +4941,201 @@ line2"}"#;
         let err = runner
             .interpolate_with_fields(template, &results, "wf", "step")
             .unwrap_err();
+        let message = err.to_string();
         match err {
             WorkflowError::UnknownVariable { ref variable, .. } => {
-                assert!(
-                    variable.contains("missing"),
-                    "expected error to name `missing`, got: {}",
-                    variable
-                );
-                assert!(
-                    !variable.contains("first"),
-                    "error should not point at the valid `first` expression, got: {}",
-                    variable
-                );
+                assert_eq!(variable, "steps.missing.output");
             }
             other => panic!("expected UnknownVariable error, got: {:?}", other),
         }
+        assert!(
+            message.contains("valid forms are"),
+            "UnknownVariable should keep the valid-forms hint, got: {}",
+            message
+        );
+
+        match render_template_err("{{ env.LOK_TEST_UNSET_VAR }}") {
+            WorkflowError::UnknownVariable { ref variable, .. } => {
+                assert_eq!(variable, "env.LOK_TEST_UNSET_VAR");
+            }
+            other => panic!("expected UnknownVariable error, got: {:?}", other),
+        }
+    }
+
+    fn first_step_results() -> HashMap<String, StepResult> {
+        let mut results = HashMap::new();
+        results.insert(
+            "first".to_string(),
+            StepResult {
+                name: "first".to_string(),
+                output: "ok".to_string(),
+                parsed_output: None,
+                success: true,
+                elapsed_ms: 100,
+                backend: Some("claude".to_string()),
+                raw_output: None,
+                stderr: None,
+                exit_code: None,
+                validation: None,
+                failure: None,
+                usage: None,
+            },
+        );
+        results
+    }
+
+    fn render_template_err(template: &str) -> WorkflowError {
+        let runner = WorkflowRunner::new(Config::default(), PathBuf::from("."), vec![]);
+        runner
+            .interpolate_with_fields(template, &first_step_results(), "wf", "step")
+            .unwrap_err()
+    }
+
+    #[test]
+    fn test_interpolate_raw_escape_passes_literal_delimiters() {
+        let runner = WorkflowRunner::new(Config::default(), PathBuf::from("."), vec![]);
+        let out = runner
+            .interpolate_with_fields(
+                "echo {% raw %}{{ literal }} {% if %}{% endraw %}",
+                &first_step_results(),
+                "wf",
+                "step",
+            )
+            .unwrap();
+        assert_eq!(out, "echo {{ literal }} {% if %}");
+    }
+
+    #[test]
+    fn test_interpolate_evaluates_text_between_former_comment_delimiters() {
+        let runner = WorkflowRunner::new(Config::default(), PathBuf::from("."), vec![]);
+        let out = runner
+            .interpolate_with_fields(
+                "{# {{ steps.first.output }} #}",
+                &first_step_results(),
+                "wf",
+                "step",
+            )
+            .unwrap();
+        assert_eq!(out, "{# ok #}");
+
+        match render_template_err("{# {{ steps.missing.output }} #}") {
+            WorkflowError::UnknownVariable { ref variable, .. } => {
+                assert_eq!(variable, "steps.missing.output");
+            }
+            other => panic!("expected UnknownVariable error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_map_template_error_reports_syntax_errors_as_syntax_errors() {
+        let cases = [
+            (
+                "echo {{ steps.first.output }}\n{% if steps.first.success %}\nyes",
+                2,
+                "unexpected end of input, expected end of block",
+            ),
+            (
+                "{% raw %}{{ item }}{% endraw %}",
+                1,
+                "unknown statement endraw",
+            ),
+        ];
+        for (template, expected_line, expected_detail) in cases {
+            let err = render_template_err(template);
+            let message = err.to_string();
+            match err {
+                WorkflowError::TemplateSyntax {
+                    line, ref detail, ..
+                } => {
+                    assert_eq!(line, expected_line, "wrong line for {:?}", template);
+                    assert!(
+                        detail.contains(expected_detail),
+                        "expected {:?} in detail, got: {}",
+                        expected_detail,
+                        detail
+                    );
+                }
+                other => panic!(
+                    "expected TemplateSyntax for {:?}, got: {:?}",
+                    template, other
+                ),
+            }
+            for forbidden in [
+                "unknown variable",
+                "valid forms are",
+                "steps.first.output",
+                "{{ item }}",
+            ] {
+                assert!(
+                    !message.contains(forbidden),
+                    "syntax error for {:?} should not mention {:?}, got: {}",
+                    template,
+                    forbidden,
+                    message
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_map_template_error_does_not_name_a_filter_as_the_variable() {
+        let err = render_template_err("{{ steps.first.absent | upper }}");
+        let message = err.to_string();
+        match err {
+            WorkflowError::TemplateRender {
+                line, ref detail, ..
+            } => {
+                assert_eq!(line, Some(1));
+                assert!(
+                    detail.contains("`{{ steps.first.absent | upper }}`"),
+                    "expected the enclosing expression to be quoted, got: {}",
+                    detail
+                );
+            }
+            other => panic!("expected TemplateRender error, got: {:?}", other),
+        }
+        assert!(!message.contains("unknown variable"), "got: {}", message);
+        assert!(!message.contains("valid forms are"), "got: {}", message);
+    }
+
+    #[test]
+    fn test_map_template_error_reports_render_failures_without_naming_a_variable() {
+        match render_template_err("{{ steps.first.output }}\n{{ 1 + \"x\" }}") {
+            WorkflowError::TemplateRender {
+                line, ref detail, ..
+            } => {
+                assert_eq!(line, Some(2));
+                assert!(detail.contains("unsupported types"), "got: {}", detail);
+            }
+            other => panic!("expected TemplateRender error, got: {:?}", other),
+        }
+
+        let without_location = crate::template::TemplateError::UndefinedVariable(
+            minijinja::Error::new(minijinja::ErrorKind::UndefinedError, "no location"),
+        );
+        match map_template_error(without_location, "{{ steps.first.output }}", "wf", "step") {
+            WorkflowError::TemplateRender {
+                line, ref detail, ..
+            } => {
+                assert_eq!(line, None);
+                assert!(
+                    !detail.contains('`'),
+                    "no expression should be quoted without a location, got: {}",
+                    detail
+                );
+            }
+            other => panic!("expected TemplateRender error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_map_template_error_placeholder_comment_start_is_a_syntax_error() {
+        let err = render_template_err("x {#lok-comments-disabled y");
+        assert!(
+            matches!(err, WorkflowError::TemplateSyntax { .. }),
+            "got: {:?}",
+            err
+        );
     }
 
     #[test]
