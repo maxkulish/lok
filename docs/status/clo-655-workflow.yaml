@@ -29,7 +29,7 @@ workflow:
   current_phase: pr
   status: in_progress
   created_at: '2026-09-14T10:02:23.000Z'
-  updated_at: '2026-09-14T13:45:00.000Z'
+  updated_at: '2026-09-14T13:55:00.000Z'
 phases:
   discovery:
     status: skipped
@@ -113,6 +113,10 @@ phases:
       - a24535c docs(CLO-655) document literal braces, disabled comments and raw-block limits
   pr:
     status: pending
+    ci_passed: false
+    closing_rule: >-
+      Do not use a Linear closing keyword for CLO-655; it stays open until live gates 2 and 3 pass. CLO-656 may
+      close on merge.
   complete:
     status: pending
 history:
@@ -192,3 +196,7 @@ history:
     action: implementation_complete
     phase: implement
     details: Spec sub-tasks 1-6 done; transitioning to PR with CLO-655 to remain open until live gates 2 and 3 pass.
+  - timestamp: '2026-09-14T13:55:00.000Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: cargo fmt --check, clippy -D warnings, clippy --tests (0 warnings), cargo test all pass.

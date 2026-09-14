@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-09-14 (CLO-655 started, with CLO-656 bundled into the same PR)
+**Last Updated**: 2026-09-14 (CLO-655 in review with CLO-656 bundled; five follow-ups from CLO-655 added to Up Next)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-655](https://linear.app/cloud-ai/issue/CLO-655) | Shell `${#VAR}` in a workflow step body parses as an unterminated Jinja comment (bundled with CLO-656: template errors all reported as `UnknownVariable`) | In Progress | Spec | - |
+| [CLO-655](https://linear.app/cloud-ai/issue/CLO-655) | Shell `${#VAR}` in a workflow step body parses as an unterminated Jinja comment (bundled with CLO-656: template errors all reported as `UnknownVariable`) | In Review - stays open until design-review live gates 2 and 3 pass (Ollama quota, 2m fallback timeout) | PR | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -26,6 +26,11 @@
 | Medium | [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | Deduplicate `FILE_REF_RE` and `extract_file_references` across `tasks/context.rs` and `tasks/fix.rs`. The verbatim copy is the drift hazard that turned CLO-633's Defect 2 into two sites | None - CLO-633 follow-up | Next |
 | Medium | [CLO-649](https://linear.app/cloud-ai/issue/CLO-649) | spec-review workflow drops the Ollama leg when Linear text contains a single quote — the sed template dies on the quote and the synthesis silently proceeds with one reviewer | None — independent harness fix | Next |
 | Medium | [CLO-652](https://linear.app/cloud-ai/issue/CLO-652) | Pre-PR validation reports emit absolute machine paths, leaking `/Users/<name>` into PR comments. Qodo caught it once and it returned on the next workflow run, because nothing in the template constrains the path form | None - independent agent-template fix | Next |
+| Medium | — | `design-review.toml` gives its Claude fallback `timeout = "2m"`; the prompt reads docs/arch, ADRs and the aggregation files and timed out on every attempt in CLO-655's live runs (spec-review uses 5m, pre-pr-validation 10m). Now that CLO-655 made the fallback reachable, this is what stops it producing a review, and CLO-655's live gate 3 cannot pass until it lands | None - found during CLO-655 | Next |
+| Medium | — | `design-review.toml` `write_reviews` accepts a step error such as `Error: Step timed out after 120s` as a fallback review, because it filters only blank output and `REVIEW_FAILED`. The Ollama leg's `REVIEW_FAILED` also quotes only the first 5 stderr lines, which hid an Ollama usage-limit error behind Codex banner text. Same family as CLO-624 | CLO-624 | Next |
+| Low | — | `protect_loop_vars` wraps `{{ item }}`/`{{ index }}` in raw blocks even inside a user's `{% raw %}` block, which then fails with `unknown statement endraw` (documented limit in `docs/guides/lok-setup-guide.md`) | None - found during CLO-655 | Next |
+| Low | — | `interpolate_loop_vars` re-renders `for_each` fields and swallows render errors, so braces released by a raw block leave every loop variable unsubstituted with no error (documented limit) | None - found during CLO-655 | Next |
+| Low | — | `lok run <wf> args... --dir X` parses a trailing `--dir X` as `arg.N` values (`args` has `allow_hyphen_values`), so the directory is silently ignored. Every documented review invocation puts `--dir .` last and works only because it runs from the repo root | None - found during CLO-655 | Next |
 | Low | [CLO-654](https://linear.app/cloud-ai/issue/CLO-654) | The workspace-split decision record assumes lokomotiv is unpublished, but 28 versions are on crates.io. **Overlaps CLO-660**, which found the same false premise across three planning docs independently — merge the two in Linear before starting either | None - docs correction | Fold into CLO-660 |
 | Low | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610/attest-release-binaries-so-their-checksums-prove-origin-not-only) | Attest release binaries so their checksums prove origin, not only transfer — re-running a tag replaces the archive and its `.sha256` together, so a matching digest proves the pair is self-consistent and nothing more | None — standalone `release.yml` change | Next (CLO-609 landed 2026-08-03) |
 
