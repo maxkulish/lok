@@ -74,7 +74,7 @@ If noise/garbage: {"status": "fail", "reason": "<one-line reason>"}
 [[steps]]
 name = "claude_fallback"
 backend = "claude"
-timeout = "2m"
+timeout = "5m"
 retries = 2
 continue_on_error = true
 depends_on = ["ollama_review"]
@@ -228,7 +228,7 @@ cat >> docs/reviews/{{ arg.2 }}-review-ollama.md << 'ENDOLLAMA'
 {{ steps.ollama_review.output }}
 ENDOLLAMA
 
-{% if steps.claude_fallback is defined %}
+{% if steps.claude_fallback is defined and steps.claude_fallback.success %}
 FALLBACK_FILE=docs/reviews/{{ arg.2 }}-review-claude-fallback.md
 cat > "$FALLBACK_FILE.tmp" << 'ENDFALLBACK'
 {{ steps.claude_fallback.output }}
