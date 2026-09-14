@@ -38,7 +38,7 @@ PROMPT=$(sed \
   -e 's|__LINEAR_LABELS__|{{ arg.5 }}|g' \
   .lok/prompts/spec-review-prompt.md)
 
-OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MODEL:-glm-5.2:cloud}" -- \
+OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MODEL:-glm-5.3:cloud}" -- \
   exec "$PROMPT" \
   --sandbox read-only \
   --oss --local-provider ollama \
@@ -159,7 +159,7 @@ shell = """
 mkdir -p docs/reviews
 REVIEW_DATE=$(date +%Y-%m-%d)
 
-printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5.2:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-ollama.md
+printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5.3:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-ollama.md
 cat >> docs/reviews/{{ arg.2 }}-spec-review-ollama.md << 'ENDOLLAMA'
 {{ steps.ollama_review.output }}
 ENDOLLAMA

@@ -31,7 +31,7 @@ fi
 
 PROMPT=$(sed 's|__DOC_PATH__|{{ arg.1 }}|g' .lok/prompts/design-review-prompt.md)
 
-OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MODEL:-glm-5.2:cloud}" -- \
+OUTPUT=$(env -u CLAUDECODE timeout 300 ollama launch codex --model "${OLLAMA_MODEL:-glm-5.3:cloud}" -- \
   exec "$PROMPT" \
   --sandbox read-only \
   --oss --local-provider ollama \
@@ -222,7 +222,7 @@ shell = """
 mkdir -p docs/reviews
 REVIEW_DATE=$(date +%Y-%m-%d)
 
-printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5.2:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-ollama.md
+printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5.3:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-ollama.md
 cat >> docs/reviews/{{ arg.2 }}-review-ollama.md << 'ENDOLLAMA'
 {{ steps.ollama_review.output }}
 ENDOLLAMA
@@ -235,7 +235,7 @@ if [ -n "$FALLBACK_OUTPUT" ] && ! echo "$FALLBACK_OUTPUT" | grep -q 'REVIEW_FAIL
 ENDFALLBACK
 fi
 
-printf '%s\n' '# Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Reviewers**: Codex/Ollama (glm-5.2:cloud), Claude (fallback if needed)' '' '---' '' > docs/reviews/{{ arg.2 }}-review-synthesis.md
+printf '%s\n' '# Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Reviewers**: Codex/Ollama (glm-5.3:cloud), Claude (fallback if needed)' '' '---' '' > docs/reviews/{{ arg.2 }}-review-synthesis.md
 cat >> docs/reviews/{{ arg.2 }}-review-synthesis.md << 'ENDSYNTH'
 {{ steps.synthesis.output }}
 ENDSYNTH

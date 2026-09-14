@@ -46,7 +46,7 @@ PROMPT=$(sed \
   .lok/prompts/pre-pr-validation-prompt.md)
 
 OUTPUT=$(timeout 900 codex exec -m "$PRIMARY_MODEL" \
-  -c reasoning.effort='"high"' \
+  -c model_reasoning_effort='"high"' \
   -s read-only \
   "$PROMPT" < /dev/null 2>/tmp/lok-codex-prepr-stderr.log)
 
