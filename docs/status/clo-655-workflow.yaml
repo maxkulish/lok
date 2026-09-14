@@ -1,0 +1,132 @@
+task_id: clo-655
+task_type: specification
+classification_reason: >-
+  Bug fix with a clear reproduction and proposed work in the ticket. One design decision (whether Jinja comment
+  syntax stays enabled) is small enough to record in the spec rather than a design doc. The change touches the
+  template engine, the workflow error mapping, one workflow file and tests. CLO-656 is bundled as the second half
+  of the same PR, as recommended in the 2026-09-14 session that unarchived both tickets.
+task_profile:
+  has_backend: true
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  related_to:
+    - CLO-656
+  bundled:
+    - CLO-656
+  branch_suggested: kmamemo/clo-655-shell-var-in-a-workflow-step-body-is-parsed-as-an
+  branch_actual: fix/clo-655-var-parse
+  priority: 2
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-09-14T10:02:23.000Z'
+  updated_at: '2026-09-14T11:30:00.000Z'
+phases:
+  discovery:
+    status: skipped
+    skip_reason: Specification task
+    approved: true
+  design:
+    status: skipped
+    reason: Specification task - using /spec instead
+  spec:
+    status: complete
+    spec_file: specs/2026-09-14-clo-655-jinja-comment-syntax.md
+    approved: true
+    approved_scope: revised spec including the design-review.toml claude_fallback guard port
+    review_ollama: docs/reviews/clo-655-spec-review-ollama.md
+    review_synthesis: docs/reviews/clo-655-spec-review-synthesis.md
+    review_claude_fallback: null
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_applied: true
+    review_input_note: >-
+      The Linear description was passed as a one-line summary without quotes, pipes or braces, because the
+      spec-review sed template breaks on those characters (CLO-649).
+    applied_suggestions:
+      - Recorded that disabling comment syntax is user-visible; PR description gets a Behaviour change heading
+      - Added live-run preconditions for AC9 and AC10
+      - AC7 test now also asserts the valid-forms hint
+      - AC8 no-range case is tested with a hand-built UndefinedVariable error; weaker message accepted
+      - AC2 names the existing condition and loop-var tests as coverage instead of adding new ones
+      - TemplateRender gains line Option<usize>
+      - Evaluation rows added for the no-range case and the sentinel-collision case
+      - AC4 rg check scoped to the tree at implementation time
+      - Sub-task 2 now follows sub-task 1; sub-task 6 depends on sub-task 2
+      - Added the CLO-373 history of the same delimiter change being dropped as out of scope
+    flagged_suggestions: []
+    user_review_round:
+      source: external review pasted by the user on 2026-09-14
+      points_validated: 5
+      points_confirmed: 5
+      scope_change: >-
+        design-review.toml claude_fallback guards ported from spec-review.toml, because CLO-655's own acceptance
+        criteria require review files on both the success and fallback paths
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-09-14T10:02:23.000Z'
+    action: workflow_started
+    phase: init
+    details: >-
+      Specification workflow for CLO-655 with CLO-656 bundled. Linear issue fetched; reproduction confirmed on
+      v20260913.0.0 in the prior session.
+  - timestamp: '2026-09-14T10:02:23.000Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      WIP 0/3 before start. CLO-655 added to Active Work in docs/PROJECT.md; CLO-655 and CLO-656 removed from Up
+      Next. ROADMAP.md and DEPENDENCIES.md hold no row for either task, so they were not changed.
+  - timestamp: '2026-09-14T10:20:00.000Z'
+    action: spec_created
+    phase: spec
+    details: >-
+      Spec written to specs/2026-09-14-clo-655-jinja-comment-syntax.md. Scope M, 8 files, 6 sub-tasks. Key decision:
+      disable Jinja comment syntax engine-wide with a sentinel delimiter (MiniJinja rejects an empty one). Probes
+      against minijinja 2.19.0 confirmed blocks, raw and whitespace control still work, and found that
+      from_minijinja classifies render-time InvalidOperation as ParseError.
+  - timestamp: '2026-09-14T10:32:00.000Z'
+    action: spec_review_complete
+    phase: spec
+    details: >-
+      lok spec-review: Ollama (glm-5.3:cloud) succeeded in 244s with APPROVE_WITH_SUGGESTIONS and 12 findings.
+      Claude fallback skipped. Synthesis verdict APPROVE_WITH_SUGGESTIONS.
+  - timestamp: '2026-09-14T10:35:00.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      All 12 findings applied; none contradicted an ADR. The CLO-373 finding led to checking history: the same
+      comment_delimiters change was made on the CLO-373 branch on 2026-05-19, flagged out of scope by both
+      validators, dropped, and never refiled. Two findings (when conditions, loop vars) were satisfied by naming
+      existing tests rather than adding new ones.
+  - timestamp: '2026-09-14T11:20:00.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      External review from the user with five points, each validated with probes through lok's real
+      interpolate_with_fields and TemplateContext, then reverted. All five confirmed. (1) template and workflow are
+      bin-only modules, cargo test --lib ran 0 tests; commands now use --bin lok. (2) Range text is not a variable
+      name: filtered undefined gives the filter name, and attribute paths lose their root, so today's message is
+      '{{ .missing.output }}'; attribution now requires a steps/env/arg/workflow path, otherwise TemplateRender
+      quotes the enclosing expression. (3) Skipped claude_fallback is never inserted, so design-review.toml:157
+      aborts the success path; live verification split into three gates and the spec-review.toml guard pattern is
+      ported. (4) Raw blocks containing loop vars fail with unknown statement endraw, and for_each double render
+      swallows errors; documented as limits, filed as follow-ups. (5) Former comment contents are evaluated;
+      documented and tested.
+  - timestamp: '2026-09-14T11:30:00.000Z'
+    action: spec_approved
+    phase: spec
+    details: User approved the revised spec, including the claude_fallback guard port. Proceeding to implement.
