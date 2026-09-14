@@ -47,6 +47,33 @@ pub enum WorkflowError {
         variable: String,
     },
 
+    /// A step field failed to parse as a template. `line` counts lines within the
+    /// field's value as reported by MiniJinja, and `hint` locates the likely cause
+    /// when the parser's own position is not where the fault is.
+    #[error("Workflow '{workflow}': step '{step}' has a template syntax error in its {field} field{}: {message}{}", at_line(line), hint_suffix(hint))]
+    TemplateSyntax {
+        workflow: String,
+        step: String,
+        field: &'static str,
+        message: String,
+        line: Option<u32>,
+        hint: Option<String>,
+    },
+
+    /// A step field parsed but failed to render for a reason other than a variable
+    /// that can be named, e.g. an unknown filter or an invalid operation.
+    #[error(
+        "Workflow '{workflow}': step '{step}' failed to render its {field} field{}: {message}",
+        at_line(line)
+    )]
+    TemplateRender {
+        workflow: String,
+        step: String,
+        field: &'static str,
+        message: String,
+        line: Option<u32>,
+    },
+
     #[error("Workflow '{workflow}': duplicate step names: {}\n  hint: each step must have a unique name", duplicates.join(", "))]
     DuplicateStepNames {
         workflow: String,
@@ -80,6 +107,17 @@ pub enum WorkflowError {
         model: String,
     },
 }
+
+fn at_line(line: &Option<u32>) -> String {
+    line.map(|n| format!(" at line {n}")).unwrap_or_default()
+}
+
+fn hint_suffix(hint: &Option<String>) -> String {
+    hint.as_ref()
+        .map(|h| format!("\n  hint: {h}"))
+        .unwrap_or_default()
+}
+
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -1764,17 +1802,34 @@ impl WorkflowRunner {
                     &results,
                     &workflow.name,
                     &step.name,
+                    "prompt",
                 )?;
                 let shell = step
                     .shell
                     .as_ref()
-                    .map(|s| self.interpolate_with_fields(s, &results, &workflow.name, &step.name))
+                    .map(|s| {
+                        self.interpolate_with_fields(
+                            s,
+                            &results,
+                            &workflow.name,
+                            &step.name,
+                            "shell",
+                        )
+                    })
                     .transpose()?;
                 // When verify is set, also resolve format command to run first
                 let verify_value = step
                     .verify
                     .as_ref()
-                    .map(|v| self.interpolate_with_fields(v, &results, &workflow.name, &step.name))
+                    .map(|v| {
+                        self.interpolate_with_fields(
+                            v,
+                            &results,
+                            &workflow.name,
+                            &step.name,
+                            "verify",
+                        )
+                    })
                     .transpose()?;
                 let format = verify_value
                     .as_ref()
@@ -2926,20 +2981,24 @@ impl WorkflowRunner {
     /// before rendering so they pass through unchanged for [`interpolate_loop_vars`] to
     /// substitute later inside `for_each` iterations.
     ///
-    /// Any remaining undefined variable surfaces as [`WorkflowError::UnknownVariable`].
+    /// Failures are reported through [`map_template_error`]: an undefined variable as
+    /// [`WorkflowError::UnknownVariable`], a parse failure as
+    /// [`WorkflowError::TemplateSyntax`], anything else as [`WorkflowError::TemplateRender`].
+    /// `field` names the step field being rendered (`prompt`, `shell` or `verify`).
     fn interpolate_with_fields(
         &self,
         template: &str,
         results: &HashMap<String, StepResult>,
         workflow_name: &str,
         current_step: &str,
+        field: &'static str,
     ) -> Result<String, WorkflowError> {
         let protected = protect_loop_vars(template);
         let backends = Self::collect_backends(results);
         let ctx = crate::template::TemplateContext::new(results, &self.args, &backends);
         self.template_engine
             .render(&protected, &ctx)
-            .map_err(|e| map_template_error(e, &protected, workflow_name, current_step))
+            .map_err(|e| map_template_error(e, &protected, workflow_name, current_step, field))
     }
 
     /// Interpolate loop variables (`{{ item }}`, `{{ item.field }}`, `{{ index }}`) in a string.
@@ -3114,40 +3173,204 @@ fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
-/// Convert a [`crate::template::TemplateError`] into a [`WorkflowError::UnknownVariable`].
+/// Convert a [`crate::template::TemplateError`] into the [`WorkflowError`] that names its
+/// real cause, classified on the MiniJinja [`minijinja::ErrorKind`]:
 ///
-/// Prefers the byte range exposed by MiniJinja (`TemplateError::source_range`), which
-/// points to the exact failing expression such as `steps.missing.output`. This handles
-/// templates with multiple interpolations correctly, where the first `{{ ... }}` in the
-/// source may not be the one that errored. Falls back to the first interpolation in the
-/// template, then to the error's `Display` form when no range is available.
+/// - `SyntaxError` -> [`WorkflowError::TemplateSyntax`], with a hint locating the unclosed
+///   `{#` when the parser ran off the end of a comment.
+/// - `UndefinedError` -> [`WorkflowError::UnknownVariable`] naming the expression at the
+///   error's own range, or [`WorkflowError::TemplateRender`] when that range is unusable.
+/// - Anything else -> [`WorkflowError::TemplateRender`].
+///
+/// Beyond the root identifier directly before an undefined attribute's range, no variable
+/// is taken from elsewhere in the template: naming an arbitrary one is worse than naming
+/// none.
 fn map_template_error(
     err: crate::template::TemplateError,
     template: &str,
     workflow_name: &str,
     current_step: &str,
+    field: &'static str,
 ) -> WorkflowError {
-    static GENERIC_VAR_RE: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"\{\{\s*([^}]+?)\s*\}\}").unwrap());
-
-    let variable = err
-        .source_range()
-        .and_then(|range| template.get(range))
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .or_else(|| {
-            GENERIC_VAR_RE
-                .captures(template)
-                .and_then(|c| c.get(1))
-                .map(|m| m.as_str().to_string())
-        })
-        .unwrap_or_else(|| err.to_string());
-
-    WorkflowError::UnknownVariable {
+    let source = err.minijinja_error();
+    let kind = source.kind();
+    let line = source.line().and_then(|n| u32::try_from(n).ok());
+    let render_error = |message: String| WorkflowError::TemplateRender {
         workflow: workflow_name.to_string(),
         step: current_step.to_string(),
-        variable,
+        field,
+        message,
+        line,
+    };
+
+    match kind {
+        minijinja::ErrorKind::SyntaxError => {
+            let detail = source.detail();
+            let hint = if detail == Some("unexpected end of comment") {
+                unclosed_comment_opener(template).map(|(opener_line, text, after_dollar)| {
+                    let mut hint = format!("unclosed '{{#' at line {opener_line}: `{text}`");
+                    if after_dollar {
+                        hint.push_str(
+                            " - '{#' opens a template comment; wrap shell ${#VAR} in {% raw %}...{% endraw %}",
+                        );
+                    }
+                    hint
+                })
+            } else {
+                None
+            };
+            WorkflowError::TemplateSyntax {
+                workflow: workflow_name.to_string(),
+                step: current_step.to_string(),
+                field,
+                message: detail.map_or_else(|| kind.to_string(), str::to_string),
+                line,
+                hint,
+            }
+        }
+        minijinja::ErrorKind::UndefinedError => {
+            match undefined_variable_name(template, err.source_range()) {
+                Some(variable) => WorkflowError::UnknownVariable {
+                    workflow: workflow_name.to_string(),
+                    step: current_step.to_string(),
+                    variable,
+                },
+                None => render_error(kind_message(source)),
+            }
+        }
+        _ => render_error(kind_message(source)),
     }
+}
+
+/// `<kind>: <detail>` from a MiniJinja error, without the `(in <string>:N)` suffix its
+/// `Display` appends.
+fn kind_message(err: &minijinja::Error) -> String {
+    match err.detail() {
+        Some(detail) => format!("{}: {detail}", err.kind()),
+        None => err.kind().to_string(),
+    }
+}
+
+/// Name the undefined expression at `range`, or `None` when the range is unusable
+/// (absent, out of bounds, off a char boundary, or blank).
+///
+/// MiniJinja's range for an undefined attribute starts after the root identifier
+/// (`.missing.output` for `steps.missing.output`), so the root immediately before the
+/// range is recovered, skipping whitespace. Whitespace inside a plain dotted path is
+/// dropped. When no root identifier sits there, e.g. `(steps).missing.output`, the range
+/// text is returned verbatim: stripping its leading `.` would name a different variable.
+fn undefined_variable_name(
+    template: &str,
+    range: Option<std::ops::Range<usize>>,
+) -> Option<String> {
+    let range = range?;
+    let text = template.get(range.clone())?.trim();
+    let first = *text.as_bytes().first()?;
+    if first.is_ascii_alphabetic() || first == b'_' {
+        return Some(text.to_string());
+    }
+    if first == b'.' || first == b'[' {
+        let bytes = template.as_bytes();
+        let mut end = range.start;
+        while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+            end -= 1;
+        }
+        let mut start = end;
+        while start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
+            start -= 1;
+        }
+        let root_starts_identifier =
+            start < end && (bytes[start].is_ascii_alphabetic() || bytes[start] == b'_');
+        if root_starts_identifier && (start == 0 || bytes[start - 1] != b'.') {
+            let is_dotted_path = text.bytes().all(|b| {
+                b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b.is_ascii_whitespace()
+            });
+            let path = if is_dotted_path {
+                text.split_ascii_whitespace().collect::<String>()
+            } else {
+                text.to_string()
+            };
+            return Some(format!("{}{path}", &template[start..end]));
+        }
+    }
+    Some(text.to_string())
+}
+
+/// Locate the `{#` that MiniJinja's lexer opened and never closed.
+///
+/// Walks delimiters in lexer order, because the order decides the answer: inside a
+/// comment `{% raw %}` is not recognised, so a `#}` there closes the comment; inside a raw
+/// block or a `{{ }}` expression a `{#` is not a comment. Returns the opener's 1-based
+/// line, that line's trimmed text (at most 80 bytes), and whether a `$` precedes the
+/// opener, as in shell `${#VAR}`.
+fn unclosed_comment_opener(template: &str) -> Option<(usize, String, bool)> {
+    let mut pos = 0;
+    while let Some(offset) = template[pos..].find('{') {
+        let start = pos + offset;
+        let rest = &template[start..];
+        if let Some(body) = rest.strip_prefix("{#") {
+            match body.find("#}") {
+                Some(close) => pos = start + 2 + close + 2,
+                None => {
+                    let line_start = template[..start].rfind('\n').map_or(0, |i| i + 1);
+                    let line_end = template[start..]
+                        .find('\n')
+                        .map_or(template.len(), |i| start + i);
+                    let line = template[..start].matches('\n').count() + 1;
+                    let text = truncate_utf8(template[line_start..line_end].trim(), 80).to_string();
+                    let after_dollar = template[..start].ends_with('$');
+                    return Some((line, text, after_dollar));
+                }
+            }
+        } else if let Some(body) = rest.strip_prefix("{{") {
+            pos = start + 2 + body.find("}}")? + 2;
+        } else if let Some(body) = rest.strip_prefix("{%") {
+            pos = match block_tag_len(rest, "raw") {
+                Some(open_len) => endraw_end(template, start + open_len)?,
+                None => start + 2 + body.find("%}")? + 2,
+            };
+        } else {
+            pos = start + 1;
+        }
+    }
+    None
+}
+
+/// Length of a `{% <word> %}` tag at the start of `s`, accepting the whitespace-control
+/// markers `-` and `+` on either side and any amount of ASCII whitespace, including none.
+fn block_tag_len(s: &str, word: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut i = s.strip_prefix("{%").map(|_| 2)?;
+    if matches!(bytes.get(i), Some(b'-' | b'+')) {
+        i += 1;
+    }
+    while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+        i += 1;
+    }
+    if !s[i..].starts_with(word) {
+        return None;
+    }
+    i += word.len();
+    while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
+        i += 1;
+    }
+    if matches!(bytes.get(i), Some(b'-' | b'+')) {
+        i += 1;
+    }
+    s[i..].starts_with("%}").then_some(i + 2)
+}
+
+/// Byte offset just past the first `{% endraw %}` tag at or after `from`.
+fn endraw_end(template: &str, from: usize) -> Option<usize> {
+    let mut pos = from;
+    while let Some(offset) = template[pos..].find("{%") {
+        let start = pos + offset;
+        if let Some(len) = block_tag_len(&template[start..], "endraw") {
+            return Some(start + len);
+        }
+        pos = start + 2;
+    }
+    None
 }
 
 /// Parse for_each value into a JSON array
@@ -4127,7 +4350,7 @@ mod tests {
         let template =
             "Verdict: {{ steps.synthesize.verdict }}\nSummary: {{ steps.synthesize.summary }}";
         let result = runner
-            .interpolate_with_fields(template, &results, "test-workflow", "test-step")
+            .interpolate_with_fields(template, &results, "test-workflow", "test-step", "prompt")
             .unwrap();
 
         assert!(
@@ -4558,7 +4781,7 @@ line2"}"#;
         );
         let template = "{% if steps.fetch.success %}A{% else %}B{% endif %}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "A");
     }
@@ -4590,7 +4813,7 @@ line2"}"#;
         );
         let template = r#"{{ steps.fetch.output | default_val("fallback") }}"#;
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "fallback");
     }
@@ -4619,7 +4842,7 @@ line2"}"#;
         );
         let template = "{{ steps.fetch.output | trim }}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "hello world");
     }
@@ -4649,7 +4872,7 @@ line2"}"#;
         );
         let template = r#"{{ steps.list.items | join(", ") }}"#;
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "a, b, c");
     }
@@ -4679,7 +4902,7 @@ line2"}"#;
         );
         let template = "{{ steps.fetch.path | shell_escape }}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "'value with spaces'");
     }
@@ -4708,7 +4931,7 @@ line2"}"#;
         );
         let template = "{{ steps.fetch.output | lines | first }}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "first line");
     }
@@ -4751,7 +4974,7 @@ line2"}"#;
         );
         let template = "{{ steps.raw_json.verdict }}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "PASS");
     }
@@ -4771,7 +4994,7 @@ line2"}"#;
         let results = HashMap::new();
         let template = r#"{{ steps.nonexistent | default_val("fallback") }}"#;
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "fallback");
     }
@@ -4808,7 +5031,7 @@ line2"}"#;
         );
         let template = "{% for entry in steps.list.items %}{{ entry }},{% endfor %}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "a,b,c,");
     }
@@ -4842,23 +5065,255 @@ line2"}"#;
         // should name the second, not the first.
         let template = "{{ steps.first.output }} then {{ steps.missing.output }}";
         let err = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap_err();
         match err {
             WorkflowError::UnknownVariable { ref variable, .. } => {
+                assert_eq!(variable, "steps.missing.output");
                 assert!(
-                    variable.contains("missing"),
-                    "expected error to name `missing`, got: {}",
-                    variable
-                );
-                assert!(
-                    !variable.contains("first"),
-                    "error should not point at the valid `first` expression, got: {}",
-                    variable
+                    err.to_string().contains("valid forms are"),
+                    "genuine undefined variable must keep the valid-forms hint: {err}"
                 );
             }
             other => panic!("expected UnknownVariable error, got: {:?}", other),
         }
+
+        let err = runner
+            .interpolate_with_fields(
+                "{{ env.LOK_CLO656_SURELY_UNSET }}",
+                &results,
+                "wf",
+                "step",
+                "prompt",
+            )
+            .unwrap_err();
+        match err {
+            WorkflowError::UnknownVariable { ref variable, .. } => {
+                assert_eq!(variable, "env.LOK_CLO656_SURELY_UNSET");
+            }
+            other => panic!("expected UnknownVariable error, got: {:?}", other),
+        }
+    }
+
+    fn render_field_error(template: &str, field: &'static str) -> WorkflowError {
+        let runner = WorkflowRunner::new(Config::default(), PathBuf::from("."), vec![]);
+        runner
+            .interpolate_with_fields(template, &make_test_results(), "wf", "step", field)
+            .expect_err("template should fail to render")
+    }
+
+    fn syntax_hint(template: &str) -> String {
+        match render_field_error(template, "shell") {
+            WorkflowError::TemplateSyntax {
+                hint: Some(hint), ..
+            } => hint,
+            other => panic!("expected TemplateSyntax with a hint for {template:?}, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_template_syntax_error_reports_unclosed_comment_not_first_variable() {
+        let template = "OUT=\"{{ steps.analyze.output }}\"\nset -e\nif [ ${#OUT} -lt 10 ]; then\n  echo short\nfi\necho done\n";
+        let err = render_field_error(template, "shell");
+        let display = err.to_string();
+        match err {
+            WorkflowError::TemplateSyntax {
+                field,
+                line,
+                ref hint,
+                ..
+            } => {
+                assert_eq!(field, "shell");
+                assert_eq!(line, Some(6));
+                let hint = hint
+                    .as_deref()
+                    .expect("unclosed comment should carry a hint");
+                assert!(hint.contains("at line 3:"), "hint: {hint}");
+                assert!(hint.contains("if [ ${#OUT} -lt 10 ]; then"), "hint: {hint}");
+                assert!(
+                    hint.contains("${#VAR}") && hint.contains("{% raw %}"),
+                    "hint: {hint}"
+                );
+            }
+            ref other => panic!("expected TemplateSyntax, got: {other:?}"),
+        }
+        for expected in ["shell", "unexpected end of comment", "line 6"] {
+            assert!(
+                display.contains(expected),
+                "missing {expected:?} in: {display}"
+            );
+        }
+        for forbidden in [
+            "unknown variable",
+            "valid forms are",
+            "steps.analyze.output",
+            "(in <string>",
+        ] {
+            assert!(
+                !display.contains(forbidden),
+                "unexpected {forbidden:?} in: {display}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_template_syntax_error_without_comment_has_no_hint() {
+        let err = render_field_error("{{ steps.analyze.output }} {% endfor %}", "prompt");
+        let display = err.to_string();
+        assert!(
+            matches!(err, WorkflowError::TemplateSyntax { hint: None, .. }),
+            "expected TemplateSyntax without hint, got: {err:?}"
+        );
+        assert!(display.contains("prompt") && display.contains("unknown statement endfor"));
+        assert!(!display.contains("unknown variable"), "{display}");
+    }
+
+    #[test]
+    fn test_template_render_error_is_not_reported_as_variable_or_syntax() {
+        let err = render_field_error(
+            "{{ steps.analyze.output }} {{ steps.analyze.output | nosuch }}",
+            "verify",
+        );
+        let display = err.to_string();
+        assert!(
+            matches!(err, WorkflowError::TemplateRender { .. }),
+            "{err:?}"
+        );
+        for expected in ["verify", "unknown filter", "nosuch"] {
+            assert!(
+                display.contains(expected),
+                "missing {expected:?} in: {display}"
+            );
+        }
+        for forbidden in ["unknown variable", "valid forms are", "(in <string>"] {
+            assert!(
+                !display.contains(forbidden),
+                "unexpected {forbidden:?} in: {display}"
+            );
+        }
+
+        // A render-time type error carries a line, so TemplateError classifies it as
+        // ParseError; it must still not be reported as a syntax error.
+        let err = render_field_error("{{ steps.analyze.output + 1 }}", "prompt");
+        assert!(
+            matches!(err, WorkflowError::TemplateRender { .. }),
+            "{err:?}"
+        );
+        assert!(err.to_string().contains("invalid operation"), "{err}");
+    }
+
+    #[test]
+    fn test_undefined_without_range_names_no_variable() {
+        let template = "{{ steps.first.output }}";
+        assert_eq!(undefined_variable_name(template, None), None);
+        assert_eq!(undefined_variable_name(template, Some(30..40)), None);
+        assert_eq!(undefined_variable_name(template, Some(3..3)), None);
+        assert_eq!(undefined_variable_name("steps   .x", Some(5..8)), None);
+        assert_eq!(undefined_variable_name("é{{ x }}", Some(1..2)), None);
+
+        let err = map_template_error(
+            crate::template::TemplateError::UndefinedVariable(minijinja::Error::from(
+                minijinja::ErrorKind::UndefinedError,
+            )),
+            template,
+            "wf",
+            "step",
+            "prompt",
+        );
+        let display = err.to_string();
+        match err {
+            WorkflowError::TemplateRender { ref message, .. } => {
+                assert_eq!(message, "undefined value")
+            }
+            ref other => panic!("expected TemplateRender, got: {other:?}"),
+        }
+        for forbidden in ["steps.first.output", "valid forms are", "(in <string>"] {
+            assert!(
+                !display.contains(forbidden),
+                "unexpected {forbidden:?} in: {display}"
+            );
+        }
+
+        let err = render_field_error("{{ steps\n.missing.output }}", "prompt");
+        let display = err.to_string();
+        match err {
+            WorkflowError::TemplateRender { ref message, .. } => {
+                assert_eq!(message, "undefined value")
+            }
+            ref other => panic!("expected TemplateRender, got: {other:?}"),
+        }
+        assert!(
+            !display.contains("missing") && !display.contains("valid forms are"),
+            "{display}"
+        );
+    }
+
+    #[test]
+    fn test_undefined_variable_name_recovers_root_identifier() {
+        for (template, expected) in [
+            ("{{ steps .missing.output }}", "steps.missing.output"),
+            ("{{ steps . missing . output }}", "steps.missing.output"),
+            (
+                "{{ steps[\"missing\"].output }}",
+                "steps[\"missing\"].output",
+            ),
+            ("{{ (steps).missing.output }}", ".missing.output"),
+            ("{{ nope.field }}", "nope.field"),
+        ] {
+            match render_field_error(template, "prompt") {
+                WorkflowError::UnknownVariable { variable, .. } => {
+                    assert_eq!(variable, expected, "template: {template:?}")
+                }
+                other => panic!("expected UnknownVariable for {template:?}, got: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_unclosed_comment_hint_follows_lexer_order() {
+        for (template, line) in [
+            ("{# note\n{% raw %}#}\n${#B}\n", 3),
+            ("{{ \"{#\" }}\n${#B}\n", 2),
+            ("{% raw %}${#A}{% endraw %}\nok\n${#B}\n", 3),
+            ("{%+ raw %}${#A}{% endraw %}\nok\n${#B}\n", 3),
+            ("{%raw%}${#A}{%endraw%}\nok\n${#B}\n", 3),
+            ("{% raw +%}${#A}{%+ endraw +%}\nok\n${#B}\n", 3),
+            ("{%-raw-%}${#A}{%-endraw-%}\nok\n${#B}\n", 3),
+            ("{%\traw\n%}${#A}{%\nendraw\t%}\nok\n${#B}\n", 5),
+            ("{{ item }}\n${#X}\nend", 2),
+        ] {
+            let hint = syntax_hint(template);
+            assert!(
+                hint.contains(&format!("at line {line}:")),
+                "template {template:?}: {hint}"
+            );
+            assert!(!hint.contains("${#A}"), "template {template:?}: {hint}");
+        }
+
+        let runner = WorkflowRunner::new(Config::default(), PathBuf::from("."), vec![]);
+        for template in [
+            "{# note\n{% raw %}#}\n",
+            "{{ \"{#\" }}\n",
+            "{% raw %}${#A}{% endraw %}\nok\n",
+        ] {
+            assert!(
+                runner
+                    .interpolate_with_fields(template, &make_test_results(), "wf", "step", "shell")
+                    .is_ok(),
+                "{template:?} should render"
+            );
+        }
+
+        let hint = syntax_hint("{# ok #} fine\nstill {# never closed\nend");
+        assert!(hint.contains("at line 2:"), "{hint}");
+        assert!(
+            !hint.contains("${#VAR}"),
+            "no `$` before the opener: {hint}"
+        );
+
+        let long_line = format!("{} ${{#X}}", "é".repeat(60));
+        let (_, text, _) = unclosed_comment_opener(&long_line).expect("opener");
+        assert!(text.len() <= 80 && long_line.starts_with(&text), "{text:?}");
     }
 
     #[test]

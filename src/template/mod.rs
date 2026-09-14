@@ -34,19 +34,28 @@ impl TemplateError {
         }
     }
 
-    /// Byte range in the original template source where the error occurred.
+    /// The underlying MiniJinja error.
     ///
-    /// Returns the span of the failing expression (e.g. `steps.missing.output` for
-    /// an undefined-variable error) so callers can extract the exact offending token
-    /// instead of guessing it from the template. Returns `None` if MiniJinja could
-    /// not associate the error with a source span.
-    pub fn source_range(&self) -> Option<std::ops::Range<usize>> {
-        let inner = match self {
+    /// Its [`minijinja::Error::kind`] is the authoritative classification: the
+    /// `ParseError` variant also holds render-time `InvalidOperation` errors that
+    /// carry a line, so the variant alone cannot tell a syntax error from a type error.
+    pub fn minijinja_error(&self) -> &minijinja::Error {
+        match self {
             TemplateError::UndefinedVariable(e)
             | TemplateError::ParseError(e)
             | TemplateError::RenderError(e) => e,
-        };
-        inner.range()
+        }
+    }
+
+    /// Byte range in the original template source where the error occurred.
+    ///
+    /// Returns the span of the failing expression (e.g. `.missing.output` for an
+    /// undefined attribute of `steps`) so callers can extract the offending token
+    /// instead of guessing it from the template. Returns `None` if MiniJinja could
+    /// not associate the error with a source span. The range can still be out of
+    /// bounds or blank, e.g. for an unterminated comment it points at end-of-input.
+    pub fn source_range(&self) -> Option<std::ops::Range<usize>> {
+        self.minijinja_error().range()
     }
 }
 
