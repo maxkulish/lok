@@ -293,6 +293,31 @@ Inside `validate.prompt` only (separate namespace from step interpolation):
 {{ stderr }}    # The step's stderr (CLI backends only)
 ```
 
+### Literal braces and comments
+
+lok renders `prompt`, `shell` and `verify` through MiniJinja before a step runs. `{{ ... }}` and `{% ... %}` are template syntax in all three fields.
+
+Jinja comments are not supported. `{#` and `#}` are plain text, so shell string length (`${#VAR}`) and markdown heading attributes (`{#id}`) work as written. Text between them is still rendered like any other text:
+
+```
+[ ${#OUTPUT} -lt 100 ]              # rendered as written
+{# {{ steps.plan.output }} #}       # the braces stay, the variable is substituted
+{# {{ steps.missing.output }} #}    # fails with an unknown variable error
+```
+
+To pass a literal `{{` or `{%` through, wrap it in a raw block:
+
+```
+echo {% raw %}{{ not a variable }}{% endraw %}   # the step runs: echo {{ not a variable }}
+```
+
+Two limits apply to raw blocks:
+
+- **No loop variables inside a raw block.** lok already wraps `{{ item }}`, `{{ item.X }}` and `{{ index }}` in raw blocks. A second raw block around them fails with `unknown statement endraw`.
+- **Avoid raw blocks in `for_each` steps.** Each field is rendered twice, once for the step and once per item. Braces released by a raw block in the first pass are rendered again in the second. If that render fails, lok keeps the first-pass text, leaves the loop variables unsubstituted, and shows no error.
+
+Both limits are tracked as follow-ups in `specs/2026-09-14-clo-655-jinja-comment-syntax.md`.
+
 ---
 
 ## Workflow Patterns
