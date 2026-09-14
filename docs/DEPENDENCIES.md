@@ -1,13 +1,14 @@
 # Dependencies - Lok
-**Last Updated**: 2026-08-07 (CLO-653 merged, closing Phase 12. Fifteen open tasks tracked here, one blocked by design; CLO-655, CLO-656 and CLO-660 were filed during CLO-653 and are not yet placed)
+**Last Updated**: 2026-09-14 (CLO-656 completed. CLO-655's code merged, and its ticket waits on the design-review fallback timeout follow-up and Ollama quota for live verification. CLO-660 is still not placed)
 
 ## Current Blockers
 
 | Blocked Task | Blocked By | Blocker Status | Notes |
 |--------------|------------|----------------|-------|
 | [CLO-650](https://linear.app/cloud-ai/issue/CLO-650) | CLO-623 | Not started | Bot-identity hardening belongs in the script CLO-623 extracts, not in duplicated markdown |
+| [CLO-655](https://linear.app/cloud-ai/issue/CLO-655) | design-review fallback timeout (PROJECT.md Up Next, no ticket) | Not started | Code merged in PR #101. Only live verification remains: the Claude fallback needs a longer timeout, and the success path needs Ollama quota |
 
-One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-591 -> CLO-592, plus CLO-600) closed on 2026-08-02; every other open task is independent.
+Two tasks wait (above): CLO-650 by design, CLO-655 on live verification. The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-591 -> CLO-592, plus CLO-600) closed on 2026-08-02; every other open task is independent.
 
 ## Unblocked & Ready
 
