@@ -11,7 +11,9 @@ task_profile:
   has_data_model: false
   has_external_deps: false
   skip_probe: false
-pending_human_action: null
+pending_human_action: >-
+  Decide how to finalize CLO-655 now that PR #101 is merged: the complete phase would mark the task done, but
+  live design-review gates 2 and 3 are still pending and the ticket is meant to stay open.
 linear:
   team: Cloud-ai
   project: Lok
@@ -22,14 +24,17 @@ linear:
     - CLO-656
   bundled:
     - CLO-656
+  bundled_outcome: >-
+    CLO-656 Done on 2026-09-14. Its criteria were met by #101; the parallel PR #100 was closed as superseded at
+    14:36Z; follow-up PR #102 (field name in template error messages) merged as 6536a8c at 15:10Z.
   branch_suggested: kmamemo/clo-655-shell-var-in-a-workflow-step-body-is-parsed-as-an
   branch_actual: fix/clo-655-var-parse
   priority: 2
 workflow:
   current_phase: pr
-  status: in_progress
+  status: merged_pending_finalize
   created_at: '2026-09-14T10:02:23.000Z'
-  updated_at: '2026-09-14T13:55:00.000Z'
+  updated_at: '2026-09-14T15:40:00.000Z'
 phases:
   discovery:
     status: skipped
@@ -112,8 +117,27 @@ phases:
       - 8663a5d fix(CLO-655) let the design-review pipeline finish on both reviewer paths
       - a24535c docs(CLO-655) document literal braces, disabled comments and raw-block limits
   pr:
-    status: pending
-    ci_passed: false
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/101
+    pr_number: 101
+    merged_at: '2026-09-14T14:07:20Z'
+    merge_commit: 3b1b3e3ed889127a96de4838862e90f9c5fb2a5c
+    merged_by: maxkulish
+    ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-09-14T15:10:00Z'
+    bot_review_note: >-
+      qodo-code-review is installed but posted only a billing notice (workspace out of credits); no review was
+      produced for any head.
+    reviews_addressed: true
+    bot_rereview_head_sha: none
+    bot_rereview_at: '2026-09-14T15:10:00Z'
+    pre_merge_refetch_passed: false
+    post_merge_refetch:
+      at: '2026-09-14T15:10:00Z'
+      review_threads: 0
+      inline_comments: 0
+      note: The PR was merged by Max before the bot review wait and pre-merge refetch ran.
     closing_rule: >-
       Do not use a Linear closing keyword for CLO-655; it stays open until live gates 2 and 3 pass. CLO-656 may
       close on merge.
@@ -200,3 +224,42 @@ history:
     action: pre_flight_checks_passed
     phase: pr
     details: cargo fmt --check, clippy -D warnings, clippy --tests (0 warnings), cargo test all pass.
+  - timestamp: '2026-09-14T14:40:00.000Z'
+    action: pr_created
+    phase: pr
+    details: >-
+      PR #101 created. Linear CLO-655 and CLO-656 commented and moved to In Review. The PR body says "Fixes
+      CLO-656" and "Part of CLO-655".
+  - timestamp: '2026-09-14T14:45:00.000Z'
+    action: workflow_blocked
+    phase: pr
+    details: >-
+      Linear showed CLO-656 already linked to PR #100 from a parallel session (worktree lok--fix-clo-656-unknown-var,
+      CI green, open). Both PRs rewrite map_template_error. PR #100's unclosed-comment scanner and its advice to
+      wrap ${#VAR} in raw blocks are made obsolete by PR #101. Stopped before the bot review wait pending a user
+      decision.
+  - timestamp: '2026-09-14T14:07:20.000Z'
+    action: pr_merged
+    phase: pr
+    details: PR #101 squash-merged by maxkulish as 3b1b3e3 with CI green. PR #100 remained open.
+  - timestamp: '2026-09-14T15:10:00.000Z'
+    action: workflow_unblocked
+    phase: pr
+    details: >-
+      Overlap resolved by the merge. PR #100 conflicts with main, its unclosed-comment hint is obsolete, and its
+      undefined_variable_name would re-blame filter names. Guidance sent to session lok-fix-clo-656-unknown-var-da:
+      close PR #100 as superseded after Max confirms, optionally follow up with field names on top of main, and
+      move CLO-656 to Done with #101 linked. Qodo posted only a billing notice on #101; 0 review threads.
+  - timestamp: '2026-09-14T15:20:00.000Z'
+    action: cross_task_decision
+    phase: pr
+    details: >-
+      Max chose close-100. Relayed to session lok-fix-clo-656-unknown-var-da: close PR #100 as superseded, move
+      CLO-656 to Done with #101 linked, and start a field-name follow-up branched from main.
+  - timestamp: '2026-09-14T15:40:00.000Z'
+    action: cross_task_resolved
+    phase: pr
+    details: >-
+      Verified on GitHub and Linear: PR #100 closed, PR #102 merged as 6536a8c, CLO-656 Done with #101 attached.
+      Main now reports the field in TemplateSyntax and TemplateRender messages. CLO-655 remains open pending live
+      gates 2 and 3.
