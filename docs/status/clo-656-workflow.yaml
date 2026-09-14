@@ -1,0 +1,280 @@
+task_id: clo-656
+task_type: specification
+classification_reason: >-
+  Well-scoped single-module fix: map_template_error in src/workflow.rs and the TemplateError classification in
+  src/template/mod.rs. The Linear ticket already states the proposed work and four acceptance criteria, so no
+  architecture decision is open. User confirmed the specification workflow.
+pending_human_action: null
+outcome: >-
+  Superseded. The CLO-655 spec bundled CLO-656 and PR #101 (merged 2026-09-14T14:07:20Z as 3b1b3e3) met all four
+  acceptance criteria, so PR #100 was closed unmerged. Only the step field name in TemplateSyntax/TemplateRender
+  messages was carried forward, as a follow-up on fix/clo-656-field-name from main. The spec, spec reviews and
+  validation reports referenced below were committed on fix/clo-656-unknown-var and remain reachable through
+  refs/pull/100/head; they were not merged.
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  archived_at_start: false
+  blocks: []
+  blocked_by: []
+  related_to:
+    - CLO-655
+    - CLO-624
+  branch_suggested: kmamemo/clo-656-every-workflow-template-failure-is-reported-as
+  branch_actual: fix/clo-656-unknown-var
+  followup_branch: fix/clo-656-field-name
+  status_at_end: Done
+  priority: 3
+workflow:
+  current_phase: complete
+  status: superseded
+  created_at: '2026-09-14T12:05:00.000Z'
+  updated_at: '2026-09-14T14:30:00.000Z'
+pre_decisions:
+  error_shape:
+    chosen: TemplateSyntax + TemplateRender variants, classified on minijinja::ErrorKind
+    detail: >-
+      SyntaxError -> TemplateSyntax, UndefinedError -> UnknownVariable, every other kind -> TemplateRender.
+      TemplateError::ParseError was rejected as the classifier because from_minijinja also routes render-time
+      InvalidOperation errors that carry a line into it, so it would label type errors as syntax errors.
+    decided_at: '2026-09-14T12:30:00.000Z'
+    decided_by: user
+  unclosed_comment_hint:
+    chosen: name the unclosed {# line and text, with a ${#VAR} note when preceded by $
+    detail: >-
+      MiniJinja reports "unexpected end of comment" at end-of-input (line 6 for a body whose ${#OUT} is on line 3),
+      so the parser line alone does not locate the fault.
+    decided_at: '2026-09-14T12:30:00.000Z'
+    decided_by: user
+  full_variable_name:
+    chosen: fix in this change
+    detail: >-
+      MiniJinja's undefined-attribute range starts at the failing attribute, so today the message reads
+      '{{ .missing.output }}'. Extend the range back to the root identifier.
+    decided_at: '2026-09-14T12:30:00.000Z'
+    decided_by: user
+issue_corrections:
+  - field: fallback trigger
+    claim: source_range() yields nothing for a comment or block syntax error.
+    reality: >-
+      MiniJinja 2.19 does return a range for the unclosed-comment SyntaxError, but it points at end-of-input: past
+      the template length (template.get returns None) or a lone newline that trims to empty. Other syntax errors
+      ({% endfor %}, {{ }}) return in-bounds ranges, so they blame a token such as 'endfor' or '}}' as the unknown
+      variable rather than taking the first-{{ }} fallback.
+    impact: Deleting the fallback alone would not fix those cases; classification on ErrorKind is required.
+    found_in_phase: spec
+  - field: scope of the misreport
+    claim: The ticket frames the defect around syntax errors.
+    reality: >-
+      Render-time UnknownFilter and InvalidOperation errors are misreported as UnknownVariable too, and genuine
+      undefined attributes are named without their root identifier.
+    impact: Covered by the TemplateRender variant and the full-identifier fix.
+    found_in_phase: spec
+phases:
+  discovery:
+    status: skipped
+    skip_reason: Specification task
+    approved: true
+  design:
+    status: skipped
+    reason: Specification task - using /spec instead
+  spec:
+    status: complete
+    revision: 2
+    spec_file: specs/2026-09-14-clo-656-template-error-kinds.md
+    approved: true
+    approved_at: '2026-09-14T13:40:00.000Z'
+    round2_review: >-
+      Failed with no output. Ollama timed out 3 times, the haiku validator returned a conversational reply, the
+      Claude fallback timed out twice, synthesis was skipped, and write_reviews exited 1 with "unknown variable
+      '{{ .synthesis.output }}'" - the leading-dot misreport this task fixes, from the installed 20260913 binary.
+      User had already approved revision 2. Harness follow-ups recorded as T1/T2 in session notes.
+    review_ollama: docs/reviews/clo-656-spec-review-ollama-r1.md
+    review_synthesis: docs/reviews/clo-656-spec-review-synthesis-r1.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - AC3 carves out the AC4 unclosed-comment hint from the no-guessing rule
+      - detail() None uses the ErrorKind description, never MiniJinja Display with its (in <string>:N) suffix
+      - Tests 1, 4 and 7 assert no (in <string> suffix; test 7 builds a detail-less UndefinedError via Error::from(ErrorKind)
+      - >-
+        Scanner rule rewritten to a single lexer-order pass (comment, raw, expression, statement). The reviewer's
+        proposed edge test ({# candidate then a raw #}) was corrected, because a probe showed the raw #} closes the
+        comment, so the hint must name the later opener
+      - Nested raw blocks declared non-nesting, matching MiniJinja (first endraw closes)
+      - Scanner split into its own sub-task; test sub-task dependency on the new variants made explicit
+      - New test 9 covers the lexer-order cases
+    flagged_suggestions: []
+  implement:
+    status: complete
+    sub_tasks_complete: 5
+    codex_validated: true
+    codex_verdict: PASS_WITH_NOTES
+    codex_report: docs/reviews/clo-656-codex-validation.md
+    validation_synthesis_report: docs/reviews/clo-656-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_fixes:
+      - Workflow YAML review_ollama/review_synthesis pointed at deleted unsuffixed files; now the committed -r1 files
+      - PROJECT.md CLO-656 phase Spec -> Implement
+    validation_declined:
+      - finding: Trailing whitespace in docs/reviews/clo-656-spec-review-ollama-r1.md fails git diff --check
+        reason: >-
+          Two trailing spaces after bold headings are markdown hard breaks in saved reviewer output; no CI job runs a
+          whitespace check. Synthesis classified it a false positive.
+      - finding: Codex could not reproduce cargo test and clippy
+        reason: Codex sandbox could not write .cargo-lock; synthesis re-ran both in the worktree (1354 passed, clippy clean).
+    validation_rerun: >-
+      Not re-run after the fix iteration. Both fixes are single docs cells verified by path checks, and the synthesis
+      stated no rebuild or re-review is needed for a docs-only commit.
+    commits:
+      - sha: 0deae98
+        summary: 'fix(CLO-656): report workflow template failures by their real kind'
+    spec_deviations:
+      - spec: TemplateSyntax/TemplateRender carry field and line as String and Option<usize>
+        actual: 'field: &''static str, line: Option<u32>'
+        reason: >-
+          clippy::result_large_err fires at >= 128 bytes on every Result<_, WorkflowError> function; the spec shape
+          was 136 bytes. The three field names are literals, and a u32 line cannot overflow for a step field.
+      - spec: Tests seed results with a step named first or health_check
+        actual: Tests reuse the existing make_test_results helper (steps analyze and check)
+        reason: Avoids repeating the 13-line StepResult literal in seven tests; assertions are unchanged.
+    evidence:
+      full_suite: 1354 passed, 0 failed (cargo test, both bin targets plus integration tests)
+      clippy: clean with --all-targets -D warnings, default features and --no-default-features
+      fmt: cargo fmt --check clean
+      mutation_checks: >-
+        7 of 7 caught - no + whitespace marker, no {{ }} skip, no whitespace before root, classify on ParseError
+        variant, no trim validation, $ always assumed, leading-dot stripping fallback
+      manual_e2e_after: >-
+        Workflow 'clo-656-repro': step 'b' has a template syntax error in its shell field at line 6: unexpected end
+        of comment / hint: unclosed '{#' at line 3: `if [ ${#OUT} -lt 10 ]; then` - '{#' opens a template comment;
+        wrap shell ${#VAR} in {% raw %}...{% endraw %} / exit=1 / step b body never executed
+  pr:
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/100
+    pr_number: 100
+    ci_passed: true
+    closed_unmerged: true
+    closed_at: '2026-09-14T14:36:00.000Z'
+    superseded_by: https://github.com/maxkulish/lok/pull/101
+    bot_review_blocked: >-
+      qodo-code-review is installed but billing-blocked: its only PR comment (12:16:30Z, updated 12:33:14Z) says
+      "Qodo reviews are paused because your workspace is out of credits". No review on 9db985c after the 600s wait
+      and a second 600s wait following /agentic_review at 12:33:07Z. bot_review_wait_completed was never recorded;
+      the PR was closed as superseded before the gate was resolved.
+    linear_status: In Review
+  complete:
+    status: superseded
+    reason: >-
+      PR #100 closed unmerged; CLO-656 marked Done against #101. Reasons recorded on the PR - conflicts with main,
+      the unclosed-{# hint is dead code once #101 disabled Jinja comments, and undefined_variable_name reported the
+      filter name for `{{ steps.first.absent | upper }}` (session finding F12, missed by both spec review rounds and
+      the Codex validation).
+    followup:
+      branch: fix/clo-656-field-name
+      commit: b604836
+      scope: >-
+        Thread the step field (prompt, shell or verify) into TemplateSyntax and TemplateRender messages on top of
+        main's attribution rule, which is unchanged. Whitespace-tolerant root recovery deliberately left out - main
+        already quotes `{{ steps .missing.output }}` as a TemplateRender naming no variable.
+history:
+  - timestamp: '2026-09-14T12:05:00.000Z'
+    action: workflow_started
+    phase: init
+    details: >-
+      New workflow for CLO-656. Classified as specification after user confirmation. Linear issue is in Backlog and
+      not archived. Related to CLO-655 (the ${#VAR} breakage that exposed this) and CLO-624 (same lesson).
+  - timestamp: '2026-09-14T12:06:00.000Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      PROJECT.md - CLO-656 moved from Up Next to Active Work (1/3). ROADMAP.md and DEPENDENCIES.md hold no row for
+      CLO-656 (DEPENDENCIES.md lists it as not yet placed), so neither changed.
+  - timestamp: '2026-09-14T12:40:00.000Z'
+    action: spec_draft_ready
+    phase: spec
+    details: >-
+      Spec written after probing MiniJinja 2.19.0 error kinds, lines and ranges and three clarification answers
+      (see pre_decisions). Starting the lok spec-review workflow.
+  - timestamp: '2026-09-14T12:27:00.000Z'
+    action: spec_review_complete
+    phase: spec
+    details: >-
+      Ollama (codex via glm-5.3:cloud) returned APPROVE_WITH_SUGGESTIONS; Claude fallback skipped because Ollama
+      succeeded; synthesis APPROVE_WITH_SUGGESTIONS from the single reviewer.
+  - timestamp: '2026-09-14T12:45:00.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      Eight suggestions, all additive or refinement, none contradicting a prior decision. One suggested test was
+      factually wrong about MiniJinja lexing and was applied in corrected form after a probe.
+  - timestamp: '2026-09-14T13:20:00.000Z'
+    action: spec_revised
+    phase: spec
+    details: >-
+      User-supplied review raised five gaps; all five validated against code and a MiniJinja 2.19.0 probe before
+      editing. (1) Raw-tag grammar now allows + or -, and zero-or-more whitespace including tabs and newlines.
+      (2) AC3 permits root-identifier recovery; AC5 defines three rules covering whitespace-separated, bracket and
+      parenthesised roots, with verbatim fallback and no dot-stripping. (3) New variants carry the field name
+      (prompt/shell/verify); line numbers are within the field value. (4) AC6 validates the range before recovery;
+      test 7 covers absent, out-of-bounds, empty, whitespace-only and off-char-boundary ranges plus a real no-range
+      runtime case. (5) Manual recipe uses cargo run --bin lok with an exact fixture, exit code and a marker file
+      proving the failing body never ran; the before output was captured on c1ea11e.
+  - timestamp: '2026-09-14T13:40:00.000Z'
+    action: spec_approved
+    phase: spec
+    details: User approved spec revision 2. Proceeding to implement (spec decomposition is the plan).
+  - timestamp: '2026-09-14T14:20:00.000Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All 5 sub-tasks landed in 0deae98. Full suite, clippy (both feature sets) and fmt clean; 7/7 mutations caught;
+      manual end-to-end fixture reports TemplateSyntax with the line-3 hint and exit 1.
+  - timestamp: '2026-09-14T14:20:00.000Z'
+    action: commit_created
+    phase: implement
+    details: 0deae98 fix(CLO-656) plus docs commit for spec, round-1 reviews, workflow state and PROJECT.md.
+  - timestamp: '2026-09-14T14:14:00.000Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      pre-pr-validation (spec as design and plan): Codex gpt-5.6-sol PASS_WITH_NOTES, synthesis PASS_WITH_NOTES with
+      two docs must-fix items, applied in one fix iteration. No source findings; AC1-AC8 confirmed.
+  - timestamp: '2026-09-14T14:30:00.000Z'
+    action: pushed_to_remote
+    phase: implement
+    details: Validation reports and docs fixes committed and pushed to origin/fix/clo-656-unknown-var.
+  - timestamp: '2026-09-14T14:35:00.000Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: cargo fmt --check, cargo clippy -D warnings, cargo clippy --tests, cargo test (1354 passed, 0 failed).
+  - timestamp: '2026-09-14T14:40:00.000Z'
+    action: pr_created
+    phase: pr
+    details: >-
+      PR #100 created from fix/clo-656-unknown-var at 9db985c. Linear CLO-656 moved to In Review, PR linked, and a
+      comment posted.
+  - timestamp: '2026-09-14T12:24:00.000Z'
+    action: ci_passed
+    phase: pr
+    details: 'PR #100 at 9db985c - build/test ubuntu and macos, MSRV 1.83, library boundary, CI Gate all SUCCESS; etxtbsy-stress skipped.'
+  - timestamp: '2026-09-14T12:43:00.000Z'
+    action: workflow_blocked
+    phase: pr
+    details: >-
+      Bot review gate failed closed. Qodo workspace is out of credits and posted a billing-blocked notice instead of
+      a review; /agentic_review produced nothing within 600s.
+  - timestamp: '2026-09-14T14:30:00.000Z'
+    action: workflow_superseded
+    phase: pr
+    details: >-
+      CLO-655 session reported PR #101 merged as 3b1b3e3 with CLO-656 bundled. Verified the merge, the three-file
+      conflict (git merge-tree) and the `| upper` misattribution in #100 by probe before acting.
+  - timestamp: '2026-09-14T14:36:00.000Z'
+    action: workflow_complete
+    phase: complete
+    details: >-
+      User confirmed in-session. PR #100 closed with a superseded comment; Linear CLO-656 -> Done with #101 linked and
+      a comment; field-name follow-up opened from main.
