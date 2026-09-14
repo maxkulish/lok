@@ -11,9 +11,7 @@ task_profile:
   has_data_model: false
   has_external_deps: false
   skip_probe: false
-pending_human_action: >-
-  Rerun design-review live gates 2 and 3 once Ollama quota is available and the design-review fallback timeout
-  follow-up has landed; then move CLO-655 to Done in Linear and to Recently Completed in docs/PROJECT.md.
+pending_human_action: null
 linear:
   team: Cloud-ai
   project: Lok
@@ -29,13 +27,13 @@ linear:
     14:36Z; follow-up PR #102 (field name in template error messages) merged as 6536a8c at 15:10Z.
   branch_suggested: kmamemo/clo-655-shell-var-in-a-workflow-step-body-is-parsed-as-an
   branch_actual: fix/clo-655-var-parse
-  status_at_complete: In Review (kept open pending live gates 2 and 3)
+  status_at_complete: Done
   priority: 2
 workflow:
   current_phase: complete
-  status: awaiting_live_verification
+  status: complete
   created_at: '2026-09-14T10:02:23.000Z'
-  updated_at: '2026-09-14T16:05:00.000Z'
+  updated_at: '2026-09-14T16:45:00.000Z'
 phases:
   discovery:
     status: skipped
@@ -150,10 +148,15 @@ phases:
     aggregation_notes: >-
       PROJECT.md: CLO-655 moved from Active Work to Blocked, CLO-656 added to Recently Completed. DEPENDENCIES.md:
       CLO-655 added to Current Blockers. ROADMAP.md has no row for either task and was not changed.
-    linear_update: CLO-655 deliberately left In Review; not set to Done
+    linear_update: CLO-655 set to Done after the second finalize PR merged, by Max's decision
+    closed_with_known_gaps: >-
+      Live design-review gates 2 (success path completion) and 3 (fallback produces a review) were never verified
+      live. Gate 2 was blocked by the Ollama cloud usage limit; gate 3 reached the fallback, which timed out at the
+      2m step timeout (Up Next follow-up in docs/PROJECT.md). Gate 1 (template rendering) passed on three runs.
+    first_finalize_pr_number: 104
     finalize_branch: docs/clo-655-finalize
-    finalize_pr_url: https://github.com/maxkulish/lok/pull/104
-    finalize_pr_number: 104
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/106
+    finalize_pr_number: 106
     lessons_file: docs/lessons/clo-655-l1.md .. clo-655-l6.md
     lessons_learned:
       - Assert diagnostics exactly and probe library error metadata through lok's real call path
@@ -294,3 +297,13 @@ history:
       CLO-656 to Recently Completed, CLO-655 added to DEPENDENCIES Current Blockers. Linear CLO-655 kept In Review
       by Max's choice. Built in the CLO-655 worktree rather than the main checkout, because cd and git -C are not
       allowed in this environment.
+  - timestamp: '2026-09-14T16:45:00.000Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      Max asked to finalize the task fully. CLO-655 moved from Blocked to Recently Completed in PROJECT.md and
+      removed from DEPENDENCIES Current Blockers; the fallback-timeout follow-up row notes the closed gap.
+  - timestamp: '2026-09-14T16:45:00.000Z'
+    action: workflow_complete
+    phase: complete
+    details: Task CLO-655 completed with live design-review gates 2 and 3 unverified, recorded under closed_with_known_gaps.
