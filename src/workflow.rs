@@ -47,18 +47,20 @@ pub enum WorkflowError {
         variable: String,
     },
 
-    #[error("Workflow '{workflow}': step '{step}' failed to parse its template on line {line}: {detail}\n  hint: lok parses {{{{ }}}} and {{% %}} in prompt, shell and verify fields; see \"Template Variables\" in docs/guides/lok-setup-guide.md")]
+    #[error("Workflow '{workflow}': step '{step}' failed to parse its {field} template on line {line}: {detail}\n  hint: lok parses {{{{ }}}} and {{% %}} in prompt, shell and verify fields; see \"Template Variables\" in docs/guides/lok-setup-guide.md")]
     TemplateSyntax {
         workflow: String,
         step: String,
+        field: &'static str,
         line: usize,
         detail: String,
     },
 
-    #[error("Workflow '{workflow}': step '{step}' failed to render its template{}: {detail}", .line.map(|l| format!(" on line {l}")).unwrap_or_default())]
+    #[error("Workflow '{workflow}': step '{step}' failed to render its {field} template{}: {detail}", .line.map(|l| format!(" on line {l}")).unwrap_or_default())]
     TemplateRender {
         workflow: String,
         step: String,
+        field: &'static str,
         line: Option<usize>,
         detail: String,
     },
@@ -1780,17 +1782,34 @@ impl WorkflowRunner {
                     &results,
                     &workflow.name,
                     &step.name,
+                    "prompt",
                 )?;
                 let shell = step
                     .shell
                     .as_ref()
-                    .map(|s| self.interpolate_with_fields(s, &results, &workflow.name, &step.name))
+                    .map(|s| {
+                        self.interpolate_with_fields(
+                            s,
+                            &results,
+                            &workflow.name,
+                            &step.name,
+                            "shell",
+                        )
+                    })
                     .transpose()?;
                 // When verify is set, also resolve format command to run first
                 let verify_value = step
                     .verify
                     .as_ref()
-                    .map(|v| self.interpolate_with_fields(v, &results, &workflow.name, &step.name))
+                    .map(|v| {
+                        self.interpolate_with_fields(
+                            v,
+                            &results,
+                            &workflow.name,
+                            &step.name,
+                            "verify",
+                        )
+                    })
                     .transpose()?;
                 let format = verify_value
                     .as_ref()
@@ -2942,20 +2961,23 @@ impl WorkflowRunner {
     /// before rendering so they pass through unchanged for [`interpolate_loop_vars`] to
     /// substitute later inside `for_each` iterations.
     ///
-    /// Render failures are mapped by [`map_template_error`].
+    /// Render failures are mapped by [`map_template_error`]. `field` names the step field
+    /// being rendered (`prompt`, `shell` or `verify`), so a reported line number points at
+    /// one place.
     fn interpolate_with_fields(
         &self,
         template: &str,
         results: &HashMap<String, StepResult>,
         workflow_name: &str,
         current_step: &str,
+        field: &'static str,
     ) -> Result<String, WorkflowError> {
         let protected = protect_loop_vars(template);
         let backends = Self::collect_backends(results);
         let ctx = crate::template::TemplateContext::new(results, &self.args, &backends);
         self.template_engine
             .render(&protected, &ctx)
-            .map_err(|e| map_template_error(e, &protected, workflow_name, current_step))
+            .map_err(|e| map_template_error(e, &protected, workflow_name, current_step, field))
     }
 
     /// Interpolate loop variables (`{{ item }}`, `{{ item.field }}`, `{{ index }}`) in a string.
@@ -3141,12 +3163,13 @@ fn translate_legacy_condition(condition: &str) -> std::borrow::Cow<'_, str> {
 ///   variable.
 ///
 /// `template` must be the exact text that was rendered, because error ranges are
-/// byte offsets into it.
+/// byte offsets into it. `field` names the step field it came from.
 fn map_template_error(
     err: crate::template::TemplateError,
     template: &str,
     workflow_name: &str,
     current_step: &str,
+    field: &'static str,
 ) -> WorkflowError {
     use crate::template::TemplateError;
 
@@ -3159,6 +3182,7 @@ fn map_template_error(
         return WorkflowError::TemplateSyntax {
             workflow,
             step,
+            field,
             line,
             detail: err.message(),
         };
@@ -3181,6 +3205,7 @@ fn map_template_error(
     WorkflowError::TemplateRender {
         workflow,
         step,
+        field,
         line,
         detail,
     }
@@ -4224,7 +4249,7 @@ mod tests {
         let template =
             "Verdict: {{ steps.synthesize.verdict }}\nSummary: {{ steps.synthesize.summary }}";
         let result = runner
-            .interpolate_with_fields(template, &results, "test-workflow", "test-step")
+            .interpolate_with_fields(template, &results, "test-workflow", "test-step", "prompt")
             .unwrap();
 
         assert!(
@@ -4655,7 +4680,7 @@ line2"}"#;
         );
         let template = "{% if steps.fetch.success %}A{% else %}B{% endif %}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "A");
     }
@@ -4687,7 +4712,7 @@ line2"}"#;
         );
         let template = r#"{{ steps.fetch.output | default_val("fallback") }}"#;
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "fallback");
     }
@@ -4716,7 +4741,7 @@ line2"}"#;
         );
         let template = "{{ steps.fetch.output | trim }}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "hello world");
     }
@@ -4746,7 +4771,7 @@ line2"}"#;
         );
         let template = r#"{{ steps.list.items | join(", ") }}"#;
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "a, b, c");
     }
@@ -4776,7 +4801,7 @@ line2"}"#;
         );
         let template = "{{ steps.fetch.path | shell_escape }}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "'value with spaces'");
     }
@@ -4805,7 +4830,7 @@ line2"}"#;
         );
         let template = "{{ steps.fetch.output | lines | first }}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "first line");
     }
@@ -4848,7 +4873,7 @@ line2"}"#;
         );
         let template = "{{ steps.raw_json.verdict }}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "PASS");
     }
@@ -4868,7 +4893,7 @@ line2"}"#;
         let results = HashMap::new();
         let template = r#"{{ steps.nonexistent | default_val("fallback") }}"#;
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "fallback");
     }
@@ -4905,7 +4930,7 @@ line2"}"#;
         );
         let template = "{% for entry in steps.list.items %}{{ entry }},{% endfor %}";
         let out = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap();
         assert_eq!(out, "a,b,c,");
     }
@@ -4939,7 +4964,7 @@ line2"}"#;
         // should name the second, not the first.
         let template = "{{ steps.first.output }} then {{ steps.missing.output }}";
         let err = runner
-            .interpolate_with_fields(template, &results, "wf", "step")
+            .interpolate_with_fields(template, &results, "wf", "step", "prompt")
             .unwrap_err();
         let message = err.to_string();
         match err {
@@ -4987,7 +5012,7 @@ line2"}"#;
     fn render_template_err(template: &str) -> WorkflowError {
         let runner = WorkflowRunner::new(Config::default(), PathBuf::from("."), vec![]);
         runner
-            .interpolate_with_fields(template, &first_step_results(), "wf", "step")
+            .interpolate_with_fields(template, &first_step_results(), "wf", "step", "prompt")
             .unwrap_err()
     }
 
@@ -5000,6 +5025,7 @@ line2"}"#;
                 &first_step_results(),
                 "wf",
                 "step",
+                "prompt",
             )
             .unwrap();
         assert_eq!(out, "echo {{ literal }} {% if %}");
@@ -5014,6 +5040,7 @@ line2"}"#;
                 &first_step_results(),
                 "wf",
                 "step",
+                "prompt",
             )
             .unwrap();
         assert_eq!(out, "{# ok #}");
@@ -5113,7 +5140,13 @@ line2"}"#;
         let without_location = crate::template::TemplateError::UndefinedVariable(
             minijinja::Error::new(minijinja::ErrorKind::UndefinedError, "no location"),
         );
-        match map_template_error(without_location, "{{ steps.first.output }}", "wf", "step") {
+        match map_template_error(
+            without_location,
+            "{{ steps.first.output }}",
+            "wf",
+            "step",
+            "prompt",
+        ) {
             WorkflowError::TemplateRender {
                 line, ref detail, ..
             } => {
@@ -5126,6 +5159,48 @@ line2"}"#;
             }
             other => panic!("expected TemplateRender error, got: {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_template_errors_name_the_step_field() {
+        let runner = WorkflowRunner::new(Config::default(), PathBuf::from("."), vec![]);
+        let results = first_step_results();
+
+        let err = runner
+            .interpolate_with_fields("ok\n{% if %}", &results, "wf", "step", "shell")
+            .unwrap_err();
+        assert!(
+            matches!(err, WorkflowError::TemplateSyntax { field: "shell", .. }),
+            "got: {:?}",
+            err
+        );
+        assert!(
+            err.to_string()
+                .contains("step 'step' failed to parse its shell template on line 2"),
+            "got: {}",
+            err
+        );
+
+        let err = runner
+            .interpolate_with_fields("{{ 1 + \"x\" }}", &results, "wf", "step", "verify")
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                WorkflowError::TemplateRender {
+                    field: "verify",
+                    ..
+                }
+            ),
+            "got: {:?}",
+            err
+        );
+        assert!(
+            err.to_string()
+                .contains("step 'step' failed to render its verify template on line 1"),
+            "got: {}",
+            err
+        );
     }
 
     #[test]
