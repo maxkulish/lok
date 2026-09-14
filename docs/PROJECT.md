@@ -6,7 +6,7 @@
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-656](https://linear.app/cloud-ai/issue/CLO-656) | `map_template_error` reports every template failure as `UnknownVariable` naming the first `{{ }}` in the template | In Progress | Spec | - |
+| [CLO-656](https://linear.app/cloud-ai/issue/CLO-656) | `map_template_error` reports every template failure as `UnknownVariable` naming the first `{{ }}` in the template | In Progress | Implement | - |
 
 ## Up Next (Prioritized Backlog)
 
