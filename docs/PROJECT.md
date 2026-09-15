@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-09-14 (CLO-655 completed and moved to Recently Completed, closed with two live design-review gates unverified; CLO-656 completed via #101 and #102)
+**Last Updated**: 2026-09-14 (CLO-660 started; CLO-654 removed from Up Next, canceled in Linear as a duplicate folded into CLO-660)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-660](https://linear.app/cloud-ai/issue/CLO-660) | Correct the docs that misstate who publishes lokomotiv: upstream `ducks` owns the crates.io name and published all 28 binary-only versions, so this project has never published and a library release needs a new crate name or an owner grant | In Progress | Spec | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -15,7 +15,6 @@
 | High | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields) | Escape or remove step output interpolated into workflow shell fields — `shell_escape` is registered as a filter and used nowhere, so model output reaches `sh -c` as source | None — codex-security scan finding | Next (HITL) |
 | High | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632/gate-project-layer-loktoml-backend-commands-behind-a-trust-boundary) | Gate project-layer `lok.toml` backend commands behind a trust boundary — a cloned repo's `./lok.toml` is the highest-precedence config layer and can replace a backend executable | None — codex-security scan finding | Next (HITL) |
 | High | [CLO-651](https://linear.app/cloud-ai/issue/CLO-651) | `gh pr checks --watch` reports failure instantly when a PR has no checks yet, so `finalize.md` prints `CI_NOT_PASSED` in under a second and refuses to merge. Indistinguishable from a real red build | None - found during the 2026-08-06 Actions outage | Next |
-| High | [CLO-660](https://linear.app/cloud-ai/issue/CLO-660) | Three planning docs describe the crate as unpublished; crates.io has 28 published versions (2026-01-25 to 2026-02-08), all binary-only. Every "once the crate is published" deadline really means "first release that ships a library target" | None - filed during CLO-653 | Next |
 | Medium | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested) | Make pr-review-cycle shell snippets executable and tested — extract the gate logic to `.pi/scripts/`, shellcheck in CI, fixture tests asserting each gate fails *closed*, and collapse the skill/`/pr:review` duplication | None — PR #71 merged | Next |
 | Medium | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624/distinguish-a-bad-reviewer-invocation-from-an-empty-model-response) | Distinguish a bad reviewer invocation from an empty model response — `REVIEW_FAILED` on empty stdout regardless of cause is what hid the retired-gemini-CLI breakage for weeks | None — PR #71 merged | Next |
 | Medium | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627/completemd-edits-the-aggregation-files-then-checks-out-main-with-them) | `complete.md` edits the aggregation files at Step 3, then checks out main at Step 4 with them uncommitted — in worktree mode the same three files get edited twice in two places | None — CLO-625 merged | Next |
@@ -34,7 +33,6 @@
 | Low | — | `protect_loop_vars` wraps `{{ item }}`/`{{ index }}` in raw blocks even inside a user's `{% raw %}` block, which then fails with `unknown statement endraw` (documented limit in `docs/guides/lok-setup-guide.md`) | None - found during CLO-655 | Next |
 | Low | — | `interpolate_loop_vars` re-renders `for_each` fields and swallows render errors, so braces released by a raw block leave every loop variable unsubstituted with no error (documented limit) | None - found during CLO-655 | Next |
 | Low | — | `lok run <wf> args... --dir X` parses a trailing `--dir X` as `arg.N` values (`args` has `allow_hyphen_values`), so the directory is silently ignored. Every documented review invocation puts `--dir .` last and works only because it runs from the repo root | None - found during CLO-655 | Next |
-| Low | [CLO-654](https://linear.app/cloud-ai/issue/CLO-654) | The workspace-split decision record assumes lokomotiv is unpublished, but 28 versions are on crates.io. **Overlaps CLO-660**, which found the same false premise across three planning docs independently — merge the two in Linear before starting either | None - docs correction | Fold into CLO-660 |
 | Low | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610/attest-release-binaries-so-their-checksums-prove-origin-not-only) | Attest release binaries so their checksums prove origin, not only transfer — re-running a tag replaces the archive and its `.sha256` together, so a matching digest proves the pair is self-consistent and nothing more | None — standalone `release.yml` change | Next (CLO-609 landed 2026-08-03) |
 
 ## Recently Completed

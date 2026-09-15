@@ -1,0 +1,273 @@
+task_id: clo-660
+task_type: specification
+classification_reason: >-
+  Docs-only correction with five acceptance criteria already stated on the Linear ticket. The one open judgement,
+  whether the workspace-split decision stands on corrected premises, is a verdict the spec can pin before any doc
+  changes. User confirmed the specification workflow.
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  archived_at_start: true
+  unarchived_at: '2026-09-14T20:08:00.000Z'
+  blocks: []
+  blocked_by: []
+  related_to:
+    - CLO-654
+    - CLO-653
+    - CLO-593
+    - CLO-609
+  branch_suggested: kmamemo/clo-660-three-planning-docs-describe-lokomotiv-as-unpublished-but
+  branch_actual: fix/clo-660-docs
+  priority: 2
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-09-14T20:05:00.000Z'
+  updated_at: '2026-09-15T10:40:00.000Z'
+pre_decisions:
+  doc_scope:
+    chosen: living docs only
+    detail: >-
+      Correct docs/ROADMAP.md, docs/DEPENDENCIES.md, docs/PROJECT.md and docs/decisions/clo-592-workspace-split.md.
+      Historical records (reviews including raw model output, designs, design-docs, plans, discovery, status YAML)
+      stay as written; the acceptance grep is scoped to the living docs, and the decision record lists which
+      historical docs carry the old premise.
+    decided_at: '2026-09-14T20:04:00.000Z'
+    decided_by: user
+  publish_check:
+    chosen: release checklist only
+    detail: >-
+      Add a crates.io published-version check to the release documentation. No Makefile or publish.yml change, so
+      the change stays docs-only with no network call in CI.
+    decided_at: '2026-09-14T20:04:00.000Z'
+    decided_by: user
+    placement_confirmed: '2026-09-15T10:40:00.000Z (user approved option 1 at the revision 4 checkpoint)'
+    placement: >-
+      The repository has no release checklist document: `make release` has no written procedure, and no doc
+      matches release or releasing headings. The spec places the two re-verification commands (owners and versions
+      API) in the docs/DEPENDENCIES.md "crates.io publishing" standing entry (AC6). Raised with the user at the
+      revision 4 checkpoint because it departs from the literal choice.
+  premise:
+    chosen: reframe around ownership
+    detail: >-
+      Docs state that the crates.io name lokomotiv belongs to upstream ducks, this project has never published, and
+      any library release needs a new crate name or an owner grant from ducks. The workspace-split decision is
+      re-evaluated on that premise. The Linear description gets a correction block and a comment.
+    supersedes: the ticket's "first release that ships a library target" deadline
+    decided_at: '2026-09-15T00:10:00.000Z'
+    decided_by: user
+  consumer_docs_scope:
+    chosen: add README.md, src/lib.rs and the ADR clo-589 revisit trigger
+    detail: >-
+      Replace the crates.io library claim, the nonexistent 20260603 version and `cargo install lokomotiv` with
+      git-based instructions against maxkulish/lok, and correct docs/adrs/clo-589-backend-library-shape.md's
+      "lokomotiv is published to crates.io" trigger. Extends doc_scope, which otherwise stands.
+    decided_at: '2026-09-15T00:10:00.000Z'
+    decided_by: user
+issue_corrections:
+  - field: lib target commit
+    claim: CLO-660 cites d828890 on 2026-07-26; CLO-654 cites ee28f3c on 2026-07-27.
+    reality: >-
+      Both hold. d828890 (2026-07-26 23:05 +0200) added [lib] to Cargo.toml; ee28f3c (2026-07-27 00:05 +0200) is
+      the PR #61 merge that brought it to main.
+    impact: Docs should cite the merge to main (ee28f3c) as when the library surface became releasable.
+    found_in_phase: init
+  - field: ownership of the published crate
+    claim: >-
+      The 28 published lokomotiv versions are this project's; CLO-654 says the name "is ours and cannot be
+      reclaimed", and CLO-660 sets the real deadline as "the first release carrying a lib target".
+    reality: >-
+      crates.io lists ducks (Jake Goldsborough, the upstream author) as the sole owner and publisher of every
+      version. The last publish (2026-02-08) matches the last upstream commit (f8852fc); this repository's own
+      history starts 2026-03-29 (ccb8cca). maxkulish/lok is not a GitHub fork (parent none); ducks/lok was still
+      pushed to on 2026-08-08.
+    impact: >-
+      This project cannot publish lokomotiv without a co-owner invite or name transfer from ducks, so a library
+      release needs either that or a new crate name. The ticket's corrected premise is itself wrong, and the
+      workspace-split cost comparison changes because a rename is on the table either way.
+    found_in_phase: spec
+  - field: location of the pre-publish phrase
+    claim: docs/PROJECT.md carries CLO-609's "pre-publish metadata deadline".
+    reality: The phrase is at docs/DEPENDENCIES.md:31; PROJECT.md's CLO-609 row does not contain it.
+    impact: None beyond pointing the edit at the right file.
+    found_in_phase: spec
+  - field: consumer-facing docs
+    claim: The ticket scopes the defect to planning docs in docs/.
+    reality: >-
+      README.md:25 claims lokomotiv is published on crates.io as a library crate, and README.md:31 plus
+      src/lib.rs:15 pin version "20260603", which does not exist. ADR clo-589:152 uses "lokomotiv is published to
+      crates.io" as a future revisit trigger.
+    impact: The inverse false premise reaches consumers directly; outside the four living docs the user scoped.
+    found_in_phase: spec
+facts_verified:
+  crates_io:
+    checked_at: '2026-09-14T20:03:00.000Z'
+    versions: 28
+    yanked: 0
+    oldest: 20260125.0.0 (2026-01-25)
+    newest: 20260208.0.2 (2026-02-08)
+    source: https://crates.io/api/v1/crates/lokomotiv/versions
+  cargo_toml_version_at_start: 20260914.0.0
+  owners: ducks (sole owner; published_by ducks on first and last version)
+  downloads: 531 total, 130 recent
+  git_dependency_probe: >-
+    Scratch crate with lokomotiv = { git = "https://github.com/maxkulish/lok", tag = "v20260914.0.0",
+    default-features = false } and use lokomotiv::create_backend passed cargo check (16s, lokomotiv at 83ee3094);
+    cargo tree -i clap matched no package, so the no-default-features tree carries no CLI dependencies.
+phases:
+  discovery:
+    status: skipped
+    skip_reason: Specification task
+    approved: true
+  design:
+    status: skipped
+    reason: Specification task - using /spec instead
+  spec:
+    status: complete
+    revision: 4
+    spec_file: specs/2026-09-15-clo-660-crate-ownership.md
+    approved: true
+    approved_at: '2026-09-15T10:40:00.000Z'
+    approved_scope: >-
+      Option 1: revision 4 as written, the re-verification commands in the DEPENDENCIES.md standing entry rather
+      than a new release checklist doc, and the workspace-split verdict re-affirmed.
+    user_review_r2:
+      decision: revise
+      reviewed_revision: 2
+      applied:
+        - Both quick starts declare tokio (macros, rt-multi-thread); AC13 compiles each full example downstream at the tag
+        - AC7 says no known consumers in the inspected locations, keeps package and import compatibility where practical, reassesses migration at the naming decision
+        - Decision record Context corrected; Decision and Rationale kept under a historical marker; AC11 gains class (d) and limits its prohibition to current statements
+        - Change-set checks use merge-base diff plus untracked files; Cargo exit codes captured directly with logs kept; warnings compared by sorted message lines
+        - Git dependency instructions state that a git-only dependency blocks downstream crates.io publishing
+        - Install command uses --locked; the tag is described as selecting the source revision, not as pinning a version
+      verified_before_applying: >-
+        Both examples fail cargo check without tokio (exit 101, 3 errors each) and pass with it at v20260914.0.0;
+        cargo install --locked at the tag installs lok and lokomotiv; git diff main...HEAD misses the dirty PROJECT.md
+        and four untracked files; fence extraction and cargo doc warning capture tested (3 warning header lines on
+        the unedited tree).
+    review_ollama_r1: docs/reviews/clo-660-spec-review-ollama-r1.md
+    review_synthesis_r1: docs/reviews/clo-660-spec-review-synthesis-r1.md
+    review_ollama: docs/reviews/clo-660-spec-review-ollama.md
+    review_synthesis: docs/reviews/clo-660-spec-review-synthesis.md
+    review_claude_fallback: null
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_note: >-
+      Round 2 on revision 3: Ollama leg succeeded (257.1s), Claude fallback skipped, single-source synthesis.
+      Round 1 on revision 1: Ollama 211.7s, same shape.
+    review_applied: true
+    applied_suggestions_r2:
+      - Evaluation 3b scoped to this repository's URL; the unscoped form matched README.md:374 ducks/git-agent (verified)
+      - Evaluation 3c (no docs.rs lokomotiv link in README.md or src/lib.rs) and 3d (Quick Start uses the locked git install)
+      - Evaluation 12 sweeps living docs outside the seven files; four known hits recorded (ops-reviewer.md:52, Cargo.toml:11, :55, :113), any other hit escalates
+      - Evaluation 13 (ROADMAP Summary counts CLO-660), 14 (only one ADR hunk at line 152), 15 (PROJECT naming row)
+      - Verification method names the read-checks for AC2, AC3, AC4, AC6, AC7 and AC9
+      - Script 11 treats exit code, bin listing and lok --version as authoritative; the executables summary line is informational
+      - Found while dry-running the new commands, not raised by the reviewer: LIVING redefined as an array, because a plain string does not word-split in zsh and 3b errored
+    applied_suggestions:
+      - AC11 allows three hit classes (corrected, Linear-quoted title, unchanged ADR clo-589 line), each justified
+      - AC9 requires the CLO-660 Active Work row to state the ownership premise; PROJECT.md:9 corrected in place now
+      - AC1 tag sentence says vYYYYMMDD.N.P; tags v20260124.0.1 and v20260125.0.1-.0.8 disprove a fixed .0
+      - AC2 comment must name both lok and lokomotiv binaries; new AC15 and Evaluation 11 test the install command
+      - Decision-record exception spelled out (retitle, Implications, Related line, dated section)
+      - No-em-dash rule declared to override style matching for new text only
+      - README docs.rs citation corrected to 71-72
+      - Cargo.toml documentation and authors fields recorded as a follow-up in the naming-decision row
+      - Evaluation 2 sorts by created_at; Evaluation 8 records a warning-count baseline; network failure escalates
+      - AC7 verdict marked as the spec author's proposal, settled only by user approval (reviewer misread it as a user pre-decision)
+      - Scope line says docs and rustdoc
+    flagged_suggestions: []
+    verified_before_applying: >-
+      Checked every factual reviewer claim: non-.0 tags exist, docs.rs link at README.md:71, two installable bins in
+      Cargo.toml at the tag. Install probe cargo install --git ... --tag v20260914.0.0 lokomotiv installed lok and
+      lokomotiv; lok --version printed 20260914.0.0.
+  implement:
+    status: in_progress
+    sub_tasks_complete: 0
+    commits: []
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-09-14T20:05:00.000Z'
+    action: workflow_started
+    phase: init
+    details: >-
+      New workflow for CLO-660. Classified as specification after user confirmation; doc scope and publish-check
+      scope decided up front (see pre_decisions). No collision: sibling worktree fix/clo-632-toml has no commits,
+      no open PRs, and CLO-654 was already canceled in Linear as a duplicate folded into CLO-660.
+  - timestamp: '2026-09-14T20:08:00.000Z'
+    action: linear_unarchived
+    phase: init
+    details: >-
+      CLO-660 unarchived via GraphQL issueUnarchive (archived 2026-09-13 for the free-plan cap) and moved Backlog ->
+      In Progress.
+  - timestamp: '2026-09-14T20:10:00.000Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      PROJECT.md - CLO-660 moved from Up Next to Active Work (1/3), and the CLO-654 Up Next row removed because
+      Linear canceled it on 2026-09-13 as a duplicate folded into CLO-660. ROADMAP.md and DEPENDENCIES.md hold no
+      CLO-660 row (DEPENDENCIES.md lists it as not yet placed), so neither changed.
+  - timestamp: '2026-09-15T00:05:00.000Z'
+    action: premise_overturned
+    phase: spec
+    details: >-
+      crates.io owners API shows ducks (upstream) as sole owner and publisher of lokomotiv, so the ticket's
+      corrected premise was itself false. README.md and src/lib.rs found pinning a nonexistent crates.io library
+      version. User chose to reframe around ownership and add README.md, src/lib.rs and the ADR clo-589 trigger.
+  - timestamp: '2026-09-15T08:50:00.000Z'
+    action: linear_corrected
+    phase: spec
+    details: >-
+      Prepended a dated premise-correction block to the CLO-660 description (original text kept) and posted a
+      comment with the ownership evidence and the scope decisions.
+  - timestamp: '2026-09-15T09:05:00.000Z'
+    action: spec_draft_ready
+    phase: spec
+    details: >-
+      Spec revision 1 written: 14 acceptance criteria, 4 sub-tasks, 10 evaluation checks. Verdict pinned for the
+      workspace-split record: re-affirmed, revisited together with the crates.io naming decision. Starting the lok
+      spec-review workflow with a quote-free Linear description (CLO-649 workaround).
+  - timestamp: '2026-09-15T09:00:00.000Z'
+    action: spec_review_complete
+    phase: spec
+    details: >-
+      lok 20260914.0.0 spec-review: Ollama review succeeded, Claude fallback skipped, synthesis
+      APPROVE_WITH_SUGGESTIONS with 2 P1, 2 P2 and 7 P3 items. No conflicts with prior decisions.
+  - timestamp: '2026-09-15T09:20:00.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      All 11 suggestions applied as revision 2 after verifying the reviewer's factual claims and running an install
+      probe. PROJECT.md CLO-660 row corrected. Awaiting user approval at the spec checkpoint.
+  - timestamp: '2026-09-15T10:00:00.000Z'
+    action: spec_revised
+    phase: spec
+    details: >-
+      User chose revise at the revision 2 checkpoint with six gaps (tokio missing from both examples, unsupported
+      no-consumer claim, AC11 versus preserved decision text, verification blind to working-tree changes and pipe
+      exit codes, git-only dependency publishing limit, missing --locked). Each verified, then applied as revision
+      3. Round-1 review files renamed with -r1. Re-running the lok spec-review for round 2.
+  - timestamp: '2026-09-15T10:15:00.000Z'
+    action: spec_review_complete
+    phase: spec
+    details: >-
+      Round 2 on revision 3: APPROVE_WITH_SUGGESTIONS, one High finding (3b false positive on README.md:374), three
+      Medium, three Low. No conflicts with prior decisions.
+  - timestamp: '2026-09-15T10:30:00.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      All round-2 suggestions applied as revision 4 after dry-running every new command on the unedited tree. The
+      outside-scope sweep found four known hits, none edited. Awaiting user approval at the spec checkpoint.
+  - timestamp: '2026-09-15T10:40:00.000Z'
+    action: spec_approved
+    phase: spec
+    details: >-
+      User approved revision 4 (option 1): re-verification commands live in the DEPENDENCIES.md standing entry,
+      workspace-split verdict re-affirmed. Spec decomposition is the plan; moving to implement.
