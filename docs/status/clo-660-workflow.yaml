@@ -186,8 +186,80 @@ phases:
       lokomotiv; lok --version printed 20260914.0.0.
   implement:
     status: in_progress
-    sub_tasks_complete: 0
-    commits: []
+    sub_tasks_complete: 4
+    last_phase_completed: 4 - verification sweep
+    tag_chosen: v20260914.0.0
+    commits:
+      - sha: aacf932
+        summary: 'docs(CLO-660): add spec, spec reviews and workflow state'
+      - sha: 8d24b01
+        summary: 'docs(CLO-660): point library and install instructions at this repository'
+      - sha: 950f849
+        summary: 'docs(CLO-660): re-evaluate the workspace-split decision on crate ownership'
+      - sha: a5ee3cd
+        summary: 'docs(CLO-660): restate aggregation docs around crates.io ownership'
+      - sha: d637167
+        summary: 'docs(CLO-660): fix two statements caught by the verification greps'
+    evidence_dir: <session scratchpad>/clo-660-evidence (owners.json, versions.json, probe-readme/, probe-librs/, doc-before.log, doc-after.log, doc-warnings-*.txt, doctest.log, install.log, review-grep.txt)
+    evidence:
+      eval_1_owner: exit 0, ducks only (re-run before any doc edit)
+      eval_2_versions: exit 0, 28 0 20260208.0.2 2026-02-08
+      eval_3_strict: >-
+        First run hit DEPENDENCIES.md:2, the new Last Updated line quoting the retired phrase; reworded in d637167.
+        Re-run: no output, exit 1
+      eval_3b_locked: no output
+      eval_3c_docs_rs: no output, exit 1
+      eval_3d_quick_start: README.md:101 cargo install --locked --git https://github.com/maxkulish/lok --tag v20260914.0.0 lokomotiv
+      eval_4_review: >-
+        52 hits on first run. One unclassifiable hit, PROJECT.md:47 (CLO-633 completion summary: "would first
+        surface for a crates.io consumer"), was corrected in place in d637167 because it is inside the seven files
+        and in no preserved class. The re-run has 51 hits, classified below.
+      eval_4_classification:
+        a_current_accurate: >-
+          README.md 25, 26, 44, 97, 98; src/lib.rs 10, 22, 23, 122; docs/ROADMAP.md 55, 62, 64; docs/DEPENDENCIES.md
+          2, 31, 61, 65, 82, 84, 89, 92, 93, 96; docs/PROJECT.md 3, 9, 18; docs/decisions/clo-592-workspace-split.md
+          4, 6, 7, 36, 37, 38, 40, 45, 52, 54, 57, 58, 60, 64, 69, 70, 86, 90, 114; docs/adrs/clo-589 152. Each is
+          either an ownership fact, the git-dependency or install instruction, or a conditional on a future publish
+          under a name this project controls. None says this project has published, will publish or can publish
+          lokomotiv. The consumer statement (decision record 70) says "no known consumers in the inspected
+          locations" and names them.
+        b_linear_titles: docs/ROADMAP.md 46 and docs/PROJECT.md 52 (CLO-592 "consumable from crates.io")
+        c_adr_preserved: docs/adrs/clo-589 106 (publish location, one package) and 127 (docs.rs setup)
+        d_decision_historical: docs/decisions/clo-592-workspace-split.md 15 and 18 ("before publishing"), under the historical marker
+      eval_5_change_set: >-
+        merge-base 83ee309; exactly README.md, src/lib.rs, docs/ROADMAP.md, docs/DEPENDENCIES.md, docs/PROJECT.md,
+        docs/decisions/clo-592-workspace-split.md, docs/adrs/clo-589-backend-library-shape.md,
+        docs/status/clo-660-workflow.yaml, specs/2026-09-15-clo-660-crate-ownership.md and four
+        docs/reviews/clo-660-spec-review-* files; no untracked files
+      eval_6_build_files: no output
+      eval_7_examples: readme check exit=0, librs check exit=0, both Cargo.lock pinned to tag=v20260914.0.0
+      eval_8_docs: >-
+        doc before exit=0 (3 warning header lines), doc after exit=0, sorted warning diff exit=0 (identical),
+        doctest exit=0 (1 passed, 1 ignored)
+      eval_9_historical: 12 files, listed verbatim in the decision record re-evaluation section
+      eval_10_tag: v20260914.0.0 present on origin (newest tag)
+      eval_11_install: install exit=0, bin/ holds lok and lokomotiv, lok --version printed lok 20260914.0.0
+      eval_12_outside_sweep: exactly the four known hits (.pi/agents/ops-reviewer.md:52, Cargo.toml:11, :55, :113); no escalation
+      eval_13_roadmap_summary: docs/ROADMAP.md:21 | Phase 13 Release Readiness | 4 | 2 | In progress |
+      eval_14_adr_hunk: one hunk, @@ -152 +152 @@
+      eval_15_project_row: docs/PROJECT.md:18, Medium, task id -, names co-ownership and a new crate name
+      read_checks: >-
+        AC2 install comment names lok and lokomotiv, upstream-crate sentence at README.md:25-28; AC3 lib.rs
+        Versioning says not on crates.io and pin a release tag; AC4 intro covers the three elements and says four
+        tasks, matching the table; AC6 entry states owner, last version with last-verified date, both commands,
+        the open grant-or-rename decision and the downstream publishing limit; AC7 title, Context, marker,
+        Implications, re-evaluation elements, verdict line and historical list present, Decision and Rationale
+        otherwise byte-identical (diff shows only the marker); AC9 row carries the three notes.
+    spec_deviations:
+      - spec: DEPENDENCIES entry carries the Evaluation 1 and 2 commands
+        actual: Same commands with User-Agent 'lok (github.com/maxkulish/lok)' instead of 'lok-clo-660'
+        reason: The ticket-scoped agent string does not belong in a standing doc; both commands re-run with the new string and returned ducks and 28 0 20260208.0.2 2026-02-08.
+      - spec: Problem statement lists 15 living-doc defects
+        actual: A 16th, PROJECT.md:47, surfaced in Evaluation 4 and was corrected
+        reason: Inside the seven files and in no preserved class, so replace-in-place applied.
+      - spec: README Quick Start install line carries a trailing comment
+        actual: The comment sits on the next line, aligned with the other command comments
+        reason: The install line is 88 characters; the comment on its own line keeps the block readable, and 3d matches the command line exactly.
   pr:
     status: pending
   complete:
