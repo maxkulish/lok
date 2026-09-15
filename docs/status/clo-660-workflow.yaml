@@ -22,10 +22,10 @@ linear:
   branch_actual: fix/clo-660-docs
   priority: 2
 workflow:
-  current_phase: pr
-  status: checkpoint
+  current_phase: complete
+  status: complete
   created_at: '2026-09-14T20:05:00.000Z'
-  updated_at: '2026-09-15T12:05:00.000Z'
+  updated_at: '2026-09-15T13:20:00.000Z'
 pre_decisions:
   doc_scope:
     chosen: living docs only
@@ -276,7 +276,7 @@ phases:
       had already re-verified the retained logs and stated the documentation changes need no edits, and CLO-656
       set the same precedent for a docs-only fix.
   pr:
-    status: in_progress
+    status: complete
     pr_url: https://github.com/maxkulish/lok/pull/110
     pr_number: 110
     ci_passed: true
@@ -314,8 +314,32 @@ phases:
     pre_merge_refetch_detail: >-
       On head b31e738: 0 reviews, 0 inline comments, 0 unresolved review threads, one issue comment (Qodo billing
       notice, unchanged since 12:03:19Z), mergeable_state clean. This commit moves the head; re-check before merge.
+    pre_merge_refetch_final: >-
+      Re-run at 2026-09-15T13:01:20Z on the final head 93c41dd, after a3f9c67 (gate record) and 93c41dd (canceled
+      CLO-610/CLO-624 removed from DEPENDENCIES Unblocked & Ready, at a sibling session's relayed request): 0 reviews,
+      0 inline comments, 0 unresolved threads, Qodo billing notice unchanged, mergeable_state clean, branch up to
+      date with origin/main, CI run 34971645227 green.
+    approved: true
+    approved_by: user (merge, 2026-09-15)
+    merged_at: '2026-09-15T13:07:26Z'
+    merge_commit: b2e23f98640744f861942c35e8bf3b9fa4502f97
   complete:
-    status: pending
+    status: complete
+    merged_at: '2026-09-15T13:07:26Z'
+    merge_commit: b2e23f9
+    aggregation_files_updated: true
+    finalize_branch: docs/clo-660-finalize
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/111
+    finalize_pr_number: 111
+    lessons: [docs/lessons/clo-660-l1.md, docs/lessons/clo-660-l2.md, docs/lessons/clo-660-l3.md, docs/lessons/clo-660-l4.md, docs/lessons/clo-660-l5.md, docs/lessons/clo-660-l6.md]
+    finalize_mode: >-
+      Finalize branch created from origin/main inside the task worktree, not in the main checkout, because the
+      user's global rules forbid cd and git -C; the main checkout at /Users/mk/Code/orchestrator/lok was not touched.
+    followups:
+      - Decide how the library reaches crates.io (PROJECT.md Up Next row, HITL)
+      - .pi/agents/ops-reviewer.md:52 checks cargo install lokomotiv, which installs the upstream crate
+      - docs/DEPENDENCIES.md still says nobody can push to main (CI Gate required check removed 2026-08-07)
+      - ROADMAP Phase 14 still lists canceled CLO-624 as Not started
 history:
   - timestamp: '2026-09-14T20:05:00.000Z'
     action: workflow_started
@@ -454,3 +478,30 @@ history:
     action: pre_merge_refetch_passed
     phase: pr
     details: 0 reviews, 0 inline comments, 0 unresolved threads, mergeable_state clean on b31e738.
+  - timestamp: '2026-09-15T13:00:00.000Z'
+    action: commit_created
+    phase: pr
+    details: 93c41dd removed canceled CLO-610 and CLO-624 from DEPENDENCIES Unblocked & Ready, relayed by sibling session lok-08 at the user's request; PR body updated.
+  - timestamp: '2026-09-15T13:01:20.000Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: Final head 93c41dd - 0 reviews, 0 inline comments, 0 unresolved threads, mergeable clean, CI run 34971645227 green.
+  - timestamp: '2026-09-15T13:05:00.000Z'
+    action: pr_approved
+    phase: pr
+    details: User chose merge at the PR checkpoint.
+  - timestamp: '2026-09-15T13:07:26.000Z'
+    action: pr_merged
+    phase: complete
+    details: PR #110 squash-merged as b2e23f9.
+  - timestamp: '2026-09-15T13:15:00.000Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      PROJECT.md - CLO-660 moved from Active Work to Recently Completed (Active Work now empty). ROADMAP.md - CLO-660
+      Done, Phase 13 at 3 of 4 and Complete (CLO-610 canceled). DEPENDENCIES.md - Last Updated only; CLO-660 blocked
+      nothing.
+  - timestamp: '2026-09-15T13:20:00.000Z'
+    action: workflow_complete
+    phase: complete
+    details: Task CLO-660 completed; finalize PR carries the aggregation, workflow state and session lessons.

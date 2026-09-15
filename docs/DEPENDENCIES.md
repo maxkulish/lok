@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-09-15 (CLO-660 in progress and placed in ROADMAP Phase 13. The crates.io publishing entry under Standing constraints replaces the earlier note that measured deadlines against a first publish)
+**Last Updated**: 2026-09-15 (CLO-660 completed; it blocked nothing, so no task became ready. The crates.io publishing entry under Standing constraints replaces the earlier note that measured deadlines against a first publish)
 
 ## Current Blockers
 
