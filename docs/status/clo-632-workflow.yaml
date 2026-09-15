@@ -47,10 +47,10 @@ linear:
   branch_actual: fix/clo-632-toml
   priority: 2
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
   created_at: '2026-09-14T20:05:00.000Z'
-  updated_at: '2026-09-15T13:40:00.000Z'
+  updated_at: '2026-09-15T15:30:00.000Z'
 phases:
   discovery:
     status: skipped
@@ -85,15 +85,16 @@ phases:
     flagged_suggestions:
       - N2 contradicted the clause (a) decision - user chose "user value wins"; AC2 and evaluation row 3 now expect the user value
   implement:
-    status: in_progress
+    status: complete
     plan_source: spec decomposition (specs/2026-09-15-clo-632-project-config-trust.md section 4)
     last_phase_completed: sub-task 4 (documentation)
     commits:
-      - 50bad78 docs(CLO-632) spec, reviews, workflow state and start sync
-      - e979937 fix(CLO-632) sub-task 1 - trust check, strip and wiring in src/config.rs with 7 unit tests
-      - f537f8f test(CLO-632) sub-task 2 - end-to-end lok ask test with --config positive control
-      - aa50d5a chore(CLO-632) sub-task 3 - codex args removed from ./lok.toml
-      - c4c1e43 docs(CLO-632) sub-task 4 - README and setup guide trust split
+      - 35369b3 docs(CLO-632) spec, reviews, workflow state and start sync
+      - add0196 fix(CLO-632) sub-task 1 - trust check, strip and wiring in src/config.rs with 7 unit tests
+      - 0fd7114 test(CLO-632) sub-task 2 - end-to-end lok ask test with --config positive control
+      - f668a91 chore(CLO-632) sub-task 3 - codex args removed from ./lok.toml
+      - eae2c3e docs(CLO-632) sub-task 4 - README and setup guide trust split
+      - ac6bae8 fix(CLO-632) validation fix iteration - escaped backend names, README wrapper note, whitespace
     full_gate:
       cargo_fmt_check: pass
       clippy_all_targets: pass
@@ -124,6 +125,7 @@ phases:
       failed with load_config_from_paths temporarily wired back to merge_toml_file, and passed once restored.
   pr:
     status: pending
+    ci_passed: false
   complete:
     status: pending
 history:
@@ -183,3 +185,13 @@ history:
     details: >-
       pre-pr-validation with the spec as design and plan. Codex gpt-5.6-sol FAIL (3 findings), synthesis PASS_WITH_NOTES
       with 4 must-fix items. One fix iteration applied; config tests 37 passed, cargo test 1378 passed, clippy clean.
+  - timestamp: '2026-09-15T15:25:00.000Z'
+    action: phase_completed
+    phase: implement
+    details: >-
+      Rebased the unpushed branch onto origin/main (a5ba358, adds #107 and #108). One conflict, the PROJECT.md Last
+      Updated line, resolved by combining both entries. Commit SHAs in phases.implement.commits are post-rebase.
+  - timestamp: '2026-09-15T15:30:00.000Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: On the rebased branch - cargo fmt check, clippy all-targets -D warnings, cargo test (1378 passed, 0 failed), git diff --check origin/main...HEAD clean.
