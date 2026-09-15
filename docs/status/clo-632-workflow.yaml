@@ -1,0 +1,135 @@
+task_id: clo-632
+task_type: specification
+classification_reason: >-
+  Security fix from the 2026-08-03 codex-security scan. The ticket already lists three boundary options, and the
+  change sits in the config merge (src/config.rs) plus the config guide. The one HITL decision, which boundary and
+  which keys, was taken with the user at initialization, so it goes into the spec and no design doc is needed.
+task_profile:
+  has_backend: true
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+decisions:
+  boundary: >-
+    Reject if changed. A project-layer ./lok.toml may repeat a gated value that the built-in defaults plus the user
+    config already resolved. A value that differs, or a gated key on a backend absent from the lower layers, is a
+    hard load error naming the key and the file. User config and --config stay fully trusted.
+  gated_keys:
+    - backends.*.command
+    - backends.*.args
+    - backends.*.api_key_env
+    - defaults.command_wrapper
+  gated_keys_reason: >-
+    There is no `endpoint` key: the Ollama URL is stored in `command`, so gating `command` covers both the execution
+    and the exfiltration case. `args` can hand a trusted binary a sandbox-bypass flag. `api_key_env` selects which
+    secret is sent. `command_wrapper` wraps the shell steps of the user's own workflows when they run inside the repo.
+  lok_toml_consequence: >-
+    The repo's own ./lok.toml sets codex args with -c model_reasoning_effort="high", which the default args do not
+    include. The same PR removes that arg and documents setting it in ~/.config/lok/lok.toml instead.
+  revision_2026_09_15: >-
+    After spec review N2 the user chose "user value wins": the allowed-value check is unchanged (built-in default or
+    user-resolved value), but gated keys are stripped from the project overlay before the merge, so a project can
+    restate a gated value and never change it.
+  decided_at: '2026-09-14T20:20:00.000Z'
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Todo
+  archived_at_start: '2026-09-13T13:13:48.488Z'
+  labels:
+    - HITL
+  blocks: []
+  blocked_by: []
+  related_to: []
+  branch_suggested: kmamemo/clo-632-gate-project-layer-loktoml-backend-commands-behind-a-trust
+  branch_actual: fix/clo-632-toml
+  priority: 2
+workflow:
+  current_phase: implement
+  status: in_progress
+  created_at: '2026-09-14T20:05:00.000Z'
+  updated_at: '2026-09-15T13:40:00.000Z'
+phases:
+  discovery:
+    status: skipped
+    skip_reason: Specification task
+    approved: true
+  design:
+    status: skipped
+    reason: Specification task - using /spec instead
+  spec:
+    status: complete
+    spec_file: specs/2026-09-15-clo-632-project-config-trust.md
+    approved: true
+    review_ollama: docs/reviews/clo-632-spec-review-ollama.md
+    review_ollama_status: REVIEW_FAILED (step timed out after 300s, 1207s across retries)
+    review_claude_fallback: docs/reviews/clo-632-spec-review-claude-fallback.md
+    review_synthesis: docs/reviews/clo-632-spec-review-synthesis.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - N1 AC6 hardened - current_dir, PATH limited to the temp dir, other backends disabled, --config positive control
+      - N3 boundary scope paragraph, Must-not and AC8 docs limit for project .lok/workflows shadowing
+      - N4 AC7 and evaluation row build first, then run the binary with a temp HOME
+      - N5 model flag-injection note in the key audit
+      - N6 bedrock enabled cost risk recorded in the audit as a follow-up
+      - N7 rollout note and AC8 say a rejected file blocks every subcommand
+      - N8 fix hint names --config ~/.config/lok/lok.toml
+      - N9 Must - doc comment requiring future project config locations to use the gate
+      - N10 four single-key rejections collapsed into one table-driven test
+      - N11 bedrock api_key_env dropped from the doc-marking list, existing doc error made a follow-up
+      - Q1 AC8 docs state only ./lok.toml in the cwd is read
+    flagged_suggestions:
+      - N2 contradicted the clause (a) decision - user chose "user value wins"; AC2 and evaluation row 3 now expect the user value
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-09-14T20:05:00.000Z'
+    action: workflow_started
+    phase: init
+    details: >-
+      No sibling worktree, open PR or commit touches CLO-632. Linear issue is archived (Todo, HITL, High) with no
+      comments. Classified as specification by user choice.
+  - timestamp: '2026-09-14T20:20:00.000Z'
+    action: problem_framed
+    phase: init
+    details: >-
+      User chose the reject-if-changed boundary and gating of command, args, api_key_env and
+      defaults.command_wrapper, moving the repo's codex reasoning-effort arg to user config. Findings F1-F3 are in
+      the session notes.
+  - timestamp: '2026-09-14T20:10:00.000Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      WIP 1/3. PROJECT.md Active Work row added and Up Next row removed; ROADMAP.md Phase 15 row set to In Progress;
+      DEPENDENCIES.md Unblocked & Ready row removed. Linear issue unarchived (GraphQL issueUnarchive), set to In
+      Progress, and the boundary decision posted as a comment.
+  - timestamp: '2026-09-15T00:10:00.000Z'
+    action: spec_draft_ready
+    phase: spec
+    details: Spec written to specs/2026-09-15-clo-632-project-config-trust.md after a second user decision (D2, default-repeat allowed).
+  - timestamp: '2026-09-15T13:07:00.000Z'
+    action: spec_review_failed
+    phase: spec
+    details: Ollama leg (glm-5.3:cloud via codex) timed out at 300s on every retry, 1207s total. Claude fallback ran.
+  - timestamp: '2026-09-15T13:07:00.000Z'
+    action: spec_review_complete
+    phase: spec
+    details: Synthesis verdict APPROVE_WITH_SUGGESTIONS from the Claude fallback, 11 findings and 1 open question, none blocking.
+  - timestamp: '2026-09-15T13:30:00.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      Applied N1 and N3-N11 plus Q1. N2 conflicted with the clause (a) decision and went to the user, who chose "user
+      value wins" (D3 supersedes D2 in session notes).
+  - timestamp: '2026-09-15T13:40:00.000Z'
+    action: spec_approved
+    phase: spec
+    details: User approved the revised spec (user-value-wins boundary, review items N1 and N3-N11 applied). Proceeding to implement.
