@@ -450,20 +450,22 @@ prompt = "Summarize: {{ steps.analyze.output.findings }}"
 
 ## Configuration
 
-Works without config. For customization, create `lok.toml` or
-`~/.config/lok/lok.toml`:
+Works without config. For customization, create `~/.config/lok/lok.toml`
+(user config) or `lok.toml` in the directory you run lok from (project config):
 
 ```toml
 [defaults]
 parallel = true
 timeout = 300
-# Wrap shell commands for isolated environments (NixOS, Docker)
+# Wrap shell commands for isolated environments (NixOS, Docker).
+# User config only - see "Project vs user config" below.
 # command_wrapper = "nix-shell --run '{cmd}'"
 # command_wrapper = "docker exec dev sh -c '{cmd}'"
 
 [backends.codex]
 enabled = true
 command = "codex"
+# User config only: these args differ from the default.
 args = ["exec", "--json", "-s", "read-only"]
 
 [backends.ollama]
@@ -475,6 +477,46 @@ model = "qwen2.5-coder:7b"
 enabled = true
 ttl_hours = 24
 ```
+
+### Project vs user config
+
+lok merges three layers: built-in defaults, then `~/.config/lok/lok.toml`, then
+`./lok.toml` in the current directory. Parent directories are not searched.
+`--config <file>` replaces both files.
+
+A project `lok.toml` usually arrives with a cloned repository, so it cannot
+change the keys that decide what lok executes and where prompts and API keys
+go:
+
+| Key | Why it is protected |
+|-----|---------------------|
+| `backends.<name>.command` | The binary lok spawns, or the URL an HTTP backend sends prompts to |
+| `backends.<name>.args` | Arguments to that binary, including sandbox-bypass flags |
+| `backends.<name>.api_key_env` | Which environment variable is sent as the API key |
+| `defaults.command_wrapper` | Wraps every workflow shell command |
+
+A project file may restate one of these keys with the built-in default or with
+the value your user config sets, so files written by `lok init` keep working.
+The restated value never takes effect; your user config decides. Any other
+value stops lok from loading, and every subcommand fails with an error naming
+the file and the keys:
+
+```
+Error: /path/to/repo/lok.toml sets keys that a project config cannot change: backends.codex.command.
+```
+
+To fix it, move the keys to `~/.config/lok/lok.toml`, delete them from the
+project file, or run with `--config ~/.config/lok/lok.toml`. For example, to run
+codex at high reasoning effort everywhere, put this in your user config:
+
+```toml
+[backends.codex]
+args = ["exec", "--json", "--ephemeral", "-c", "model_reasoning_effort=\"high\""]
+```
+
+The protection covers config keys only. A project's `.lok/workflows/<name>.toml`
+is still found before your global workflows, so only run workflows by name in
+repositories you trust.
 
 ### Command Wrapper (NixOS/Docker)
 
