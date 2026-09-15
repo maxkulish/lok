@@ -146,6 +146,8 @@ phases:
     merged_by: maxkulish
     aggregation_files_updated: true
     finalize_branch: docs/clo-632-finalize
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/112
+    finalize_pr_number: 112
     lessons_file: docs/lessons/clo-632-l1.md .. clo-632-l5.md
     followups_added_to_backlog: 5 untracked rows in docs/PROJECT.md Up Next
 history:
