@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-09-14 (CLO-655 and CLO-656 completed. CLO-660 is still not placed)
+**Last Updated**: 2026-09-15 (CLO-660 in progress and placed in ROADMAP Phase 13. The crates.io publishing entry under Standing constraints replaces the earlier note that measured deadlines against a first publish)
 
 ## Current Blockers
 
@@ -13,9 +13,7 @@ One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-
 
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
-| [CLO-610](https://linear.app/cloud-ai/issue/CLO-610) | None. Standalone `release.yml` change | 2026-08-01 |
 | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623) | PR #71 merged | 2026-08-02 |
-| [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | PR #71 merged | 2026-08-02 |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | CLO-625 merged | 2026-08-02 |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | CLO-625 merged | 2026-08-02 |
 | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631) | None. Independent codex-security scan finding | 2026-08-03 |
@@ -28,7 +26,7 @@ One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-
 | [CLO-651](https://linear.app/cloud-ai/issue/CLO-651) | None. Found during the 2026-08-06 Actions outage | 2026-08-07 |
 | [CLO-652](https://linear.app/cloud-ai/issue/CLO-652) | None. Independent agent-template fix | 2026-08-07 |
 
-CLO-609 landed on 2026-08-03 (PR #78, `8b96821`), so the pre-publish metadata deadline is cleared.
+CLO-609 landed on 2026-08-03 (PR #78, `8b96821`), so the crate metadata is ready for the first crates.io publish under a name this project controls.
 CLO-633 landed the same day (PR #80, `a8f84d8`). It blocked nothing — the five Phase 15 findings
 share an origin, not a mechanism — so no task became ready as a result. It did file four follow-ups,
 listed below.
@@ -47,8 +45,8 @@ without their issue IDs, which kept them out of every prioritised list until the
   Defect 2 into two sites. Phase 16.
 - **[CLO-638](https://linear.app/cloud-ai/issue/CLO-638) - No CI job builds against the declared `rust-version = "1.80"`.**
   The oldest toolchain installed locally is 1.94 and `ci.yml` uses runner-stable, so the MSRV is an
-  unverified claim. It starts costing something once Phase 13 publishes to crates.io, which is why
-  it now sits in that phase.
+  unverified claim. It already costs anyone who builds from source with an older toolchain, which is
+  why it now sits in Phase 13.
 - **[CLO-637](https://linear.app/cloud-ai/issue/CLO-637) - `/pr:review` Step 9.5's re-review poll timed out on every clean pass**
   (landed 2026-08-06, PR #84 squashed as `4263a1c`). It waited for a *review* object on the new head SHA, but Qodo submits
   one only when a pass carries new inline findings; a clean re-review updates its review comment in
@@ -58,11 +56,15 @@ without their issue IDs, which kept them out of every prioritised list until the
 
 ## Standing constraints
 
-One item CLO-591 left open deliberately. It blocks no task, and gets more expensive once a release carries the library surface:
+One item CLO-591 left open deliberately. It blocks no task, and its cost depends on the crates.io naming decision described below, not on a date:
 
 - **The lib/bin boundary is convention, not compiler-enforced.** The
-  `library-boundary` CI job is the compensating control. A workspace split
-  before that release is a refactor; after it is a rename and a yank.
+  `library-boundary` CI job is the compensating control. While no library
+  version is on crates.io, a workspace split is a refactor with no yank,
+  though it could change what git consumers write. Once a library version is
+  published, changing the layout also means a new crate and a registry
+  migration. `docs/decisions/clo-592-workspace-split.md` re-affirmed not
+  splitting on 2026-09-15 and ties the question to the naming decision.
 
 The second, **`BACKEND_CACHE` keyed by backend name alone**, was resolved by
 [CLO-653](https://linear.app/cloud-ai/issue/CLO-653) on 2026-08-07. The cache now keys on
@@ -75,10 +77,22 @@ needs them at the API: the key cannot capture ambient construction inputs (the r
 value behind `api_key_env`, Bedrock's AWS environment), and the cache is still
 process-global rather than owned by the embedding host.
 
-**Note on "once the crate is published"**: `lokomotiv` *is* published — 28 versions between
-2026-01-25 and 2026-02-08, none yanked. Every one is binary-only; the `[lib]` target
-arrived in `d828890` on 2026-07-26. The deadline these constraints are measured against is
-therefore the first release that ships a library target, not a first publish. Tracked as
+**crates.io publishing** (last verified 2026-09-15): the crates.io name `lokomotiv` is owned
+by `ducks`, the upstream author, who published all 28 versions. The last one is `20260208.0.2`
+(2026-02-08). Every version is binary-only and none is yanked. This project has never published,
+and its `[lib]` target reached main later, in `ee28f3c` (2026-07-27). A library publish needs
+either an owner grant from `ducks` or a new crate name, and that decision is open (see
+`docs/PROJECT.md` Up Next). Until it is made, the library is consumed as a git dependency on
+`github.com/maxkulish/lok`, and a downstream crate that depends on it that way cannot itself be
+published to crates.io. Re-verify the owner and the latest version before relying on them:
+
+```bash
+curl -s -H 'User-Agent: lok (github.com/maxkulish/lok)' https://crates.io/api/v1/crates/lokomotiv/owners | jq -r '.users[].login'
+curl -s -H 'User-Agent: lok (github.com/maxkulish/lok)' https://crates.io/api/v1/crates/lokomotiv/versions | jq -r '.versions | sort_by(.created_at) | [length, (map(select(.yanked)) | length), last.num, last.created_at[:10]] | @tsv'
+```
+
+The first prints the owners (`ducks`). The second prints the version count, the yanked count, and
+the newest version with its date (`28  0  20260208.0.2  2026-02-08`). Recorded by
 [CLO-660](https://linear.app/cloud-ai/issue/CLO-660).
 
 A third, from CLO-600 and CLO-625: **nobody can push to `main`**, including the repository owner. Ruleset 20153405 requires the `CI Gate` check with no bypass actors, so every change, docs included, arrives through a pull request.

@@ -22,14 +22,28 @@ multiple backends, get synthesized results.
 
 ## Using lokomotiv as a library
 
-`lokomotiv` is also published on [crates.io](https://crates.io/crates/lokomotiv)
-as a library crate. Add it to your `Cargo.toml` with **no default features** to
-avoid pulling in CLI-only dependencies:
+The `lokomotiv` library is not on crates.io. The crate of that name on
+[crates.io](https://crates.io/crates/lokomotiv) is published by the upstream
+project, [ducks/lok](https://github.com/ducks/lok), is binary-only, and does not
+contain this repository's changes.
+
+Depend on this repository through git instead, with **no default features** to
+avoid pulling in CLI-only dependencies. The example below also needs `tokio`,
+because it uses `#[tokio::main]`:
 
 ```toml
 [dependencies]
-lokomotiv = { version = "20260603", default-features = false }
+lokomotiv = { git = "https://github.com/maxkulish/lok", tag = "v20260914.0.0", default-features = false }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
+
+The `tag` selects the source revision to build. Each release is tagged `v` plus
+the crate version (`vYYYYMMDD.N.P`, for example `v20260914.0.0`).
+
+A crate that depends on `lokomotiv` through git cannot itself be published to
+crates.io: crates.io needs a registry version for every dependency, and no
+library version of `lokomotiv` exists there (see
+[specifying dependencies from multiple locations](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations)).
 
 Then build a backend and run a query:
 
@@ -68,18 +82,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-See the [full API documentation on docs.rs](https://docs.rs/lokomotiv) for all
-available types, backends, and configuration options.
+For the full API documentation, covering all available types, backends, and
+configuration options, build it from a checkout of this repository with
+`cargo doc --no-default-features --open`.
 
 > **Note**: `lokomotiv` shares its version number with the `lok` binary. Both are
-> published from the same repository under a single `Cargo.toml`. The version
-> follows a date-based scheme (`YYYYMMDD.N.0`) rather than semver. Pin to a
-> specific version in your `Cargo.toml` to avoid unexpected changes.
+> built from the same repository under a single `Cargo.toml`. The version
+> follows a date-based scheme (`YYYYMMDD.N.P`) rather than semver. Pin a release
+> tag in your git dependency to avoid unexpected changes.
 
 ## Quick Start
 
+`--locked` builds with the repository's `Cargo.lock`, which `cargo install`
+otherwise ignores. Running `cargo install lokomotiv` without `--git` installs
+the upstream crate from crates.io instead of this repository.
+
 ```bash
-cargo install lokomotiv      # Package is "lokomotiv", binary is "lok"
+cargo install --locked --git https://github.com/maxkulish/lok --tag v20260914.0.0 lokomotiv
+                             # Package "lokomotiv"; installs the "lok" and "lokomotiv" binaries
 
 lok doctor                   # Check what backends are available
 lok ask "Explain this code"  # Query all available backends
