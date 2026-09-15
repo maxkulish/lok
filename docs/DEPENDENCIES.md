@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-09-15 (CLO-660 completed; it blocked nothing, so no task became ready. The crates.io publishing entry under Standing constraints replaces the earlier note that measured deadlines against a first publish; CLO-632 in progress since 2026-09-14)
+**Last Updated**: 2026-09-15 (CLO-660 completed; it blocked nothing, so no task became ready. The crates.io publishing entry under Standing constraints replaces the earlier note that measured deadlines against a first publish; CLO-632 completed and blocked nothing)
 
 ## Current Blockers
 
