@@ -23,7 +23,7 @@ linear:
   priority: 2
 workflow:
   current_phase: pr
-  status: in_progress
+  status: awaiting_input
   created_at: '2026-09-14T20:05:00.000Z'
   updated_at: '2026-09-15T12:05:00.000Z'
 pre_decisions:
@@ -276,7 +276,26 @@ phases:
       had already re-verified the retained logs and stated the documentation changes need no edits, and CLO-656
       set the same precedent for a docs-only fix.
   pr:
-    status: pending
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/110
+    pr_number: 110
+    ci_passed: false
+    head_sha_at_creation: 129c12b4445e46536487c9c7b97b320da3dfb879
+    pre_flight: 'cargo fmt --check exit 0, cargo clippy -D warnings exit 0, cargo clippy --tests exit 0, cargo test exit 0 (1361 passed, 0 failed)'
+    main_sync: >-
+      origin/main had moved by 4bff23b (#107, Qodo billing-blocked fail-fast) and a5ba358 (#108, CLO-788). A first
+      rebase attempt was aborted after a failed scripted resolution let conflict markers into a replayed commit;
+      the branch was restored to eea9ebc and origin/main merged instead as 8ea173c, resolving docs/PROJECT.md by
+      keeping both sides' removals (CLO-654 here; canceled CLO-624 and CLO-610 on main). Main brought no Rust
+      changes, so pre-flight was not re-run.
+    implementation_after_gate:
+      - sha: 129c12b
+        summary: ROADMAP marks CLO-610 Canceled (Linear canceled it 2026-09-13) and the Phase 13 intro no longer credits it with protecting release archives
+        reason: >-
+          Found while resolving the merge. The spec's AC4 text named CLO-610 as protecting release archives, based on
+          a ROADMAP that had not recorded the cancellation. Replace-in-place applied; Tasks 4 / Completed 2 and
+          Evaluation 13 are unchanged because the row is kept with status Canceled.
+    qodo: billing-blocked (qodo-code-review comment with <!-- qodo:billing-blocked --> at 2026-09-15T12:03:19Z); awaiting user decision
   complete:
     status: pending
 history:
@@ -379,3 +398,19 @@ history:
       pre-pr-validation with the spec as design and plan. Codex gpt-5.6-sol FAIL on evidence auditability only;
       synthesis PASS_WITH_NOTES with one Must Fix (evidence path placeholder, missing exit codes), applied in one
       bounded iteration. Moving to PR.
+  - timestamp: '2026-09-15T11:58:00.000Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: cargo fmt --check, clippy -D warnings, clippy --tests and cargo test (1361 passed, 0 failed) all exit 0.
+  - timestamp: '2026-09-15T12:02:00.000Z'
+    action: main_merged
+    phase: pr
+    details: origin/main merged as 8ea173c after an aborted rebase; PROJECT.md conflict resolved; ROADMAP CLO-610 cancellation reflected in 129c12b.
+  - timestamp: '2026-09-15T12:03:14.000Z'
+    action: pr_created
+    phase: pr
+    details: PR #110 created; Linear CLO-660 moved to In Review with the PR attached.
+  - timestamp: '2026-09-15T12:03:19.000Z'
+    action: bot_review_blocked
+    phase: pr
+    details: qodo-code-review posted its billing-blocked notice. Per pr.md step 4.3.3, no polling; blocked for user guidance.
