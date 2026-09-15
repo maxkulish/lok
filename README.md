@@ -521,7 +521,9 @@ repositories you trust.
 ### Command Wrapper (NixOS/Docker)
 
 If you use isolated environments, shell commands in workflows may fail due to
-missing dependencies. Use `command_wrapper` to wrap all shell commands:
+missing dependencies. Use `command_wrapper` in `~/.config/lok/lok.toml` to wrap
+all shell commands. A project `lok.toml` cannot set it (see
+[Project vs user config](#project-vs-user-config)):
 
 ```toml
 [defaults]

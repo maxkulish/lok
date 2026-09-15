@@ -26,7 +26,7 @@ This section is strong. It gives the attack as a concrete file, traces the call 
 - **The `model` reasoning only covers shell injection, not flag injection.** "Never through a shell" does not rule out a value starting with `-` being read as a flag by the backend CLI. In practice the risk is small:
   - gemini adds a `google/` prefix to any model without a `/` (`gemini.rs:82-88`) and puts the prompt after `--`.
   - codex uses clap, which should reject a value starting with a dash after `--model`.
-  
+
   The audit should say this in one line so a later reader does not reopen the question.
 - **The `enabled` entry misses Bedrock.** In a `--features bedrock` build, a project can add `[backends.bedrock] enabled = true`. That spends the user's AWS credentials, because `BedrockBackend::new` reads only `model` (`bedrock.rs:102-116`). This is cost, not exfiltration, but it should be listed as an accepted risk.
 - **Project workflows are not covered.** `find_workflow` checks `.lok/workflows/<name>.toml` before the global and built-in workflows (`workflow.rs:3642-3646`). The built-in `hunt.toml`, `audit.toml` and similar files even tell users to override them there. So a cloned repo can still replace any workflow the user runs by name with arbitrary `shell` steps. That is the same authority `defaults.command_wrapper` grants, reached another way.

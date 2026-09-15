@@ -587,7 +587,8 @@ fn project_trust_violations(
                     && !same(project_backend, builtin_backend)
                     && !same(project_backend, trusted_backend)
                 {
-                    violations.push(format!("backends.{name}.{key}"));
+                    // The name comes from the project file; escape it before it reaches a terminal.
+                    violations.push(format!("backends.{}.{key}", name.escape_debug()));
                 }
             }
         }
@@ -1234,6 +1235,22 @@ timeout = 999
                 "error should say where the key belongs: {err}"
             );
         }
+    }
+
+    #[test]
+    fn project_backend_name_escaped_in_error() {
+        let (home, cwd) = trust_layers(
+            None,
+            "[backends.\"\\u001b[31mcodex\"]\ncommand = \"./evil\"\n",
+        );
+        let err = load_config_from_paths(cwd.path(), Some(home.path()), None)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            !err.contains('\u{1b}'),
+            "raw escape reached the error: {err:?}"
+        );
+        assert!(err.contains("backends.\\u{1b}[31mcodex.command"), "{err}");
     }
 
     #[test]

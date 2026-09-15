@@ -85,7 +85,43 @@ phases:
     flagged_suggestions:
       - N2 contradicted the clause (a) decision - user chose "user value wins"; AC2 and evaluation row 3 now expect the user value
   implement:
-    status: pending
+    status: in_progress
+    plan_source: spec decomposition (specs/2026-09-15-clo-632-project-config-trust.md section 4)
+    last_phase_completed: sub-task 4 (documentation)
+    commits:
+      - 50bad78 docs(CLO-632) spec, reviews, workflow state and start sync
+      - e979937 fix(CLO-632) sub-task 1 - trust check, strip and wiring in src/config.rs with 7 unit tests
+      - f537f8f test(CLO-632) sub-task 2 - end-to-end lok ask test with --config positive control
+      - aa50d5a chore(CLO-632) sub-task 3 - codex args removed from ./lok.toml
+      - c4c1e43 docs(CLO-632) sub-task 4 - README and setup guide trust split
+    full_gate:
+      cargo_fmt_check: pass
+      clippy_all_targets: pass
+      cargo_test: pass
+      clippy_all_targets_bedrock: pass
+      cargo_test_bedrock: pass
+      clippy_lib_tests_no_default_features: pass
+      cargo_test_lib_no_default_features: pass
+      msrv_1_83_check_all_targets: pass
+      tests_passed_across_lanes: 2911
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-632-codex-validation.md
+    validation_synthesis_report: docs/reviews/clo-632-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_fix_iteration:
+      - Backend names from the project file escaped with escape_debug in violation keys, test project_backend_name_escaped_in_error (watched fail first)
+      - README Command Wrapper section marked user-config-only with a link to Project vs user config
+      - Trailing whitespace stripped from the generated clo-632 review docs
+      - Workflow YAML committed with the implementation
+    validation_notes: >-
+      Codex FAIL rested on three findings, all fixed in the one allowed iteration. The synthesis re-ran AC9 lanes
+      itself (Codex's read-only sandbox could not) and saw a bedrock-lane flake in codex/claude health-check tests
+      from concurrent cargo runs; it reran clean on the branch and on main, and the branch does not touch
+      src/backend/. PR conditions: Behaviour change heading in the description.
+    tdd_evidence: >-
+      4 of 7 unit tests failed before the gate existed (the other 3 guard unchanged behaviour). The end-to-end test
+      failed with load_config_from_paths temporarily wired back to merge_toml_file, and passed once restored.
   pr:
     status: pending
   complete:
@@ -133,3 +169,17 @@ history:
     action: spec_approved
     phase: spec
     details: User approved the revised spec (user-value-wins boundary, review items N1 and N3-N11 applied). Proceeding to implement.
+  - timestamp: '2026-09-15T14:30:00.000Z'
+    action: phase_completed
+    phase: implement
+    details: Sub-tasks 1-4 committed (e979937, f537f8f, aa50d5a, c4c1e43). Full CI gate lanes running.
+  - timestamp: '2026-09-15T14:45:00.000Z'
+    action: implementation_complete
+    phase: implement
+    details: All 4 sub-tasks done. Seven CI lanes plus the MSRV 1.83 check pass (2911 tests, 0 failed). Pre-PR validation started.
+  - timestamp: '2026-09-15T15:10:00.000Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      pre-pr-validation with the spec as design and plan. Codex gpt-5.6-sol FAIL (3 findings), synthesis PASS_WITH_NOTES
+      with 4 must-fix items. One fix iteration applied; config tests 37 passed, cargo test 1378 passed, clippy clean.
