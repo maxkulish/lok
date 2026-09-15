@@ -164,7 +164,7 @@ cat >> docs/reviews/{{ arg.2 }}-spec-review-ollama.md << 'ENDOLLAMA'
 {{ steps.ollama_review.output }}
 ENDOLLAMA
 
-{% if steps.claude_fallback is defined %}
+{% if steps.claude_fallback is defined and steps.claude_fallback.success %}
 printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Claude (fallback)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '**Note**: The external reviewer failed; this is the fallback review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-claude-fallback.md
 cat >> docs/reviews/{{ arg.2 }}-spec-review-claude-fallback.md << 'ENDCLAUDE'
 {{ steps.claude_fallback.output }}
