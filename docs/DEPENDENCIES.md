@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-09-15 (CLO-660 completed; it blocked nothing, so no task became ready. The crates.io publishing entry under Standing constraints replaces the earlier note that measured deadlines against a first publish; CLO-632 completed and blocked nothing)
+**Last Updated**: 2026-09-15 (the `CI Gate` standing constraint now matches ruleset 20153405, which has not required the check since 2026-08-07. CLO-660 completed; it blocked nothing, so no task became ready. The crates.io publishing entry under Standing constraints replaces the earlier note that measured deadlines against a first publish; CLO-632 completed and blocked nothing)
 
 ## Current Blockers
 
@@ -94,6 +94,6 @@ The first prints the owners (`ducks`). The second prints the version count, the 
 the newest version with its date (`28  0  20260208.0.2  2026-02-08`). Recorded by
 [CLO-660](https://linear.app/cloud-ai/issue/CLO-660).
 
-A third, from CLO-600 and CLO-625: **nobody can push to `main`**, including the repository owner. Ruleset 20153405 requires the `CI Gate` check with no bypass actors, so every change, docs included, arrives through a pull request.
+A third, from CLO-600 and CLO-625: **`CI Gate` is not a required check**. Ruleset 20153405 required it with no bypass actors until 2026-08-07, when the GitHub Actions outage of 2026-08-06 left every merge blocked, docs included. The rule was removed and stays off by decision; the ruleset now carries only `deletion` and `non_fast_forward`, so the owner can push to `main`. `CI Gate` still runs on every pull request, but blocks nothing. `/pr:finalize` still describes it as required.
 
 CLO-374 is Done (see ROADMAP Phase 10).

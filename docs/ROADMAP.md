@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-09-15 (CLO-632 done, Phase 15 at 2 of 5. Earlier the same day CLO-660 closed Phase 13 at 3 of 4 with CLO-610 canceled)
+**Last Updated**: 2026-09-15 (Phase 14 marks CLO-624 Canceled, as it has been in Linear since 2026-09-13. CLO-632 done, Phase 15 at 2 of 5. Earlier the same day CLO-660 closed Phase 13 at 3 of 4 with CLO-610 canceled)
 
 ## Summary
 
@@ -70,7 +70,7 @@ Nine defects in the markdown-defined orchestration commands, all found by runnin
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623) | Make pr-review-cycle shell snippets executable and tested | Not started | - |
-| [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | Distinguish a bad reviewer invocation from an empty model response | Not started | - |
+| [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | Distinguish a bad reviewer invocation from an empty model response | Canceled | - |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | complete.md edits the aggregation files, then checks out main with them uncommitted | Not started | - |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | gh pr merge --delete-branch silently skips the remote deletion when its local checkout fails | Not started | - |
 | [CLO-637](https://linear.app/cloud-ai/issue/CLO-637) | Make /pr:review's re-review poll recognise a Qodo comment update instead of waiting for a review object | Done | - |

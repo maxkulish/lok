@@ -49,8 +49,10 @@ Score in this order. Stop and flag the moment you see a `blocker`.
    - Binary names (`lok`, `lokomotiv`) and `[[bin]]` entries are
      consistent with what install docs describe.
 3. **Install path**
-   - `cargo install --path .` (or `cargo install lokomotiv`) produces a
-     working `lok` binary on a fresh machine.
+   - `cargo install --path .` (or `cargo install --locked --git
+     https://github.com/maxkulish/lok`) produces a working `lok` binary on
+     a fresh machine. `cargo install lokomotiv` installs the upstream
+     binary from crates.io, not this repository.
    - Install scripts (if any under `scripts/` or `.github/`) handle
      missing prerequisites with a clear error, not a partial install.
    - PATH expectations are documented; no assumption that the user has
