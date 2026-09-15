@@ -47,7 +47,7 @@ linear:
   branch_actual: fix/clo-632-toml
   priority: 2
 workflow:
-  current_phase: pr
+  current_phase: complete
   status: in_progress
   created_at: '2026-09-14T20:05:00.000Z'
   updated_at: '2026-09-15T15:30:00.000Z'
@@ -89,12 +89,12 @@ phases:
     plan_source: spec decomposition (specs/2026-09-15-clo-632-project-config-trust.md section 4)
     last_phase_completed: sub-task 4 (documentation)
     commits:
-      - 35369b3 docs(CLO-632) spec, reviews, workflow state and start sync
-      - add0196 fix(CLO-632) sub-task 1 - trust check, strip and wiring in src/config.rs with 7 unit tests
-      - 0fd7114 test(CLO-632) sub-task 2 - end-to-end lok ask test with --config positive control
-      - f668a91 chore(CLO-632) sub-task 3 - codex args removed from ./lok.toml
-      - eae2c3e docs(CLO-632) sub-task 4 - README and setup guide trust split
-      - ac6bae8 fix(CLO-632) validation fix iteration - escaped backend names, README wrapper note, whitespace
+      - a45258a docs(CLO-632) spec, reviews, workflow state and start sync
+      - ce8f817 fix(CLO-632) sub-task 1 - trust check, strip and wiring in src/config.rs with 7 unit tests
+      - a566c20 test(CLO-632) sub-task 2 - end-to-end lok ask test with --config positive control
+      - 8b47169 chore(CLO-632) sub-task 3 - codex args removed from ./lok.toml
+      - 4bf67bc docs(CLO-632) sub-task 4 - README and setup guide trust split
+      - be78054 fix(CLO-632) validation fix iteration - escaped backend names, README wrapper note, whitespace
     full_gate:
       cargo_fmt_check: pass
       clippy_all_targets: pass
@@ -124,7 +124,8 @@ phases:
       4 of 7 unit tests failed before the gate existed (the other 3 guard unchanged behaviour). The end-to-end test
       failed with load_config_from_paths temporarily wired back to merge_toml_file, and passed once restored.
   pr:
-    status: in_progress
+    status: complete
+    approved: true
     pr_url: https://github.com/maxkulish/lok/pull/109
     pr_number: 109
     ci_passed: true
@@ -244,3 +245,15 @@ history:
     action: pre_merge_refetch_passed
     phase: pr
     details: Head a1025a7 matches local; 0 inline comments, 0 reviews, 0 unresolved review threads; GitHub reports MERGEABLE.
+  - timestamp: '2026-09-15T16:39:26Z'
+    action: pr_approved
+    phase: pr
+    details: User chose ready at the PR checkpoint. CI green on d657787 (run 34971536400), 0 comments, 0 unresolved threads, MERGEABLE.
+  - timestamp: '2026-09-15T16:41:23Z'
+    action: phase_completed
+    phase: complete
+    details: >-
+      Before merging, main had moved to c69660d (#110, #111 for CLO-660) and PR #109 conflicted in the three aggregation
+      files. Rebased onto origin/main; every conflict was a Last Updated line, resolved by keeping main's line and
+      appending the CLO-632 note. fmt, clippy and cargo test (1378 passed) re-run clean. Commit SHAs in
+      phases.implement.commits updated to the post-rebase values; force-pushed with --force-with-lease.
