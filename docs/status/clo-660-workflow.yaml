@@ -329,6 +329,9 @@ phases:
     merge_commit: b2e23f9
     aggregation_files_updated: true
     finalize_branch: docs/clo-660-finalize
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/111
+    finalize_pr_number: 111
+    lessons: [docs/lessons/clo-660-l1.md, docs/lessons/clo-660-l2.md, docs/lessons/clo-660-l3.md, docs/lessons/clo-660-l4.md, docs/lessons/clo-660-l5.md, docs/lessons/clo-660-l6.md]
     finalize_mode: >-
       Finalize branch created from origin/main inside the task worktree, not in the main checkout, because the
       user's global rules forbid cd and git -C; the main checkout at /Users/mk/Code/orchestrator/lok was not touched.
