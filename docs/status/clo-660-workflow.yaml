@@ -22,10 +22,10 @@ linear:
   branch_actual: fix/clo-660-docs
   priority: 2
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: in_progress
   created_at: '2026-09-14T20:05:00.000Z'
-  updated_at: '2026-09-15T10:40:00.000Z'
+  updated_at: '2026-09-15T12:05:00.000Z'
 pre_decisions:
   doc_scope:
     chosen: living docs only
@@ -185,7 +185,7 @@ phases:
       Cargo.toml at the tag. Install probe cargo install --git ... --tag v20260914.0.0 lokomotiv installed lok and
       lokomotiv; lok --version printed 20260914.0.0.
   implement:
-    status: in_progress
+    status: complete
     sub_tasks_complete: 4
     last_phase_completed: 4 - verification sweep
     tag_chosen: v20260914.0.0
@@ -200,14 +200,14 @@ phases:
         summary: 'docs(CLO-660): restate aggregation docs around crates.io ownership'
       - sha: d637167
         summary: 'docs(CLO-660): fix two statements caught by the verification greps'
-    evidence_dir: <session scratchpad>/clo-660-evidence (owners.json, versions.json, probe-readme/, probe-librs/, doc-before.log, doc-after.log, doc-warnings-*.txt, doctest.log, install.log, review-grep.txt)
+    evidence_dir: /private/tmp/claude-501/-Users-mk-Code-orchestrator-lok--fix-clo-660-docs/10a87299-32d3-4dc3-a89c-f978beb9be14/scratchpad/clo-660-evidence (outside the repository by design; retained until merge; files are owners.json, versions.json, probe-readme/, probe-librs/, doc-before.log, doc-after.log, doc-warnings-*.txt, doctest.log, install.log, review-grep.txt)
     evidence:
       eval_1_owner: exit 0, ducks only (re-run before any doc edit)
       eval_2_versions: exit 0, 28 0 20260208.0.2 2026-02-08
       eval_3_strict: >-
         First run hit DEPENDENCIES.md:2, the new Last Updated line quoting the retired phrase; reworded in d637167.
         Re-run: no output, exit 1
-      eval_3b_locked: no output
+      eval_3b_locked: exit 1 (final rg -v selected nothing), no output
       eval_3c_docs_rs: no output, exit 1
       eval_3d_quick_start: README.md:101 cargo install --locked --git https://github.com/maxkulish/lok --tag v20260914.0.0 lokomotiv
       eval_4_review: >-
@@ -231,15 +231,15 @@ phases:
         docs/decisions/clo-592-workspace-split.md, docs/adrs/clo-589-backend-library-shape.md,
         docs/status/clo-660-workflow.yaml, specs/2026-09-15-clo-660-crate-ownership.md and four
         docs/reviews/clo-660-spec-review-* files; no untracked files
-      eval_6_build_files: no output
+      eval_6_build_files: exit 0, no output (neither git diff nor ls-files listed a path)
       eval_7_examples: readme check exit=0, librs check exit=0, both Cargo.lock pinned to tag=v20260914.0.0
       eval_8_docs: >-
         doc before exit=0 (3 warning header lines), doc after exit=0, sorted warning diff exit=0 (identical),
         doctest exit=0 (1 passed, 1 ignored)
       eval_9_historical: 12 files, listed verbatim in the decision record re-evaluation section
-      eval_10_tag: v20260914.0.0 present on origin (newest tag)
+      eval_10_tag: exit 0, v20260914.0.0 present on origin (newest tag)
       eval_11_install: install exit=0, bin/ holds lok and lokomotiv, lok --version printed lok 20260914.0.0
-      eval_12_outside_sweep: exactly the four known hits (.pi/agents/ops-reviewer.md:52, Cargo.toml:11, :55, :113); no escalation
+      eval_12_outside_sweep: exit 0, exactly the four known hits (.pi/agents/ops-reviewer.md:52, Cargo.toml:11, :55, :113); no escalation
       eval_13_roadmap_summary: docs/ROADMAP.md:21 | Phase 13 Release Readiness | 4 | 2 | In progress |
       eval_14_adr_hunk: one hunk, @@ -152 +152 @@
       eval_15_project_row: docs/PROJECT.md:18, Medium, task id -, names co-ownership and a new crate name
@@ -260,6 +260,21 @@ phases:
       - spec: README Quick Start install line carries a trailing comment
         actual: The comment sits on the next line, aligned with the other command comments
         reason: The install line is 88 characters; the comment on its own line keeps the block readable, and 3d matches the command line exactly.
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-660-codex-validation.md
+    codex_note: >-
+      One MEDIUM finding (evidence not auditable: placeholder evidence_dir, logs outside the checkout). Codex found
+      no correctness, regression or security defect in the documentation changes.
+    validation_synthesis_report: docs/reviews/clo-660-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_fixes:
+      - evidence_dir now names the absolute scratchpad path; exit codes added to 3b (1), 6 (0), 10 (0) and 12 (0) after re-running each
+    validation_declined: []
+    validation_rerun: >-
+      Not re-run after the fix iteration. The one Must Fix touched evidence fields in this YAML only, the synthesis
+      had already re-verified the retained logs and stated the documentation changes need no edits, and CLO-656
+      set the same precedent for a docs-only fix.
   pr:
     status: pending
   complete:
@@ -343,3 +358,24 @@ history:
     details: >-
       User approved revision 4 (option 1): re-verification commands live in the DEPENDENCIES.md standing entry,
       workspace-split verdict re-affirmed. Spec decomposition is the plan; moving to implement.
+  - timestamp: '2026-09-15T11:05:00.000Z'
+    action: commit_created
+    phase: implement
+    details: aacf932 spec artifacts, then one commit per sub-task (8d24b01, 950f849, a5ee3cd) and d637167 for two grep-caught fixes.
+  - timestamp: '2026-09-15T11:40:00.000Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All 4 sub-tasks complete. Evaluations 1-15 pass after two in-place fixes caught by Evaluations 3 and 4.
+      Evidence recorded in 61e588b.
+  - timestamp: '2026-09-15T11:42:00.000Z'
+    action: pushed_to_remote
+    phase: implement
+    details: fix/clo-660-docs pushed to origin with upstream tracking.
+  - timestamp: '2026-09-15T12:05:00.000Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      pre-pr-validation with the spec as design and plan. Codex gpt-5.6-sol FAIL on evidence auditability only;
+      synthesis PASS_WITH_NOTES with one Must Fix (evidence path placeholder, missing exit codes), applied in one
+      bounded iteration. Moving to PR.
