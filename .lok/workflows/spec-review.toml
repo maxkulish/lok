@@ -173,7 +173,7 @@ ENDCLAUDE
 
 printf '%s\n' '# Spec Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-synthesis.md
 cat >> docs/reviews/{{ arg.2 }}-spec-review-synthesis.md << 'ENDSYNTH'
-{{ steps.synthesis.output }}
+{% if steps.synthesis is defined %}{{ steps.synthesis.output }}{% else %}NO_REVIEWS_AVAILABLE{% endif %}
 ENDSYNTH
 
 echo "Spec reviews written to docs/reviews/{{ arg.2 }}-spec-review-*.md"
