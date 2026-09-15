@@ -124,8 +124,19 @@ phases:
       4 of 7 unit tests failed before the gate existed (the other 3 guard unchanged behaviour). The end-to-end test
       failed with load_config_from_paths temporarily wired back to merge_toml_file, and passed once restored.
   pr:
-    status: pending
-    ci_passed: false
+    status: in_progress
+    pr_url: https://github.com/maxkulish/lok/pull/109
+    pr_number: 109
+    ci_passed: true
+    ci_run: https://github.com/maxkulish/lok/actions/runs/34965720635
+    qodo_billing_blocked: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-09-15T12:53:09Z'
+    reviews_addressed: true
+    bot_rereview_head_sha: none
+    bot_rereview_at: '2026-09-15T12:53:09Z'
+    pre_merge_refetch_passed: true
+    pre_merge_refetch_at: '2026-09-15T12:53:09Z'
   complete:
     status: pending
 history:
@@ -195,3 +206,41 @@ history:
     action: pre_flight_checks_passed
     phase: pr
     details: On the rebased branch - cargo fmt check, clippy all-targets -D warnings, cargo test (1378 passed, 0 failed), git diff --check origin/main...HEAD clean.
+  - timestamp: '2026-09-15T11:53:00.000Z'
+    action: pr_created
+    phase: pr
+    details: >-
+      PR #109 opened from fix/clo-632-toml with a Behaviour change heading and no closing keyword. Before opening,
+      stripped absolute machine paths from the Codex report (a1025a7). Linear set to In Review with the PR linked.
+  - timestamp: '2026-09-15T12:05:00.000Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      Run 34965720635 on a1025a7 - CI Gate, MSRV 1.83, build/test macos and ubuntu, library boundary all pass.
+      etxtbsy-stress skipped.
+  - timestamp: '2026-09-15T12:05:00.000Z'
+    action: workflow_paused
+    phase: pr
+    details: >-
+      qodo-code-review posted <!-- qodo:billing-blocked --> at 11:53:14Z (workspace out of credits). No review is
+      coming; per pr.md Step 4.3 the gate blocks for user guidance instead of polling.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: workflow_resumed
+    phase: pr
+    details: User chose "proceed" - skip the bot review while Qodo is billing-blocked.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: qodo-code-review is billing-blocked on PR #109 (<!-- qodo:billing-blocked --> comment, workspace out of credits); user approved proceeding without a bot review.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: review_addressed
+    phase: pr
+    details: Nothing to address - 0 reviews, 0 inline comments, 0 non-Qodo issue comments on PR #109.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: bot_rereview_verified
+    phase: pr
+    details: bot_rereview_head_sha recorded as none - Qodo billing-blocked and the user approved proceeding, so no /agentic_review was posted.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: Head a1025a7 matches local; 0 inline comments, 0 reviews, 0 unresolved review threads; GitHub reports MERGEABLE.
