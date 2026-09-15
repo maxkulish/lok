@@ -23,7 +23,7 @@ linear:
   priority: 2
 workflow:
   current_phase: pr
-  status: awaiting_input
+  status: checkpoint
   created_at: '2026-09-14T20:05:00.000Z'
   updated_at: '2026-09-15T12:05:00.000Z'
 pre_decisions:
@@ -279,7 +279,7 @@ phases:
     status: in_progress
     pr_url: https://github.com/maxkulish/lok/pull/110
     pr_number: 110
-    ci_passed: false
+    ci_passed: true
     head_sha_at_creation: 129c12b4445e46536487c9c7b97b320da3dfb879
     pre_flight: 'cargo fmt --check exit 0, cargo clippy -D warnings exit 0, cargo clippy --tests exit 0, cargo test exit 0 (1361 passed, 0 failed)'
     main_sync: >-
@@ -295,7 +295,25 @@ phases:
           Found while resolving the merge. The spec's AC4 text named CLO-610 as protecting release archives, based on
           a ROADMAP that had not recorded the cancellation. Replace-in-place applied; Tasks 4 / Completed 2 and
           Evaluation 13 are unchanged because the row is kept with status Canceled.
-    qodo: billing-blocked (qodo-code-review comment with <!-- qodo:billing-blocked --> at 2026-09-15T12:03:19Z); awaiting user decision
+    qodo: billing-blocked (qodo-code-review comment with <!-- qodo:billing-blocked --> at 2026-09-15T12:03:19Z); user approved proceeding without a bot review
+    ci_passed_detail: >-
+      Run 34966655449 on 129c12b and run 34966755926 on b31e738 both completed success (build/test ubuntu and macos,
+      MSRV 1.83, library boundary, CI Gate).
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-09-15T12:52:00.000Z'
+    reviews_addressed: true
+    reviews_addressed_detail: No reviews, no inline comments and no review threads exist on PR #110; the only PR comment is Qodo's billing notice.
+    bot_rereview_head_sha: none
+    bot_rereview_reason: >-
+      qodo-code-review is billing-blocked on PR #110 (workspace out of credits), so no review or re-review can run.
+      The user approved proceeding without a bot review on 2026-09-15; no /agentic_review was posted, per pr.md
+      step 4.3.3.
+    bot_rereview_at: '2026-09-15T12:52:00.000Z'
+    pre_merge_refetch_passed: true
+    pre_merge_refetch_at: '2026-09-15T12:52:55.000Z'
+    pre_merge_refetch_detail: >-
+      On head b31e738: 0 reviews, 0 inline comments, 0 unresolved review threads, one issue comment (Qodo billing
+      notice, unchanged since 12:03:19Z), mergeable_state clean. This commit moves the head; re-check before merge.
   complete:
     status: pending
 history:
@@ -414,3 +432,25 @@ history:
     action: bot_review_blocked
     phase: pr
     details: qodo-code-review posted its billing-blocked notice. Per pr.md step 4.3.3, no polling; blocked for user guidance.
+  - timestamp: '2026-09-15T12:15:00.000Z'
+    action: ci_passed
+    phase: pr
+    details: CI green on 129c12b (run 34966655449) and on head b31e738 (run 34966755926).
+  - timestamp: '2026-09-15T12:52:00.000Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: >-
+      qodo-code-review is billing-blocked on PR #110 (<!-- qodo:billing-blocked --> comment, workspace out of
+      credits); user approved proceeding without a bot review.
+  - timestamp: '2026-09-15T12:52:00.000Z'
+    action: review_addressed
+    phase: pr
+    details: Nothing to address; no reviews, inline comments or threads on PR #110.
+  - timestamp: '2026-09-15T12:52:00.000Z'
+    action: bot_rereview_verified
+    phase: pr
+    details: bot_rereview_head_sha none; Qodo billing-blocked and the user approved proceeding, so no re-review request was posted.
+  - timestamp: '2026-09-15T12:52:55.000Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: 0 reviews, 0 inline comments, 0 unresolved threads, mergeable_state clean on b31e738.
