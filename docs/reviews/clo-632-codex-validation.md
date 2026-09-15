@@ -9,11 +9,11 @@
 
 ## Findings
 
-- **MEDIUM — Project-controlled backend names can inject terminal control sequences.** [`src/config.rs`](/Users/mk/Code/orchestrator/lok--fix-clo-632-toml/src/config.rs:590) interpolates `name` directly into the error. TOML accepts quoted names containing escaped control characters such as `\u001b`; the resulting ANSI sequence reaches stderr unescaped. This undermines the spec's terminal-safe error requirement.
+- **MEDIUM — Project-controlled backend names can inject terminal control sequences.** [`src/config.rs`](src/config.rs:590) interpolates `name` directly into the error. TOML accepts quoted names containing escaped control characters such as `\u001b`; the resulting ANSI sequence reaches stderr unescaped. This undermines the spec's terminal-safe error requirement.
 
-- **LOW — AC8 is incomplete.** The later [`command_wrapper` examples in README.md`](/Users/mk/Code/orchestrator/lok--fix-clo-632-toml/README.md:501) set non-default gated values without marking them user-config-only.
+- **LOW — AC8 is incomplete.** The later [`command_wrapper` examples in README.md`](README.md:501) set non-default gated values without marking them user-config-only.
 
-- **LOW — The branch fails `git diff --check`.** [`clo-632-spec-review-claude-fallback.md`](/Users/mk/Code/orchestrator/lok--fix-clo-632-toml/docs/reviews/clo-632-spec-review-claude-fallback.md:29) contains trailing whitespace.
+- **LOW — The branch fails `git diff --check`.** [`clo-632-spec-review-claude-fallback.md`](docs/reviews/clo-632-spec-review-claude-fallback.md:29) contains trailing whitespace.
 
 The core gate otherwise matches the design: all four fields are checked, violations are accumulated, trusted values win, explicit/user config remains unrestricted, and the end-to-end test has a valid positive control.
 
