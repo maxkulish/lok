@@ -37,6 +37,7 @@ linear:
   team: Cloud-ai
   project: Lok
   status_at_start: Todo
+  status_at_complete: Done
   archived_at_start: '2026-09-13T13:13:48.488Z'
   labels:
     - HITL
@@ -48,7 +49,7 @@ linear:
   priority: 2
 workflow:
   current_phase: complete
-  status: in_progress
+  status: complete
   created_at: '2026-09-14T20:05:00.000Z'
   updated_at: '2026-09-15T15:30:00.000Z'
 phases:
@@ -139,7 +140,14 @@ phases:
     pre_merge_refetch_passed: true
     pre_merge_refetch_at: '2026-09-15T12:53:09Z'
   complete:
-    status: pending
+    status: complete
+    merged_at: '2026-09-15T16:48:12Z'
+    merge_commit: 12410eb
+    merged_by: maxkulish
+    aggregation_files_updated: true
+    finalize_branch: docs/clo-632-finalize
+    lessons_file: docs/lessons/clo-632-l1.md .. clo-632-l5.md
+    followups_added_to_backlog: 5 untracked rows in docs/PROJECT.md Up Next
 history:
   - timestamp: '2026-09-14T20:05:00.000Z'
     action: workflow_started
@@ -257,3 +265,21 @@ history:
       files. Rebased onto origin/main; every conflict was a Last Updated line, resolved by keeping main's line and
       appending the CLO-632 note. fmt, clippy and cargo test (1378 passed) re-run clean. Commit SHAs in
       phases.implement.commits updated to the post-rebase values; force-pushed with --force-with-lease.
+  - timestamp: '2026-09-15T16:48:12Z'
+    action: pr_merged
+    phase: complete
+    details: >-
+      PR #109 squash-merged as 12410eb with --match-head-commit f33651e after CI run 34996585912 passed. Merged without
+      --delete-branch (CLO-628); remote fix/clo-632-toml deleted with git push --delete.
+  - timestamp: '2026-09-15T16:49:27Z'
+    action: project_sync_complete
+    phase: complete
+    details: >-
+      On docs/clo-632-finalize from origin/main 12410eb, created in the task worktree rather than the main checkout
+      (global no-cd rule, main checkout possibly in use by another session). PROJECT.md - Active Work cleared, CLO-632
+      at the top of Recently Completed, five follow-ups added to Up Next. ROADMAP.md - CLO-632 Done, Phase 15 at 2 of 5.
+      DEPENDENCIES.md - Last Updated only, CLO-632 blocked nothing.
+  - timestamp: '2026-09-15T16:49:27Z'
+    action: workflow_complete
+    phase: complete
+    details: Task CLO-632 fully completed; Linear moves to Done once the finalize PR merges.
