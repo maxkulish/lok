@@ -631,12 +631,12 @@ fn merge_project_file(base: &mut toml::Value, path: &Path) -> Result<()> {
         .context("Failed to deserialize merged config")?;
     let violations = project_trust_violations(&Config::default(), &trusted, &project, &raw);
     if !violations.is_empty() {
-        let file = path.display();
         anyhow::bail!(
-            "{file} sets keys that a project config cannot change: {}.\n\
+            "{} sets keys that a project config cannot change: {}.\n\
              These keys choose what lok executes and where prompts and API keys go. \
-             Move them to ~/.config/lok/lok.toml, delete them from {file}, \
-             or run with --config ~/.config/lok/lok.toml, which skips {file}.",
+             Move them to ~/.config/lok/lok.toml, delete them from this file, \
+             or run with --config ~/.config/lok/lok.toml, which skips this file.",
+            path.display(),
             violations.join(", ")
         );
     }
