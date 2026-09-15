@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-08-07 (CLO-653 merged, closing Phase 12 at 6 of 6; Phase 14 at 9 tasks; Phase 13 at 2 of 3)
+**Last Updated**: 2026-09-15 (CLO-660 joined Phase 13, now 2 of 4, correcting the premise that this project publishes `lokomotiv`)
 
 ## Summary
 
@@ -18,7 +18,7 @@
 | Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 6 | 6 | Complete |
-| Phase 13: Release Readiness | 3 | 2 | In progress |
+| Phase 13: Release Readiness | 4 | 2 | In progress |
 | Phase 14: Orchestration Tooling Hardening | 9 | 1 | In progress |
 | Phase 15: Security Scan Remediation | 5 | 1 | In Progress |
 | Phase 16: Task-Pipeline Cleanup | 2 | 0 | Not started |
@@ -52,15 +52,16 @@ Two bounds replaced the constraint it removed, both documented in `src/lib.rs` w
 
 ## Phase 13: Release Readiness
 
-What still stands between the crate as it is now and a release someone outside this machine can trust. Both are cheap, and both get more expensive after a publish rather than before it: crate metadata freezes per version, and release provenance is hard to add retroactively once people are already downloading archives.
+What still stands between the code as it is now and a release someone outside this machine can trust. This project has never published to crates.io and cannot publish `lokomotiv`, because upstream `ducks` owns that name (see "crates.io publishing" in `docs/DEPENDENCIES.md`). Of the four tasks, two protect what already reaches people: CLO-610 covers the GitHub release archives that `release.yml` publishes, whose provenance is hard to add once people are downloading them, and CLO-638 covers anyone building from source through a git dependency or `cargo install --git`. CLO-609's crate metadata starts to matter at the first crates.io publish under a name this project controls, since metadata freezes per published version. CLO-660 corrects the planning and consumer docs that assumed this project publishes `lokomotiv`.
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-609](https://linear.app/cloud-ai/issue/CLO-609) | Point the crate's repository and homepage metadata at maxkulish/lok | Done | - |
 | [CLO-638](https://linear.app/cloud-ai/issue/CLO-638) | Verify the declared rust-version = 1.80 in CI, or raise it to what the code actually needs | Done | - |
 | [CLO-610](https://linear.app/cloud-ai/issue/CLO-610) | Attest release binaries so their checksums prove origin, not only transfer | Not started | - |
+| [CLO-660](https://linear.app/cloud-ai/issue/CLO-660) | Correct the docs that misstate who publishes lokomotiv on crates.io | In Progress | - |
 
-CLO-638 joined this phase on 2026-08-06. It arrived as a CLO-633 follow-up, but it belongs here for the same reason as the other two: the oldest toolchain installed locally is 1.94 and `ci.yml` uses runner-stable, so `rust-version = "1.80"` is a claim nobody has tested. It costs nothing today and becomes a consumer-facing build failure the moment the crate is published.
+CLO-638 joined this phase on 2026-08-06. It arrived as a CLO-633 follow-up, but it belongs here for the same reason as the other two: the oldest toolchain installed locally is 1.94 and `ci.yml` uses runner-stable, so `rust-version = "1.80"` is a claim nobody has tested. An untested MSRV is a build failure for anyone who builds from source with an older toolchain, through a git dependency or `cargo install --git`, and it would reach registry consumers with the first crates.io publish.
 
 ## Phase 14: Orchestration Tooling Hardening
 

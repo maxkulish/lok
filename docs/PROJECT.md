@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-09-14 (CLO-660 started; CLO-654 removed from Up Next, canceled in Linear as a duplicate folded into CLO-660)
+**Last Updated**: 2026-09-15 (CLO-660 in implementation; crates.io naming decision added to Up Next. On 2026-09-14 CLO-654 was removed from Up Next, canceled in Linear as a duplicate folded into CLO-660)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-660](https://linear.app/cloud-ai/issue/CLO-660) | Correct the docs that misstate who publishes lokomotiv: upstream `ducks` owns the crates.io name and published all 28 binary-only versions, so this project has never published and a library release needs a new crate name or an owner grant | In Progress | Spec | - |
+| [CLO-660](https://linear.app/cloud-ai/issue/CLO-660) | Correct the docs that misstate who publishes lokomotiv: upstream `ducks` owns the crates.io name and published all 28 binary-only versions, so this project has never published and a library release needs a new crate name or an owner grant | In Progress | Implement | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -15,6 +15,7 @@
 | High | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields) | Escape or remove step output interpolated into workflow shell fields — `shell_escape` is registered as a filter and used nowhere, so model output reaches `sh -c` as source | None — codex-security scan finding | Next (HITL) |
 | High | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632/gate-project-layer-loktoml-backend-commands-behind-a-trust-boundary) | Gate project-layer `lok.toml` backend commands behind a trust boundary — a cloned repo's `./lok.toml` is the highest-precedence config layer and can replace a backend executable | None — codex-security scan finding | Next (HITL) |
 | High | [CLO-651](https://linear.app/cloud-ai/issue/CLO-651) | `gh pr checks --watch` reports failure instantly when a PR has no checks yet, so `finalize.md` prints `CI_NOT_PASSED` in under a second and refuses to merge. Indistinguishable from a real red build | None - found during the 2026-08-06 Actions outage | Next |
+| Medium | - | Decide how the library reaches crates.io: co-ownership of `lokomotiv` from upstream `ducks`, or a new crate name. This is a prerequisite of any library publish, of any downstream crate publishing with a `lokomotiv` dependency, and of revisiting the workspace split (`docs/decisions/clo-592-workspace-split.md`). Revisit `Cargo.toml`'s `documentation = "https://docs.rs/lokomotiv"`, `authors = ["ducks"]` and the `:55` comment "default so `cargo install lokomotiv` keeps working" with it, and reassess migration cost for known and unknown git consumers at that point. Facts in `docs/DEPENDENCIES.md` under crates.io publishing | None - found during CLO-660 | Next (HITL) |
 | Medium | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested) | Make pr-review-cycle shell snippets executable and tested — extract the gate logic to `.pi/scripts/`, shellcheck in CI, fixture tests asserting each gate fails *closed*, and collapse the skill/`/pr:review` duplication | None — PR #71 merged | Next |
 | Medium | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624/distinguish-a-bad-reviewer-invocation-from-an-empty-model-response) | Distinguish a bad reviewer invocation from an empty model response — `REVIEW_FAILED` on empty stdout regardless of cause is what hid the retired-gemini-CLI breakage for weeks | None — PR #71 merged | Next |
 | Medium | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627/completemd-edits-the-aggregation-files-then-checks-out-main-with-them) | `complete.md` edits the aggregation files at Step 3, then checks out main at Step 4 with them uncommitted — in worktree mode the same three files get edited twice in two places | None — CLO-625 merged | Next |
