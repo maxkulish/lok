@@ -1,6 +1,6 @@
 ---
 name: pr-review-cycle
-description: Bot-review wait, fetch, address, reply, re-fetch - the 9-step PR review procedure owned by the pi `pr` phase. Enforces current-head bot-review completion, CI/bot independence, and one-reply-per-thread. Recognizes qodo-code-review and copilot-pull-request-reviewer. Qodo never re-reviews on push, so every wait ends in an explicit `/agentic_review` request when the head has moved.
+description: Bot-review wait, fetch, address, reply, re-fetch - the 9-step PR review procedure owned by the pi `pr` phase. Enforces current-head bot-review completion, CI/bot independence, and one-reply-per-thread. Recognizes qodo-code-review and copilot-pull-request-reviewer, and fails fast when Qodo is billing-blocked. Qodo never re-reviews on push, so every wait ends in an explicit `/agentic_review` request when the head has moved.
 ---
 
 # Skill: pr-review-cycle
@@ -62,6 +62,10 @@ L6):
    silently marking reviews addressed.
 4. **Only confirmed absence of installed bots may skip bot review.**
    Absence is confirmed by 1a below.
+5. **A billing-blocked Qodo fails fast, not after 20 minutes.** When the
+   workspace is out of credits, Qodo posts a notice instead of a review,
+   and no amount of polling changes that. 1a detects the notice and the
+   gate stops for user guidance before 1b starts.
 
 ### 1a - Probe which bots are installed
 
@@ -90,10 +94,60 @@ INSTALLED_BOTS=$( { gh api "repos/${REPO}/issues/${PR}/comments" --paginate --sl
 if [ -z "$INSTALLED_BOTS" ]; then
   echo "No reviewer bots installed; skipping the wait loop and going to step 3"
 fi
+
+QODO_BILLING_BLOCKED=0
+if printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo \
+  && gh api "repos/${REPO}/issues/${PR}/comments" --paginate --slurp \
+    | jq -e '[.[][] | select(.user.login | test("qodo"))
+             | select(.body | contains("<!-- qodo:billing-blocked -->"))] | length > 0' >/dev/null; then
+  QODO_BILLING_BLOCKED=1
+fi
 ```
 
 If `INSTALLED_BOTS` is empty, record the wait gate with the absence
 rationale below and go straight to **step 3**. Do not run 1b.
+
+If `QODO_BILLING_BLOCKED=1`, do not run 1b either. Qodo posts one comment
+per PR opening with `<!-- qodo:billing-blocked -->` ("Qodo reviews are
+paused because your workspace is out of credits") and edits that same
+comment when `/agentic_review` is posted, so both 600s waits are
+guaranteed to time out. PR #100 lost 20 minutes that way. Stop and ask
+the user:
+
+```bash
+if [ "$QODO_BILLING_BLOCKED" -eq 1 ]; then
+  echo "GATE FAIL: qodo-code-review is billing-blocked on PR #${PR} (workspace out of credits); no review is coming"
+  exit 1
+fi
+```
+
+The user decides. If they approve proceeding without a bot review,
+record the wait gate with that rationale and go to **step 3**; step 8
+then skips its request as well:
+
+```ts
+update_workflow_state({
+  task_id: "CLO-XX",
+  phase: "pr",
+  action: "bot_review_wait_completed",
+  details: "qodo-code-review is billing-blocked on PR #<n> (<!-- qodo:billing-blocked --> comment, workspace out of credits); user approved proceeding without a bot review.",
+  phase_updates: {
+    bot_review_wait_completed: true,
+    bot_review_wait_completed_at: "<ISO-8601>"
+  }
+})
+```
+
+The notice stays on the PR after credits are restored. If the user says
+reviews are back, set `QODO_BILLING_BLOCKED=0` and `BOT_REVIEW_SEEN=0`
+in this shell, define the 1b helper, and go straight to its
+`/agentic_review` block. The PR-open review never ran, so the first 600s
+wait has nothing to find.
+
+### 1b - Poll for a current-head review
+
+Only run when 1a found at least one installed bot and
+`QODO_BILLING_BLOCKED=0`.
 
 ```ts
 update_workflow_state({
@@ -107,10 +161,6 @@ update_workflow_state({
   }
 })
 ```
-
-### 1b - Poll for a current-head review
-
-Only run when 1a found at least one installed bot.
 
 Define the poll once - step 8 reuses it verbatim. A completed pass
 arrives in one of **two shapes**, and the helper accepts both. A new
@@ -518,7 +568,9 @@ wired up here.
 There is nothing to ask and nothing to wait for; posting
 `/agentic_review` into a repo with no Qodo app just leaves a stray
 comment and then fails the gate ten minutes later. Jump to the new-
-comment check at the end of this step.
+comment check at the end of this step. The same applies when 1a found
+Qodo billing-blocked and the user approved proceeding: the request would
+only refresh the billing notice.
 
 Run this in the **same shell as step 1** - it needs `INSTALLED_BOTS` and
 the `wait_for_bot_review` helper. The guard below is what keeps a
@@ -536,7 +588,10 @@ fi
 BOT_REREVIEW_SHA=""
 BOT_REREVIEW_AT=""
 
-if printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo; then
+if [ "${QODO_BILLING_BLOCKED:-0}" -eq 1 ]; then
+  BOT_REREVIEW_SHA="none"
+  BOT_REREVIEW_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+elif printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo; then
   NEW_HEAD=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
 
   REQUESTED_AT=$(gh api repos/${REPO}/issues/${PR}/comments \
@@ -661,4 +716,6 @@ Write what actually happened. `details` is the record a later reader
 trusts: if the re-review produced new findings you looped back to step 4
 for, say so; if 1a confirmed no bots are installed, record
 `bot_rereview_head_sha: "none"` and give the absence rationale rather
-than implying a pass that never ran.
+than implying a pass that never ran. A billing-blocked Qodo also records
+`"none"`, and `details` must say it was billing-blocked and that the user
+approved proceeding.
