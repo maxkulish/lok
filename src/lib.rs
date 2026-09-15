@@ -7,13 +7,22 @@
 //!
 //! # Quick start
 //!
-//! Add `lokomotiv` to your `Cargo.toml` with **no default features** so the
-//! CLI-only dependencies (`clap`, `indicatif`, …) are not compiled:
+//! The library is not on crates.io, so depend on this repository through git,
+//! with **no default features** so the CLI-only dependencies (`clap`,
+//! `indicatif`, …) are not compiled. The example below also needs `tokio`,
+//! because it uses `#[tokio::main]`:
 //!
 //! ```toml
 //! [dependencies]
-//! lokomotiv = { version = "20260603", default-features = false }
+//! lokomotiv = { git = "https://github.com/maxkulish/lok", tag = "v20260914.0.0", default-features = false }
+//! tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 //! ```
+//!
+//! The `tag` selects the source revision to build. A crate that depends on
+//! `lokomotiv` through git cannot itself be published to crates.io:
+//! crates.io needs a registry version for every dependency, and no library
+//! version of `lokomotiv` exists there (see
+//! [specifying dependencies from multiple locations](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations)).
 //!
 //! Then build an Ollama backend and run a query:
 //!
@@ -107,10 +116,11 @@
 //! # Versioning
 //!
 //! `lokomotiv` shares its version number with the `lok` binary. Both are
-//! published from the same repository under a single `Cargo.toml`. The version
-//! follows a date-based scheme (`YYYYMMDD.N.0`) rather than semver, reflecting
-//! the fact that the library and binary evolve together. Pin to a specific
-//! version in your `Cargo.toml` to avoid unexpected changes.
+//! built from the same repository under a single `Cargo.toml`. The version
+//! follows a date-based scheme (`YYYYMMDD.N.P`) rather than semver, reflecting
+//! the fact that the library and binary evolve together. The library is not on
+//! crates.io. Each release is tagged `v` plus the crate version, so pin a
+//! release tag in your git dependency to avoid unexpected changes.
 
 #![deny(missing_docs)]
 
