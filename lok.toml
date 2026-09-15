@@ -29,12 +29,10 @@ timeout = 600
 enabled = true
 command = "codex"
 model = "gpt-5.6-sol"
-args = [
-    "exec",
-    "--json",
-    "-c",
-    "model_reasoning_effort=\"high\"",
-]
+# A project lok.toml cannot change `args`. For high reasoning effort, set this
+# in ~/.config/lok/lok.toml:
+#   [backends.codex]
+#   args = ["exec", "--json", "--ephemeral", "-c", "model_reasoning_effort=\"high\""]
 skip_lines = 0
 
 [backends.claude]

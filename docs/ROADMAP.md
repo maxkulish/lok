@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-09-15 (CLO-660 done, closing Phase 13 at 3 of 4 with CLO-610 canceled; it corrected the premise that this project publishes `lokomotiv`)
+**Last Updated**: 2026-09-15 (CLO-660 done, closing Phase 13 at 3 of 4 with CLO-610 canceled; it corrected the premise that this project publishes `lokomotiv`; CLO-632 in progress since 2026-09-14)
 
 ## Summary
 
@@ -93,7 +93,7 @@ Five findings from the codex-security scan of `6ac4694` (2026-08-03). They share
 |------|-------|--------|--------------|
 | [CLO-633](https://linear.app/cloud-ai/issue/CLO-633) | Fix slice panics on CI log truncation and out-of-range file:line references | Done | - |
 | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631) | Escape or remove step output interpolated into workflow shell fields | Not started | - |
-| [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | Gate project-layer lok.toml backend commands behind a trust boundary | Not started | - |
+| [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | Gate project-layer lok.toml backend commands behind a trust boundary | In Progress | - |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | Add one path-confinement helper and use it in every worktree writer and reader | Not started | - |
 | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | Default the Gemini backend to the plan agent when no sandbox is requested | Not started | - |
 

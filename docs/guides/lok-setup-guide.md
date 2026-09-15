@@ -79,7 +79,7 @@ parallel = true                    # Run independent steps in parallel
 timeout = 300                      # Global timeout per step (seconds)
 max_retries = 0                    # Default retry count
 retry_delay_ms = 1000              # Base delay between retries (doubles each attempt)
-command_wrapper = "nix-shell --run '{cmd}'"  # Optional wrapper for shell commands
+command_wrapper = "nix-shell --run '{cmd}'"  # Optional wrapper for shell commands (user config only)
 team = "frontend"                  # Default team for role resolution
 
 [cache]
@@ -116,14 +116,14 @@ timeout = 300
 [backends.codex]
 enabled = true
 command = "codex"
-args = ["exec"]
+args = ["exec"]                    # Differs from the default: user config only
 
 # Bedrock requires --features bedrock at build time
 [backends.bedrock]
 enabled = true
-command = "bedrock"
+command = "bedrock"                # Not a default backend: user config only
 model = "us.anthropic.claude-sonnet-4-20250514-v1:0"
-api_key_env = "AWS_ACCESS_KEY_ID"
+api_key_env = "AWS_ACCESS_KEY_ID"  # User config only
 
 # ---- Role Routing (optional) ----
 
@@ -140,6 +140,33 @@ strategy = { Parallel = { min_success = 1, timeout_secs = 30 } }
 backends = ["claude"]
 strategy = { First = {} }
 ```
+
+### Project vs user config
+
+lok merges three layers: built-in defaults, then `~/.config/lok/lok.toml`, then `./lok.toml` in the directory lok runs from. Parent directories are not searched, and `--config <file>` replaces both files.
+
+A project `lok.toml` usually comes with a cloned repository, so it cannot change the four keys that decide what lok executes and where prompts and API keys go:
+
+- `backends.<name>.command` - the binary lok spawns, or the URL an HTTP backend such as Ollama sends prompts to
+- `backends.<name>.args` - arguments to that binary, including sandbox-bypass flags
+- `backends.<name>.api_key_env` - which environment variable is sent as the API key
+- `defaults.command_wrapper` - wraps every workflow shell command
+
+A project file may restate one of these keys with the built-in default or with the value your user config sets, so `lok init` output keeps working. The restated value never takes effect: your user config decides. Any other value stops lok from loading. Config loads before any subcommand runs, so `ask`, `run`, `backends`, `doctor` and `init` all fail with:
+
+```
+Error: /path/to/repo/lok.toml sets keys that a project config cannot change: backends.codex.args.
+These keys choose what lok executes and where prompts and API keys go. Move them to ~/.config/lok/lok.toml, delete them from this file, or run with --config ~/.config/lok/lok.toml, which skips this file.
+```
+
+For example, to run codex at high reasoning effort, set the args in `~/.config/lok/lok.toml` rather than in the repository:
+
+```toml
+[backends.codex]
+args = ["exec", "--json", "--ephemeral", "-c", "model_reasoning_effort=\"high\""]
+```
+
+This protects config keys only. A project's `.lok/workflows/<name>.toml` is found before `~/.config/lok/workflows/` and the built-in workflows, so a cloned repository can still supply the `shell` steps of a workflow you run by name.
 
 ### Backend types
 

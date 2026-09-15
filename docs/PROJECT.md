@@ -1,19 +1,18 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-09-15 (CLO-660 completed and moved to Recently Completed; crates.io naming decision added to Up Next. On 2026-09-14 CLO-654 was removed from Up Next, canceled in Linear as a duplicate folded into CLO-660; CLO-788 review gate repairs completed, and canceled CLO-624 and CLO-610 were removed from Up Next)
+**Last Updated**: 2026-09-15 (CLO-660 completed and moved to Recently Completed; crates.io naming decision added to Up Next. On 2026-09-14 CLO-654 was removed from Up Next, canceled in Linear as a duplicate folded into CLO-660; CLO-788 review gate repairs completed, and canceled CLO-624 and CLO-610 were removed from Up Next; CLO-632 in progress since 2026-09-14)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | Gate project-layer `lok.toml` backend commands behind a trust boundary - reject a project value for `command`, `args`, `api_key_env` or `defaults.command_wrapper` that differs from what defaults and user config resolved | In Progress | Spec | - |
 
 ## Up Next (Prioritized Backlog)
 
 | Priority | Task | Title | Dependencies | Target |
 |----------|------|-------|--------------|--------|
 | High | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields) | Escape or remove step output interpolated into workflow shell fields — `shell_escape` is registered as a filter and used nowhere, so model output reaches `sh -c` as source | None — codex-security scan finding | Next (HITL) |
-| High | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632/gate-project-layer-loktoml-backend-commands-behind-a-trust-boundary) | Gate project-layer `lok.toml` backend commands behind a trust boundary — a cloned repo's `./lok.toml` is the highest-precedence config layer and can replace a backend executable | None — codex-security scan finding | Next (HITL) |
 | High | [CLO-651](https://linear.app/cloud-ai/issue/CLO-651) | `gh pr checks --watch` reports failure instantly when a PR has no checks yet, so `finalize.md` prints `CI_NOT_PASSED` in under a second and refuses to merge. Indistinguishable from a real red build | None - found during the 2026-08-06 Actions outage | Next |
 | Medium | - | Decide how the library reaches crates.io: co-ownership of `lokomotiv` from upstream `ducks`, or a new crate name. This is a prerequisite of any library publish, of any downstream crate publishing with a `lokomotiv` dependency, and of revisiting the workspace split (`docs/decisions/clo-592-workspace-split.md`). Revisit `Cargo.toml`'s `documentation = "https://docs.rs/lokomotiv"`, `authors = ["ducks"]` and the `:55` comment "default so `cargo install lokomotiv` keeps working" with it, and reassess migration cost for known and unknown git consumers at that point. Facts in `docs/DEPENDENCIES.md` under crates.io publishing | None - found during CLO-660 | Next (HITL) |
 | Medium | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested) | Make pr-review-cycle shell snippets executable and tested — extract the gate logic to `.pi/scripts/`, shellcheck in CI, fixture tests asserting each gate fails *closed*, and collapse the skill/`/pr:review` duplication | None — PR #71 merged | Next |

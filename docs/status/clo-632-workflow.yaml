@@ -1,0 +1,259 @@
+task_id: clo-632
+task_type: specification
+classification_reason: >-
+  Security fix from the 2026-08-03 codex-security scan. The ticket already lists three boundary options, and the
+  change sits in the config merge (src/config.rs) plus the config guide. The one HITL decision, which boundary and
+  which keys, was taken with the user at initialization, so it goes into the spec and no design doc is needed.
+task_profile:
+  has_backend: true
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+decisions:
+  boundary: >-
+    Reject if changed. A project-layer ./lok.toml may repeat a gated value that the built-in defaults plus the user
+    config already resolved. A value that differs, or a gated key on a backend absent from the lower layers, is a
+    hard load error naming the key and the file. User config and --config stay fully trusted.
+  gated_keys:
+    - backends.*.command
+    - backends.*.args
+    - backends.*.api_key_env
+    - defaults.command_wrapper
+  gated_keys_reason: >-
+    There is no `endpoint` key: the Ollama URL is stored in `command`, so gating `command` covers both the execution
+    and the exfiltration case. `args` can hand a trusted binary a sandbox-bypass flag. `api_key_env` selects which
+    secret is sent. `command_wrapper` wraps the shell steps of the user's own workflows when they run inside the repo.
+  lok_toml_consequence: >-
+    The repo's own ./lok.toml sets codex args with -c model_reasoning_effort="high", which the default args do not
+    include. The same PR removes that arg and documents setting it in ~/.config/lok/lok.toml instead.
+  revision_2026_09_15: >-
+    After spec review N2 the user chose "user value wins": the allowed-value check is unchanged (built-in default or
+    user-resolved value), but gated keys are stripped from the project overlay before the merge, so a project can
+    restate a gated value and never change it.
+  decided_at: '2026-09-14T20:20:00.000Z'
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Todo
+  archived_at_start: '2026-09-13T13:13:48.488Z'
+  labels:
+    - HITL
+  blocks: []
+  blocked_by: []
+  related_to: []
+  branch_suggested: kmamemo/clo-632-gate-project-layer-loktoml-backend-commands-behind-a-trust
+  branch_actual: fix/clo-632-toml
+  priority: 2
+workflow:
+  current_phase: complete
+  status: in_progress
+  created_at: '2026-09-14T20:05:00.000Z'
+  updated_at: '2026-09-15T15:30:00.000Z'
+phases:
+  discovery:
+    status: skipped
+    skip_reason: Specification task
+    approved: true
+  design:
+    status: skipped
+    reason: Specification task - using /spec instead
+  spec:
+    status: complete
+    spec_file: specs/2026-09-15-clo-632-project-config-trust.md
+    approved: true
+    review_ollama: docs/reviews/clo-632-spec-review-ollama.md
+    review_ollama_status: REVIEW_FAILED (step timed out after 300s, 1207s across retries)
+    review_claude_fallback: docs/reviews/clo-632-spec-review-claude-fallback.md
+    review_synthesis: docs/reviews/clo-632-spec-review-synthesis.md
+    review_verdict: APPROVE_WITH_SUGGESTIONS
+    review_completed: true
+    review_applied: true
+    applied_suggestions:
+      - N1 AC6 hardened - current_dir, PATH limited to the temp dir, other backends disabled, --config positive control
+      - N3 boundary scope paragraph, Must-not and AC8 docs limit for project .lok/workflows shadowing
+      - N4 AC7 and evaluation row build first, then run the binary with a temp HOME
+      - N5 model flag-injection note in the key audit
+      - N6 bedrock enabled cost risk recorded in the audit as a follow-up
+      - N7 rollout note and AC8 say a rejected file blocks every subcommand
+      - N8 fix hint names --config ~/.config/lok/lok.toml
+      - N9 Must - doc comment requiring future project config locations to use the gate
+      - N10 four single-key rejections collapsed into one table-driven test
+      - N11 bedrock api_key_env dropped from the doc-marking list, existing doc error made a follow-up
+      - Q1 AC8 docs state only ./lok.toml in the cwd is read
+    flagged_suggestions:
+      - N2 contradicted the clause (a) decision - user chose "user value wins"; AC2 and evaluation row 3 now expect the user value
+  implement:
+    status: complete
+    plan_source: spec decomposition (specs/2026-09-15-clo-632-project-config-trust.md section 4)
+    last_phase_completed: sub-task 4 (documentation)
+    commits:
+      - a45258a docs(CLO-632) spec, reviews, workflow state and start sync
+      - ce8f817 fix(CLO-632) sub-task 1 - trust check, strip and wiring in src/config.rs with 7 unit tests
+      - a566c20 test(CLO-632) sub-task 2 - end-to-end lok ask test with --config positive control
+      - 8b47169 chore(CLO-632) sub-task 3 - codex args removed from ./lok.toml
+      - 4bf67bc docs(CLO-632) sub-task 4 - README and setup guide trust split
+      - be78054 fix(CLO-632) validation fix iteration - escaped backend names, README wrapper note, whitespace
+    full_gate:
+      cargo_fmt_check: pass
+      clippy_all_targets: pass
+      cargo_test: pass
+      clippy_all_targets_bedrock: pass
+      cargo_test_bedrock: pass
+      clippy_lib_tests_no_default_features: pass
+      cargo_test_lib_no_default_features: pass
+      msrv_1_83_check_all_targets: pass
+      tests_passed_across_lanes: 2911
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-632-codex-validation.md
+    validation_synthesis_report: docs/reviews/clo-632-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_fix_iteration:
+      - Backend names from the project file escaped with escape_debug in violation keys, test project_backend_name_escaped_in_error (watched fail first)
+      - README Command Wrapper section marked user-config-only with a link to Project vs user config
+      - Trailing whitespace stripped from the generated clo-632 review docs
+      - Workflow YAML committed with the implementation
+    validation_notes: >-
+      Codex FAIL rested on three findings, all fixed in the one allowed iteration. The synthesis re-ran AC9 lanes
+      itself (Codex's read-only sandbox could not) and saw a bedrock-lane flake in codex/claude health-check tests
+      from concurrent cargo runs; it reran clean on the branch and on main, and the branch does not touch
+      src/backend/. PR conditions: Behaviour change heading in the description.
+    tdd_evidence: >-
+      4 of 7 unit tests failed before the gate existed (the other 3 guard unchanged behaviour). The end-to-end test
+      failed with load_config_from_paths temporarily wired back to merge_toml_file, and passed once restored.
+  pr:
+    status: complete
+    approved: true
+    pr_url: https://github.com/maxkulish/lok/pull/109
+    pr_number: 109
+    ci_passed: true
+    ci_run: https://github.com/maxkulish/lok/actions/runs/34965720635
+    qodo_billing_blocked: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-09-15T12:53:09Z'
+    reviews_addressed: true
+    bot_rereview_head_sha: none
+    bot_rereview_at: '2026-09-15T12:53:09Z'
+    pre_merge_refetch_passed: true
+    pre_merge_refetch_at: '2026-09-15T12:53:09Z'
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-09-14T20:05:00.000Z'
+    action: workflow_started
+    phase: init
+    details: >-
+      No sibling worktree, open PR or commit touches CLO-632. Linear issue is archived (Todo, HITL, High) with no
+      comments. Classified as specification by user choice.
+  - timestamp: '2026-09-14T20:20:00.000Z'
+    action: problem_framed
+    phase: init
+    details: >-
+      User chose the reject-if-changed boundary and gating of command, args, api_key_env and
+      defaults.command_wrapper, moving the repo's codex reasoning-effort arg to user config. Findings F1-F3 are in
+      the session notes.
+  - timestamp: '2026-09-14T20:10:00.000Z'
+    action: project_sync_start
+    phase: init
+    details: >-
+      WIP 1/3. PROJECT.md Active Work row added and Up Next row removed; ROADMAP.md Phase 15 row set to In Progress;
+      DEPENDENCIES.md Unblocked & Ready row removed. Linear issue unarchived (GraphQL issueUnarchive), set to In
+      Progress, and the boundary decision posted as a comment.
+  - timestamp: '2026-09-15T00:10:00.000Z'
+    action: spec_draft_ready
+    phase: spec
+    details: Spec written to specs/2026-09-15-clo-632-project-config-trust.md after a second user decision (D2, default-repeat allowed).
+  - timestamp: '2026-09-15T13:07:00.000Z'
+    action: spec_review_failed
+    phase: spec
+    details: Ollama leg (glm-5.3:cloud via codex) timed out at 300s on every retry, 1207s total. Claude fallback ran.
+  - timestamp: '2026-09-15T13:07:00.000Z'
+    action: spec_review_complete
+    phase: spec
+    details: Synthesis verdict APPROVE_WITH_SUGGESTIONS from the Claude fallback, 11 findings and 1 open question, none blocking.
+  - timestamp: '2026-09-15T13:30:00.000Z'
+    action: spec_review_applied
+    phase: spec
+    details: >-
+      Applied N1 and N3-N11 plus Q1. N2 conflicted with the clause (a) decision and went to the user, who chose "user
+      value wins" (D3 supersedes D2 in session notes).
+  - timestamp: '2026-09-15T13:40:00.000Z'
+    action: spec_approved
+    phase: spec
+    details: User approved the revised spec (user-value-wins boundary, review items N1 and N3-N11 applied). Proceeding to implement.
+  - timestamp: '2026-09-15T14:30:00.000Z'
+    action: phase_completed
+    phase: implement
+    details: Sub-tasks 1-4 committed (e979937, f537f8f, aa50d5a, c4c1e43). Full CI gate lanes running.
+  - timestamp: '2026-09-15T14:45:00.000Z'
+    action: implementation_complete
+    phase: implement
+    details: All 4 sub-tasks done. Seven CI lanes plus the MSRV 1.83 check pass (2911 tests, 0 failed). Pre-PR validation started.
+  - timestamp: '2026-09-15T15:10:00.000Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      pre-pr-validation with the spec as design and plan. Codex gpt-5.6-sol FAIL (3 findings), synthesis PASS_WITH_NOTES
+      with 4 must-fix items. One fix iteration applied; config tests 37 passed, cargo test 1378 passed, clippy clean.
+  - timestamp: '2026-09-15T15:25:00.000Z'
+    action: phase_completed
+    phase: implement
+    details: >-
+      Rebased the unpushed branch onto origin/main (a5ba358, adds #107 and #108). One conflict, the PROJECT.md Last
+      Updated line, resolved by combining both entries. Commit SHAs in phases.implement.commits are post-rebase.
+  - timestamp: '2026-09-15T15:30:00.000Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: On the rebased branch - cargo fmt check, clippy all-targets -D warnings, cargo test (1378 passed, 0 failed), git diff --check origin/main...HEAD clean.
+  - timestamp: '2026-09-15T11:53:00.000Z'
+    action: pr_created
+    phase: pr
+    details: >-
+      PR #109 opened from fix/clo-632-toml with a Behaviour change heading and no closing keyword. Before opening,
+      stripped absolute machine paths from the Codex report (a1025a7). Linear set to In Review with the PR linked.
+  - timestamp: '2026-09-15T12:05:00.000Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      Run 34965720635 on a1025a7 - CI Gate, MSRV 1.83, build/test macos and ubuntu, library boundary all pass.
+      etxtbsy-stress skipped.
+  - timestamp: '2026-09-15T12:05:00.000Z'
+    action: workflow_paused
+    phase: pr
+    details: >-
+      qodo-code-review posted <!-- qodo:billing-blocked --> at 11:53:14Z (workspace out of credits). No review is
+      coming; per pr.md Step 4.3 the gate blocks for user guidance instead of polling.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: workflow_resumed
+    phase: pr
+    details: User chose "proceed" - skip the bot review while Qodo is billing-blocked.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: qodo-code-review is billing-blocked on PR #109 (<!-- qodo:billing-blocked --> comment, workspace out of credits); user approved proceeding without a bot review.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: review_addressed
+    phase: pr
+    details: Nothing to address - 0 reviews, 0 inline comments, 0 non-Qodo issue comments on PR #109.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: bot_rereview_verified
+    phase: pr
+    details: bot_rereview_head_sha recorded as none - Qodo billing-blocked and the user approved proceeding, so no /agentic_review was posted.
+  - timestamp: '2026-09-15T12:53:09Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: Head a1025a7 matches local; 0 inline comments, 0 reviews, 0 unresolved review threads; GitHub reports MERGEABLE.
+  - timestamp: '2026-09-15T16:39:26Z'
+    action: pr_approved
+    phase: pr
+    details: User chose ready at the PR checkpoint. CI green on d657787 (run 34971536400), 0 comments, 0 unresolved threads, MERGEABLE.
+  - timestamp: '2026-09-15T16:41:23Z'
+    action: phase_completed
+    phase: complete
+    details: >-
+      Before merging, main had moved to c69660d (#110, #111 for CLO-660) and PR #109 conflicted in the three aggregation
+      files. Rebased onto origin/main; every conflict was a Last Updated line, resolved by keeping main's line and
+      appending the CLO-632 note. fmt, clippy and cargo test (1378 passed) re-run clean. Commit SHAs in
+      phases.implement.commits updated to the post-rebase values; force-pushed with --force-with-lease.
