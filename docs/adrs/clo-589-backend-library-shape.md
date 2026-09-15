@@ -149,7 +149,7 @@ Tracked by CLO-591, to be resolved before the public API is treated as stable:
 Reopen the `[lib]`-versus-workspace question when any of the following is measured:
 
 - A downstream cold-build delta exceeds 15% attributable to lokomotiv's non-backend dependencies.
-- `lokomotiv` is published to crates.io and consumer feedback asks for a lighter dependency tree.
+- The library is published to crates.io under a name this project controls, and consumer feedback asks for a lighter dependency tree.
 - The global cache or the stderr-output constraint becomes blocking for a consumer.
 
 Until then the single-package library target remains the approved shape.
