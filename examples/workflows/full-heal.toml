@@ -59,12 +59,12 @@ Pick only ONE issue. Output only the JSON.
 [[steps]]
 name = "issue"
 shell = """
-gh issue create \
-  --title '{{ steps.pick.issue }}' \
-  --body 'Severity: {{ steps.pick.severity }}
-File: {{ steps.pick.file }}:{{ steps.pick.line }}
-
-Found by lok hunt.'
+TITLE={{ steps.pick.issue | shell_escape }}
+BODY=$(printf 'Severity: %s\\nFile: %s:%s\\n\\nFound by lok hunt.\\n' \
+  {{ steps.pick.severity | shell_escape }} \
+  {{ steps.pick.file | shell_escape }} \
+  {{ steps.pick.line | string | shell_escape }})
+gh issue create --title "$TITLE" --body "$BODY"
 """
 depends_on = ["pick"]
 
@@ -101,12 +101,9 @@ depends_on = ["fix"]
 [[steps]]
 name = "commit"
 shell = """
-git add -A && git commit -m "$(cat <<'EOF'
-fix: {{ steps.fix.summary }}
-
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
-EOF
-)"
+MESSAGE=$(printf 'fix: %s\\n\\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\\n' \
+  {{ steps.fix.summary | shell_escape }})
+git add -A && git commit -m "$MESSAGE"
 """
 depends_on = ["branch"]
 
@@ -118,18 +115,12 @@ depends_on = ["commit"]
 [[steps]]
 name = "pr"
 shell = """
-gh pr create \
-  --title 'fix: {{ steps.fix.summary }}' \
-  --body '## Issue
-{{ steps.pick.issue }}
-
-Created: {{ steps.issue.output }}
-
-## Fix
-{{ steps.fix.summary }}
-
----
-Automated fix by lok full-heal workflow.'
+TITLE=$(printf 'fix: %s' {{ steps.fix.summary | shell_escape }})
+BODY=$(printf '## Issue\\n%s\\n\\nCreated: %s\\n\\n## Fix\\n%s\\n\\n---\\nAutomated fix by lok full-heal workflow.\\n' \
+  {{ steps.pick.issue | shell_escape }} \
+  {{ steps.issue.output | shell_escape }} \
+  {{ steps.fix.summary | shell_escape }})
+gh pr create --title "$TITLE" --body "$BODY"
 """
 depends_on = ["push"]
 

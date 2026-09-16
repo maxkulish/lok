@@ -86,7 +86,11 @@ fn output_tags(template: &str) -> Vec<OutputTag> {
             OutputTag {
                 start: whole.start(),
                 end: whole.end(),
-                line: template[..whole.start()].bytes().filter(|byte| *byte == b'\n').count() + 1,
+                line: template[..whole.start()]
+                    .bytes()
+                    .filter(|byte| *byte == b'\n')
+                    .count()
+                    + 1,
                 expression,
             }
         })
@@ -160,9 +164,9 @@ fn heredoc_bodies(template: &str) -> Vec<(RangeInclusive<usize>, String)> {
 }
 
 fn line_in_heredoc(line: usize, bodies: &[(RangeInclusive<usize>, String)]) -> Option<String> {
-    bodies.iter().find_map(|(range, delimiter)| {
-        range.contains(&line).then(|| delimiter.clone())
-    })
+    bodies
+        .iter()
+        .find_map(|(range, delimiter)| range.contains(&line).then(|| delimiter.clone()))
 }
 
 fn quote_contexts(template: &str, tags: &[OutputTag]) -> Vec<Option<char>> {
@@ -214,7 +218,9 @@ fn quote_contexts(template: &str, tags: &[OutputTag]) -> Vec<Option<char>> {
             Some(current) if byte == current as u8 => quote = None,
             Some('"') => {}
             None if byte == b'\'' || byte == b'"' => quote = Some(byte as char),
-            None if byte == b'#' && (index == 0 || template.as_bytes()[index - 1].is_ascii_whitespace()) => {
+            None if byte == b'#'
+                && (index == 0 || template.as_bytes()[index - 1].is_ascii_whitespace()) =>
+            {
                 comment = true;
             }
             _ => {}
@@ -274,18 +280,23 @@ fn scan_repository() -> (Vec<Violation>, usize, usize) {
     for relative_root in SCAN_ROOTS {
         let directory = root.join(relative_root);
         let files = workflow_files(&directory);
-        assert!(!files.is_empty(), "scan root is empty: {}", directory.display());
+        assert!(
+            !files.is_empty(),
+            "scan root is empty: {}",
+            directory.display()
+        );
         files_seen += files.len();
         for file in files {
             let source = fs::read_to_string(&file).unwrap();
-            let fields = shell_fields(&source).unwrap_or_else(|error| {
-                panic!("failed to parse {}: {error}", file.display())
-            });
+            let fields = shell_fields(&source)
+                .unwrap_or_else(|error| panic!("failed to parse {}: {error}", file.display()));
             for (step, shell) in fields {
                 let tags = output_tags(&strip_raw_blocks(&shell));
                 escaped_tags += tags
                     .iter()
-                    .filter(|tag| references_steps(&tag.expression) && ends_with_shell_escape(&tag.expression))
+                    .filter(|tag| {
+                        references_steps(&tag.expression) && ends_with_shell_escape(&tag.expression)
+                    })
                     .count();
                 violations.extend(check_shell_field(&file, &step, &shell));
             }
@@ -301,7 +312,9 @@ fn unit_output_tag_and_filter_rules() {
     assert_eq!(tags[0].line, 1);
     assert!(references_steps(&tags[0].expression));
     assert!(ends_with_shell_escape(&tags[0].expression));
-    assert!(!ends_with_shell_escape("steps.a.output | shell_escape | trim"));
+    assert!(!ends_with_shell_escape(
+        "steps.a.output | shell_escape | trim"
+    ));
     assert!(!references_steps("workflow.steps.a"));
     assert!(!references_steps("notsteps.a"));
 }
@@ -323,10 +336,9 @@ fn unit_heredoc_and_quote_rules() {
         violation.rule,
         Rule::InsideHeredoc { ref delimiter } if delimiter == "DATA"
     )));
-    assert!(!violations.iter().any(|violation| matches!(
-        violation.rule,
-        Rule::QuotedContext { .. }
-    )));
+    assert!(!violations
+        .iter()
+        .any(|violation| matches!(violation.rule, Rule::QuotedContext { .. })));
 
     let quoted = "printf '%s' '{{ steps.a.output | shell_escape }}'\nprintf '%s' \"{{ steps.b.output | shell_escape }}\"";
     let quoted_violations = check_shell_field(Path::new("fixture.toml"), "step", quoted);
@@ -341,9 +353,13 @@ fn unit_heredoc_and_quote_rules() {
 
 #[test]
 fn unit_static_heredoc_quotes_do_not_leak() {
-    let template = "cat <<'DATA'\n'; unpaired quote\nDATA\nprintf '%s' {{ steps.a.output | shell_escape }}\n";
+    let template =
+        "cat <<'DATA'\n'; unpaired quote\nDATA\nprintf '%s' {{ steps.a.output | shell_escape }}\n";
     let violations = check_shell_field(Path::new("fixture.toml"), "step", template);
-    assert!(violations.is_empty(), "unexpected violations: {violations:?}");
+    assert!(
+        violations.is_empty(),
+        "unexpected violations: {violations:?}"
+    );
 }
 
 #[test]

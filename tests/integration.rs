@@ -288,7 +288,8 @@ LOK_WF_FALLBACK_OUTPUT_EOF
 touch "$LOK_TEST_MARKER_DIR/after-LOK_WF_FALLBACK_OUTPUT_EOF""#;
     let written = fs::read_to_string(output_dir.path().join("written.txt")).expect("written file");
     assert_eq!(written.trim_end_matches('\n'), payload);
-    let composed = fs::read_to_string(output_dir.path().join("composed.txt")).expect("composed file");
+    let composed =
+        fs::read_to_string(output_dir.path().join("composed.txt")).expect("composed file");
     assert_eq!(composed, format!("Header\n\n{payload}\n"));
 }
 

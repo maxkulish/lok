@@ -55,7 +55,7 @@ Pick only ONE. Output only the JSON.
 [[steps]]
 name = "fetch"
 depends_on = ["pick"]
-shell = "gh issue view {{ steps.pick.number }} --json body,comments"
+shell = "gh issue view {{ steps.pick.number | string | shell_escape }} --json body,comments"
 
 [[steps]]
 name = "propose_claude"
@@ -126,13 +126,8 @@ Be specific about which files to change and what the changes should be.
 name = "comment"
 depends_on = ["debate"]
 shell = """
-gh issue comment {{ steps.pick.number }} --body "$(cat <<'LOKEOF'
-## lok Proposal ({{ workflow.backends }} consensus)
-
-{{ steps.debate.output }}
-
----
-*Automated proposal by lok pick-and-propose workflow*
-LOKEOF
-)"
+BODY=$(printf '%s\\n\\n%s\\n\\n---\\n*Automated proposal by lok pick-and-propose workflow*\\n' \\
+  '## lok Proposal ({{ workflow.backends }} consensus)' \\
+  {{ steps.debate.output | shell_escape }})
+gh issue comment {{ steps.pick.number | string | shell_escape }} --body "$BODY"
 """
