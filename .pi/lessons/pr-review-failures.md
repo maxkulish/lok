@@ -246,3 +246,45 @@ all review surfaces and run the pre-merge re-fetch gate.
 **How to apply:** Keep the billing flag from the probe in the same shell
 as the review-cycle gates; do not reinterpret the persistent notice as a
 fresh review or spend two ten-minute waits on it.
+
+> **Partially superseded by L10.** "Keep the flag in the same shell" was
+the fail-open seam L10 removes. The detection rule above still stands;
+the carrier changed from a shell variable to an explicit `--bots`
+argument. See L10.
+
+---
+
+## L10 - Gate state must travel as an explicit argument, not an ambient shell variable
+
+**Source incident:** PR #71's step 1a set `INSTALLED_BOTS` (and
+`BOT_REVIEW_SEEN`) as shell variables carried into step 2 and step 8. A
+run that skipped 1a read an unset `INSTALLED_BOTS` as "no bots
+installed" and skipped the wait - a gate that failed open on the
+absence of the very evidence it needed. CLO-623 removed every such
+variable: `request-rereview` now requires `--bots` and exits 2 on
+`none`/absent input, and `probe-bots` prints the literal `none` rather
+than an empty line, so an empty string can never be read as "no bots".
+
+**Rule:** Anything a later gate depends on must be passed explicitly to
+the command that needs it, and the command must treat a missing value as
+an error rather than a permissive default. An ambient shell variable is
+a fail-open seam: a resumed session, a partial run, or a shell without
+`set -u` can leave it unset, and the gate then reads the unset state as
+the verdict. This supersedes L9's "keep the billing flag in the same
+shell as the review-cycle gates" - keeping it in the shell was the
+problem; carrying it as an argument is the fix.
+
+**How to apply:**
+- `probe-bots`' stdout is the carrier of the installation answer. Feed it
+  straight into `request-rereview --bots`; a run that skipped 1a must
+  pass `--bots` deliberately, not inherit an unset variable.
+- Every subcommand validates its inputs and exits 2 (`EX_INVALID`) rather
+  than defaulting. A gate that cannot be reached is not a gate that
+  passed.
+- The script is POSIX `sh` with no `set -e` and `set -u` on: every
+  status that matters is checked explicitly, because several subcommands
+  exit non-zero as their verdict and an ambient `set -e` would turn a
+  verdict into an abort.
+- The same rule covers derived state that must not be recomputed from
+  local clocks: `REQUESTED_AT`/`--since` come from GitHub's POST
+  response, never from local `date`.

@@ -22,7 +22,7 @@ workflow:
   current_phase: complete
   status: complete
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T13:27:24.316Z'
+  updated_at: '2026-09-16T13:36:06.810Z'
 phases:
   discovery:
     status: complete
@@ -296,6 +296,20 @@ phases:
     merged_by: maxkulish
     finalize_pr_number: 118
     finalize_pr_url: https://github.com/maxkulish/lok/pull/118
+    lessons_file: .pi/lessons/clo-623-pr-review-cycle-tested-lessons.md
+    lessons_learned:
+      - >-
+        L1 - Gate logic that lives in prose is untested code; extract it to a script with documented exit codes and
+        guard against its return.
+      - >-
+        L2 - A fixture trimmed to the prose tests the prose, not the API; capture fixture values from the real API,
+        including [bot] suffixes and nulls.
+      - >-
+        L3 - A skip that exits 0 silently drops coverage; skips must be loud in CI and preconditions installed rather
+        than assumed.
+      - >-
+        L10 - Gate state must travel as an explicit argument, not an ambient shell variable (appended to
+        .pi/lessons/pr-review-failures.md).
 history:
   - timestamp: '2026-09-16T07:45:44.278Z'
     action: workflow_started
@@ -730,5 +744,18 @@ history:
       Finalize PR #118 opened on docs/clo-623-finalize: https://github.com/maxkulish/lok/pull/118. Docs-only: the three
       aggregation files plus docs/status/clo-623-workflow.yaml. CI Gate is required on main with no bypass actors, so
       this is the normal path rather than a direct push.
+  - timestamp: '2026-09-16T13:36:06.810Z'
+    action: lessons_extracted
+    phase: complete
+    details: >-
+      4 lessons recorded. New per-task file .pi/lessons/clo-623-pr-review-cycle-tested-lessons.md with L1 (gate logic in
+      prose is untested code), L2 (a fixture trimmed to the prose tests the prose, not the API - the
+      qodo-code-review[bot] suffix), L3 (a skip that exits 0 silently drops coverage). One durable PR-review-gate rule
+      appended as L10 to .pi/lessons/pr-review-failures.md: gate state must travel as an explicit argument, not an
+      ambient shell variable; it partially supersedes L9's 'keep the billing flag in the same shell' advice and
+      cross-references it. Signals that fired: 3 violated + 1 untested assumptions in
+      phases.implement.assumption_outcomes, validation_fix_iteration_count 1, and the live-probe PR incident
+      (request-rereview rejecting probe-bots' stdout). Not committed to main directly - rides in the post-merge docs PR
+      (pi complete.md Step 5).
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested
