@@ -119,7 +119,7 @@ gh run list --branch [branch-name] --limit 1
 5. **If the poll times out and Qodo is installed**: post `/agentic_review` as a PR comment, keep the `created_at` GitHub returns, and poll again for a review on the current head submitted at or after that timestamp. This is the normal path whenever Step 4.2 pushed a CI fix.
 6. **If still nothing**: block for user guidance. Do NOT record `bot_review_wait_completed`.
 
-The full procedure, with the exact `gh` calls and the `wait_for_bot_review` helper, is `.pi/skills/pr-review-cycle.md` steps 1-2. It is runtime-agnostic; read it rather than reinventing the polling here.
+The full procedure is `.pi/skills/pr-review-cycle.md` steps 1-2. Its gates are executed by `.pi/scripts/pr-review-cycle.sh` (`probe-bots`, `wait-review`, `request-rereview`, `wait-rereview`), which is covered by `.pi/scripts/tests/pr-review-cycle.test.sh`. Invoke the script rather than reinventing the polling here: a non-zero exit from a wait subcommand **is** the gate failure, and the script exits 3 - not 1 - when `gh` or a response failed, so a broken gate is never mistaken for "no review arrived".
 
 On success:
 - `phases.pr.bot_review_wait_completed: true`

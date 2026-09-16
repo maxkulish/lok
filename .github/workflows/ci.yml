@@ -92,12 +92,73 @@ jobs:
       - name: Check against bedrock MSRV (1.88)
         run: cargo check --locked --all-targets --features bedrock
 
+  # CLO-623. The pr-review-cycle gates were ported out of two markdown files
+  # into .pi/scripts/pr-review-cycle.sh so they could be tested at all. That
+  # only holds if something keeps them there: this job lints the script, runs
+  # its suite, and ends with the guard that rejects a gate shape reappearing in
+  # the markdown - the form the same failure has taken twice now.
+  #
+  # No `paths:` filter, deliberately (docs/lessons/clo-625-l2). `CI Gate` is the
+  # single required status check, so a filtered job reports "skipped" rather
+  # than "success" on a PR touching none of these paths - and a later PR
+  # touching only the script would find its gate green without this job having
+  # run once. shellcheck and the guard are the gate; skipping them is failing
+  # open, which is the class of defect this task exists to remove.
+  shell-gates:
+    name: shell gates (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install zsh (Ubuntu)
+        if: runner.os == 'Linux'
+        # zsh is not preinstalled on ubuntu-latest, and `sh` is dash there - so
+        # both halves of the call-site test (bash/zsh vs POSIX sh) need it. The
+        # test skips itself when zsh is absent, which would quietly drop the
+        # coverage; the next step is what makes the absence loud.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zsh
+
+      - name: Ensure shellcheck (macOS)
+        if: runner.os == 'macOS'
+        # Preinstalled on both GitHub images, but brew is one line and a
+        # missing linter must not turn this job into a no-op.
+        run: command -v shellcheck >/dev/null 2>&1 || brew install shellcheck
+
+      - name: Tool versions
+        run: |
+          shellcheck --version
+          jq --version
+          ls -l "$(command -v sh)"
+          zsh --version
+
+      - name: shellcheck
+        run: |
+          shellcheck --shell=sh \
+            .pi/scripts/pr-review-cycle.sh \
+            .pi/scripts/tests/pr-review-cycle.test.sh \
+            .pi/scripts/tests/check-inline-gates.sh \
+            .pi/scripts/tests/fake-gh/gh
+
+      - name: pr-review-cycle test suite
+        run: sh .pi/scripts/tests/pr-review-cycle.test.sh
+
+      # Its own step, not a step inside the suite above: a guard failure and a
+      # test failure are different problems and the CI log should say which.
+      - name: Inline gate guard
+        run: sh .pi/scripts/tests/check-inline-gates.sh
+
   # Single stable context for the branch ruleset. Requiring the matrix legs
   # directly would mean adding or renaming an OS silently changes what `main`
   # is protected by.
   ci-gate:
     name: CI Gate
-    needs: [build-and-test, library-boundary, msrv-check]
+    needs: [build-and-test, library-boundary, msrv-check, shell-gates]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -107,7 +168,8 @@ jobs:
           for pair in \
             "build-and-test:${{ needs.build-and-test.result }}" \
             "library-boundary:${{ needs.library-boundary.result }}" \
-            "msrv-check:${{ needs.msrv-check.result }}"; do
+            "msrv-check:${{ needs.msrv-check.result }}" \
+            "shell-gates:${{ needs.shell-gates.result }}"; do
             name=${pair%%:*}; result=${pair#*:}
             echo "$name: $result"
             [ "$result" = "success" ] || failed=1

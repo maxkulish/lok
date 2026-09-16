@@ -1,0 +1,688 @@
+task_id: clo-623
+task_type: development
+classification_reason: >-
+  Title 'Make pr-review-cycle shell snippets executable and tested' describes code extraction, tests, and CI changes on
+  a development repo; ACs are product-code work, not operational runbook or pure spec.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  branch_actual: feat/clo-623-pr-review-cycle-tested
+  priority: Medium
+workflow:
+  current_phase: pr
+  status: active
+  created_at: '2026-09-16T07:45:44.278Z'
+  updated_at: '2026-09-16T13:16:36.923Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: extract-to-script
+    approaches_identified: 3
+    approved: true
+    baseline_score: 4
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-623.md
+    prd_created: true
+    prd_exists: true
+    prd_file: docs/prds/clo-623-pr-review-cycle-tested.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-623-pr-review-cycle-tested.md
+    discovery_context_used: true
+    draft_ready: true
+    draft_source: claude-designer
+    assumptions:
+      - confidence: high
+        text: >-
+          CI Gate is not a required status check today: on 2026-09-16 ruleset 20153405 on main returned only deletion
+          and non_fast_forward rules, so docs/lessons/clo-625-l2 is stale on this point. The new job appears in CI Gate
+          but does not block merges by itself.
+        verification: >-
+          Verified during the soft gate: gh api repos/maxkulish/lok/rulesets/20153405 returned rules [deletion,
+          non_fast_forward] and required_checks []
+      - confidence: medium
+        text: shellcheck and jq are preinstalled on the ubuntu-latest and macos-latest runner images.
+        verification: First CI run prints shellcheck --version and jq --version; fall back to apt-get/brew install if missing
+      - confidence: medium
+        text: >-
+          zsh is not preinstalled on ubuntu-latest; the job installs it with apt-get for the call-site tests, and the
+          zsh leg skips gracefully if unavailable.
+        verification: First CI run on ubuntu-latest
+      - confidence: medium
+        text: >-
+          /bin/sh differs between hosts (dash on Ubuntu, bash-compatible sh on macOS); code passing shellcheck
+          --shell=sh plus the test suite on both OSes behaves the same for the constructs used.
+        verification: Run the test suite locally on macOS and in CI on Ubuntu
+      - confidence: high
+        text: >-
+          Every agent host has a gh supporting gh api --paginate --slurp, since the current snippets already depend on
+          it (local gh 2.101.0).
+        verification: gh api --help
+      - confidence: medium
+        text: >-
+          Qodo's observable signals still match the prose: review object only for passes with findings, 'was updated up
+          to the latest commit' completion comment for re-review passes, and the qodo:billing-blocked marker.
+        verification: 'Record fixtures from PRs #71, #80, #100, #106 during implementation and compare to the prose'
+      - confidence: medium
+        text: >-
+          Live data on PRs #71, #80, #89 and #106 is still retrievable for fixture recording; Qodo edits comments in
+          place, so fixtures may need hand-trimming to the shapes the prose documents.
+        verification: Fetch during implementation
+      - confidence: medium
+        text: >-
+          Agents invoke the script from the repository or worktree root, so the relative path
+          .pi/scripts/pr-review-cycle.sh resolves.
+        verification: Skill prerequisites section states it; dogfood run on this task's own PR exercises it
+      - confidence: high
+        text: The script reads no repository files at runtime; all inputs are arguments.
+        verification: Tests run with an empty FAKE_GH_STATE working area
+      - confidence: high
+        text: >-
+          Discovery's objection to Approach B (stale lok binary runs stale gates) does not apply here because the script
+          ships in the same checkout as the markdown that calls it.
+        verification: Design reasoning; no runtime check
+    assumptions_surfaced: true
+    applied_suggestions:
+      - >-
+        Fake gh: added `graphql` endpoint and `-f query=<text>` to the allowlist and fixture resolver, plus a GraphQL
+        fixture (finding 1)
+      - >-
+        Per-request `gh` deadline via `PR_REVIEW_CYCLE_CALL_DEADLINE` (default 30s, background-process + kill), `.hang`
+        fixture, and a named hung-request test (finding 2)
+      - Goals now list all six subcommands explicitly (finding 3)
+      - >-
+        Decision 5 rewritten with exact banned EREs, file scope, allowlist file format, and
+        `test_inline_gate_guard_fails_on_each_banned_shape` (finding 4)
+      - 'POSIX shell rules stated: no local/[[ ]]/arrays/pipefail, `set -u` yes, `set -e` no (finding 5)'
+      - >-
+        GraphQL fail-closed rules added to Architecture: non-zero exit, non-empty `errors`, missing/null `data`,
+        malformed node -> exit 3 (finding 6)
+      - Whole-second `YYYY-MM-DDTHH:MM:SSZ` shape documented for every consumed endpoint (finding 7)
+      - All JSON output required to be `jq -c`, never shell interpolation (finding 8)
+      - >-
+        Boundary tests added: unresolved-threads pagination, inclusive pass-at-since, strict new-comments bound,
+        mid-poll head change (finding 9)
+    flagged_suggestions: []
+    review_completed: true
+    review_ollama: docs/reviews/clo-623-review-ollama.md
+    review_synthesis: docs/reviews/clo-623-review-synthesis.md
+    review_verdict: approve_with_changes
+    token_usage:
+      - recorded_at: '2026-09-16T08:06:42.027Z'
+        provider: ollama
+        model: glm-5.3:cloud
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-ollama
+      - recorded_at: '2026-09-16T08:06:42.027Z'
+        provider: claude
+        model: claude-opus-5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-synthesis
+    human_review_completed: true
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-623-pr-review-cycle-tested.md
+    token_usage:
+      - recorded_at: '2026-09-16T08:12:39.422Z'
+        provider: claude
+        model: claude-opus-5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: plan-authoring
+    approved: true
+  implement:
+    status: complete
+    commits:
+      - b0d2a05
+      - 02f1623
+      - c60c21d
+      - fa2b3b7
+      - 299d048
+      - 0cb1422
+      - e71e8fe
+      - 0bad64b
+      - 815d933
+      - 554bff2
+      - a376a57
+    assumption_outcomes:
+      - evidence: >-
+          gh api repos/maxkulish/lok/rulesets/20153405 --jq '.rules[].type' -> 'deletion non_fast_forward' (re-run
+          2026-09-16); gh api repos/maxkulish/lok/branches/main/protection -> HTTP 404 'Branch not protected'.
+          clo-625-l2 is confirmed stale; shell-gates is wired into CI Gate's needs and assertion loop but that context
+          is not required.
+        outcome: held
+        text: >-
+          CI Gate is not a required status check today: on 2026-09-16 ruleset 20153405 on main returned only deletion
+          and non_fast_forward rules, so docs/lessons/clo-625-l2 is stale on this point. The new job appears in CI Gate
+          but does not block merges by itself.
+      - evidence: >-
+          actions/runner-images readmes fetched 2026-09-16: Ubuntu2404 lists shellcheck 0.9.0-1 and jq
+          1.7.1-3ubuntu0.24.04.2; macos-15 lists jq 1.8.2 but its '### Linters' section contains only SwiftLint 0.65.1
+          and the whole readme has no shellcheck mention. Mitigation already landed: .github/workflows/ci.yml 'Ensure
+          shellcheck (macOS)' runs `command -v shellcheck || brew install shellcheck`, so the lint step cannot become a
+          silent no-op.
+        outcome: violated
+        text: shellcheck and jq are preinstalled on the ubuntu-latest and macos-latest runner images.
+      - evidence: >-
+          Ubuntu2404 readme: 0 occurrences of 'zsh', so the install is required and the job does it (apt-get install -y
+          zsh). The 'skips gracefully' half was deliberately replaced: pr-review-cycle.test.sh's skip_test exits 0, so
+          an absent zsh would silently drop test_call_site_status_capture_under_zsh - one of only two call-site tests.
+          The job now fails loudly on Linux if zsh is missing rather than letting the skip mask a broken install.
+        outcome: violated
+        text: >-
+          zsh is not preinstalled on ubuntu-latest; the job installs it with apt-get for the call-site tests, and the
+          zsh leg skips gracefully if unavailable.
+      - evidence: >-
+          Verified beyond the assumption: dash is present on this host, so the suite was run with sh shadowed to
+          /bin/dash via PATH - `PATH=/tmp/clo623-dashbin:$PATH dash .pi/scripts/tests/pr-review-cycle.test.sh` -> 63
+          test(s) matched, 0 failed, and the guard -> rc 0. shellcheck --shell=sh clean on all four shell files;
+          test_call_site_status_capture_under_bash and _under_zsh pin the two agent shells.
+        outcome: held
+        text: >-
+          /bin/sh differs between hosts (dash on Ubuntu, bash-compatible sh on macOS); code passing shellcheck
+          --shell=sh plus the test suite on both OSes behaves the same for the constructs used.
+      - evidence: >-
+          gh version 2.101.0 (2026-09-15). The paginated-slurped legs were exercised against the live API rather than
+          only fixtures: probe-bots on PRs 106 and 89, new-comments on PR 71, unresolved-threads on PRs
+          24/71/80/89/100/106, and wait-rereview on PR 80.
+        outcome: held
+        text: >-
+          Every agent host has a gh supporting gh api --paginate --slurp, since the current snippets already depend on
+          it (local gh 2.101.0).
+      - evidence: >-
+          PR 80: completion comment '[Code review](...) by qodo was updated up to the latest commit
+          https://github.com/maxkulish/lok/commit/48eb001e438bfd43d9b7f820b7835770c281b815' created
+          2026-08-03T13:54:56Z, alongside a persistent comment reading 'Bugs (0)' - the clean-pass shape. PR 106: the
+          <!-- qodo:billing-blocked --> marker makes `probe-bots --repo maxkulish/lok --pr 106` exit 4.
+        outcome: held
+        text: >-
+          Qodo's observable signals still match the prose: review object only for passes with findings, 'was updated up
+          to the latest commit' completion comment for re-review passes, and the qodo:billing-blocked marker.
+      - evidence: >-
+          Data was retrievable for all four PRs, but the fixtures were hand-trimmed to the prose's spelling rather than
+          the API's: all 27 login values read 'qodo-code-review'/'copilot-pull-request-reviewer' while the API returns
+          'qodo-code-review[bot]'. The suite was green and structurally blind; the ST10 live probe exposed it when
+          request-rereview rejected probe-bots' own stdout with exit 2 (real value: qodo-code-review[bot] on PRs 106 and
+          89). Fixed in a376a57 - require_bots strips the suffix and all 26 fixtures moved to the API's spelling, with
+          test_request_rereview_accepts_probe_bots_output_verbatim running probe-bots and feeding its stdout straight
+          into request-rereview.
+        outcome: violated
+        text: >-
+          Live data on PRs #71, #80, #89 and #106 is still retrievable for fixture recording; Qodo edits comments in
+          place, so fixtures may need hand-trimming to the shapes the prose documents.
+      - evidence: >-
+          Documented as a prerequisite in .pi/skills/pr-review-cycle.md ('Invocation from the repository or worktree
+          root: a call from a subdirectory fails with not found rather than with a verdict') and relied on by the Step
+          9.5 calls in .claude/commands/pr/review.md. No agent run has exercised it yet; the first real check is this
+          task's own pr phase.
+        outcome: untested
+        text: >-
+          Agents invoke the script from the repository or worktree root, so the relative path
+          .pi/scripts/pr-review-cycle.sh resolves.
+      - evidence: >-
+          grep -nE 'lok\.toml|\.lok/|cat [^"'\'']*\.(toml|json|yaml)|source |\. \./' .pi/scripts/pr-review-cycle.sh ->
+          no matches. The only file I/O is a mktemp scratch file under $GH_TMP for the paginated thread accumulator,
+          removed by trap. No ~/.config/lok/lok.toml and no ./lok.toml read, which is the clo-632-l1 trust-boundary
+          question for this script.
+        outcome: held
+        text: The script reads no repository files at runtime; all inputs are arguments.
+      - evidence: >-
+          git ls-files shows .pi/scripts/pr-review-cycle.sh, its test runner, the fake gh, the guard, the allowlist and
+          both rewritten markdown files all tracked in the same commits on this branch, and the CI job checks out a
+          single rev before linting, testing and guarding - there is no separately versioned artefact that can skew
+          against the markdown.
+        outcome: held
+        text: >-
+          Discovery's objection to Approach B (stale lok binary runs stale gates) does not apply here because the script
+          ships in the same checkout as the markdown that calls it.
+    assumptions_revalidated: true
+    codex_report: docs/reviews/clo-623-codex-validation.md
+    codex_validated: true
+    codex_verdict: FAIL
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-623-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    token_usage:
+      - recorded_at: '2026-09-16T10:35:24.638Z'
+        provider: codex
+        model: gpt-5.6-sol
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-09-16T10:35:24.638Z'
+        provider: claude
+        model: claude-opus-5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
+      - recorded_at: '2026-09-16T10:36:21.224Z'
+        provider: n/a
+        model: n/a (agent-applied fix)
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: validation-fix-iteration-1-applied-inline
+  pr:
+    status: complete
+    pr_number: 115
+    pr_url: https://github.com/maxkulish/lok/pull/115
+    ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-09-16T13:16:17Z'
+    qodo_billing_blocked: true
+    reviews_addressed: true
+    bot_rereview_at: '2026-09-16T13:16:17Z'
+    bot_rereview_head_sha: none
+    pre_merge_refetch_at: '2026-09-16T13:16:17Z'
+    pre_merge_refetch_passed: true
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-09-16T07:45:44.278Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-623 as development
+  - timestamp: '2026-09-16T07:49:08.248Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: task extracts pr-review-cycle gate logic from markdown into a tested shell script with
+      CI enforcement - code, tests, and workflow changes, not a pure spec or ops run. Prior lessons consulted:
+      clo-625-l3/l4/l6 (shell snippet gotchas), clo-625-l1/l2/l5 (repo merge settings), clo-632-l1 (.lok/lok.toml
+      lookup).
+  - timestamp: '2026-09-16T07:49:15.586Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-09-16T07:50:16.583Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: extract-to-script. Baseline 4/10. 3 approaches considered (A shell script + fixture tests, B gates in
+      Rust binary, C snippet-extraction harness). No discovery debt. Auto-approved in Auto Mode: all exit fields
+      populated, debt empty.
+  - timestamp: '2026-09-16T07:50:21.126Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-09-16T07:59:54.700Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated by claude-designer via design-draft workflow at docs/designs/clo-623-pr-review-cycle-tested.md;
+      soft gate applied: 5 open questions resolved into decisions, sixth subcommand unresolved-threads added, verified
+      ruleset 20153405 currently has no required checks (clo-625-l2 partially stale).
+  - timestamp: '2026-09-16T08:00:06.492Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '10 assumptions surfaced (high: 5, medium: 5, low: 0). See design doc § Assumptions.'
+  - timestamp: '2026-09-16T08:06:42.027Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: approve_with_changes (APPROVE_WITH_SUGGESTIONS, Ollama). All 9 findings applied, 0 flagged. P1:
+      fake gh GraphQL support; per-request gh deadline + hung-request test. P2: six-subcommand goal; exact tested CI
+      guard EREs; POSIX shell rules; GraphQL fail-closed rules. P3: whole-second timestamps; jq -c output; boundary
+      tests.
+  - timestamp: '2026-09-16T08:07:33.957Z'
+    action: design_human_review_complete
+    phase: design
+    details: Human reviewer approved the design after the Plannotator annotate session closed with no annotations.
+  - timestamp: '2026-09-16T08:07:38.952Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design ready for plan phase. 6-subcommand POSIX script contract, fail-closed exit codes 0-4, hermetic fake-gh test
+      harness, tested CI guard, and a concrete test plan are all finalized; no open blocking questions.
+  - timestamp: '2026-09-16T08:07:39.788Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-09-16T08:12:39.422Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 10 sub-tasks at docs/plans/clo-623-pr-review-cycle-tested.md
+  - timestamp: '2026-09-16T08:12:43.785Z'
+    action: plan_approved
+    phase: plan
+    details: >-
+      Plan approved. 10 sub-tasks queued: ST1 harness/fake-gh/skeleton, ST2 probe-bots+deadline, ST3 wait-review+poll,
+      ST4 request/wait-rereview, ST5 new-comments, ST6 unresolved-threads, ST7 skill markdown, ST8
+      /pr:review+phases/pr.md, ST9 CI shell-gates+guard, ST10 dogfood.
+  - timestamp: '2026-09-16T08:12:45.041Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-09-16T08:18:08.644Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST1 landed: script skeleton with six subcommand parsers + validators, recording fake gh with a flag allowlist, and
+      the test runner with bash/zsh call-site status-capture tests. Commit b0d2a05
+  - timestamp: '2026-09-16T08:48:11.016Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST2 landed: watchdog-based per-call gh deadline clamped to the outer budget, gh_api treating an empty body as
+      failure, and probe-bots (this PR's comments + last 10 PRs' reviews, explicit 'none', exit 4 on qodo billing
+      block). 9 tests green. Commit 02f1623
+  - timestamp: '2026-09-16T09:44:12.945Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST3 landed: pr_lookup (validated head.sha + created_at), poll_for_pass (review-object and qodo completion-comment
+      shapes, inclusive >= bound, updated_at deliberately not a gate), wait-review subcommand. 12 new tests. Two
+      watchdog bugs found by the new timing test: inherited TERM trap made the watchdog unkillable, and inherited
+      command-substitution pipe made every call block the full deadline (suite 23m36s -> 3.4s). Commit c60c21d
+  - timestamp: '2026-09-16T09:46:12.317Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST4 landed: request-rereview (posts /agentic_review, prints the POST response's created_at, no local date
+      fallback, skips when no bot installed or qodo billing-blocked, ported INSTALLED_BOTS guard) and wait-rereview
+      (requires exogenous --since, fails closed when the head moved). 10 new tests, 37 total green. Commit fa2b3b7
+  - timestamp: '2026-09-16T09:48:08.664Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST5 landed: new-comments with the guarded `max // empty` bound plus PR created_at fallback (never the literal
+      "null"), bound printed to stderr, strict `>` filter, one compact jq -c object per line, exit 1 on findings / 0
+      clean / 3 upstream / 2 malformed. Test caught that GH_TMP only exists in gh_api's command-substitution subshell. 8
+      new tests, 45 total green. Commit 299d048
+  - timestamp: '2026-09-16T09:50:25.846Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST6 landed: unresolved-threads + graphql_query_review_threads (the single copy of a query repeated 3x in the
+      skill), manual pageInfo pagination with a revisited-cursor guard and page cap, fail-closed on GraphQL errors /
+      missing-or-null data / null reviewThreads / malformed node / missing pageInfo / empty endCursor / non-zero gh
+      exit. All six subcommands now implemented (0 stubs). 9 new tests, 54 total green. Commit 0cb1422
+  - timestamp: '2026-09-16T10:11:11.141Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST7 landed: .pi/skills/pr-review-cycle.md rewritten against the tested script. Steps 1a/1b/2/7/8 are prose plus
+      single-line script calls of the shape `VAR=$(...); RC=$?`. Removed wait_for_bot_review, the inline poll loop
+      (DEADLINE=/sleep 1), the REPLY_PUSH_TS jq pipeline and the three verbatim GraphQL reviewThreads copies. Kept the
+      incident rationale, lessons/pr-review-failures.md citations, both delivery shapes, the billing-block branch, the
+      GitHub-clock rule, the one-reply-per-thread rule and the step-7 @qodo reply templates. Acceptance: rg for
+      wait_for_bot_review|--slurp|DEADLINE=|submitted_at returns no matches; `sh
+      .pi/scripts/tests/pr-review-cycle.test.sh 'test_call_site'` exits 0 (2/2). No allowlist exemption needed for this
+      file. Commit 0bad64b.
+  - timestamp: '2026-09-16T10:12:37.675Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST8 landed: .claude/commands/pr/review.md Step 9.5 and .claude/commands/task/phases/pr.md Step 4.3 rewritten. Step
+      9.5's billing check, /agentic_review request and re-review poll are now probe-bots / request-rereview /
+      wait-rereview calls; removed the --paginate --slurp jq legs, DEADLINE=/sleep 20 scaffolding, inline head-SHA
+      validation and raw POST. Drift retired toward the skill: 20s->10s poll interval, qodo-only reviews leg->both
+      reviewer logins (noted in prose). Step 10 now records bot_rereview_head_sha + bot_rereview_at from wait-rereview's
+      '<head_sha> <detected_at>' so phases/pr.md 5.0 can re-check the covered head; documented 'none' for the
+      skip/billing-blocked paths. Acceptance: rg 'wait_for_bot_review|--slurp|--paginate --jq' over both files returns
+      no matches. 5 display-only --paginate fetches remain in /pr:review (Step 3, Qodo and Copilot reference sections) -
+      not gate logic, to be exempted in the ST9 allowlist. Commit 815d933.
+  - timestamp: '2026-09-16T10:15:24.395Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST9 landed: .github/workflows/ci.yml shell-gates job + .pi/scripts/tests/check-inline-gates.sh +
+      inline-gate-allowlist.txt + 3 guard self-tests (60 tests total, 0 failed). Guard scans the design's ten banned
+      EREs, prints offending lines, exits 1; exemptions are one ERE + rationale per line in the allowlist and the guard
+      reports '5 allowlisted line(s) exempted' rather than passing quietly. Ban list lives in the guard and `--patterns`
+      enumerates it so the self-test replays the real list; each row carries an example line because a pattern's own
+      spelling is not a valid probe. shell-gates: ubuntu-latest + macos-latest, no paths: filter (clo-625-l2),
+      shellcheck over 4 shell files, suite, guard as its own step; wired into ci-gate's needs AND its assertion loop
+      (the loop only checks listed jobs, so needs alone would not fail CI Gate). Local negative proofs done: appended
+      SC2034 -> shellcheck rc=1; appended DEADLINE= to a skill copy -> guard rc=1 naming line 645; shell-gates:failure
+      pair -> assertion loop rc=1. CI half of the negative proof deferred to ST10 (needs a failing run URL; CI does not
+      run this branch until the PR exists, and opening one earlier violates Step 4.6) - recorded in the plan per
+      clo-638-l3. Commit 554bff2.
+  - timestamp: '2026-09-16T10:18:43.840Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST10 (implement-phase portion) done. Live read-only probes run against real GitHub: probe-bots --pr 106 -> rc 4
+      (billing-blocked), stdout qodo-code-review[bot]; probe-bots --pr 89 -> rc 0, stdout qodo-code-review[bot];
+      wait-rereview --pr 80 --head 48eb001e438bfd43d9b7f820b7835770c281b815 --since 2026-08-03T13:37:55Z --timeout 0 ->
+      rc 0 printing '<covered sha> 2026-08-03T13:54:56Z' (matches the real completion comment's created_at); the same
+      probe against PR 80's actual head 090332286712dcfcf03be89a00c8fb76346fec9d -> rc 1, head-movement guard fails
+      closed on real data; new-comments --pr 71 reports bound 2026-08-02T13:23:27Z, which is exactly the author's latest
+      inline comment on PR 71 (PR created_at is 12:30:42Z, so the bound came from the reply, not the fallback);
+      unresolved-threads live across PRs 106/89/100/80/71/4 -> rc 0 with 0 threads, and PR 24 -> rc 1 with one real
+      object (PRRT_kwDOR0Ln1c6DY95v, src/backend/gemini.rs:134, latest_author gemini-code-assist) - the GraphQL path
+      verified against the real API, previously fixture-only. Acceptance grep over both markdown files: no matches. node
+      .pi/scripts/check-schema-parity.mjs green. DOGFOODING FOUND A REAL BUG: probe-bots returns 'qodo-code-review[bot]'
+      from the live API while every fixture spelled logins bare, so request-rereview's exact comparison rejected the one
+      input --bots exists to carry; fixed in a376a57 (require_bots strips the suffix; all 26 fixtures moved to the API's
+      spelling; 2 new round-trip tests; 63 tests total). DEFERRED to the pr phase: dogfooding the rewritten skill on
+      this task's own PR with outputs recorded in the PR body, and ST9's deferred CI negative proof (needs a failing run
+      URL).
+  - timestamp: '2026-09-16T10:19:42.724Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      10 assumptions reviewed. held: 5, violated: 3, untested: 1, plus 1 held-with-more-evidence-than-assumed.
+      Violations: (1) shellcheck is NOT preinstalled on macos-latest - the macOS 15 runner image's 'Linters' section
+      lists only SwiftLint, though the Ubuntu 24.04 image carries shellcheck 0.9.0 - so the macOS linter leg needed the
+      brew fallback I added speculatively in 554bff2; jq held on both (Ubuntu 1.7.1, macOS 1.8.2). (2) the zsh 'skips
+      gracefully' mitigation was deliberately NOT implemented: skip_test exits 0, so a broken apt install would silently
+      drop one of the two call-site tests; the job now fails loudly instead. (3) the fixture-fidelity assumption was
+      violated in the way that mattered - fixtures were trimmed to the prose's bare login spelling rather than the
+      API's, so all 27 login values read 'qodo-code-review' while the real API returns 'qodo-code-review[bot]'; the
+      suite was green and structurally blind, and the ST10 live probe found request-rereview rejecting probe-bots' own
+      output with exit 2 (fixed in a376a57). Also verified beyond the assumption: dash is present on this host, so the
+      whole suite was re-run with sh shadowed to /bin/dash (Ubuntu's /bin/sh) - 63/63 green and the guard exits 0.
+      Untested: that agents invoke the script from the repo/worktree root; documented as a prerequisite but first
+      exercised in this task's own pr phase. Violations 1 and 2 require no code change (both mitigations are already in
+      554bff2); violation 3 is already fixed, and its general lesson - a fixture trimmed to the prose tests the prose,
+      not the API - is the one thing here the synthesis reviewer should weigh, since it means the fixture set was
+      validated against the wrong oracle for its whole life.
+  - timestamp: '2026-09-16T10:19:50.167Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All 10 sub-tasks landed in 11 commits (b0d2a05..a376a57). Pre-merge gate green on the current HEAD: cargo fmt
+      --all -- --check ok; cargo clippy --locked --all-targets -- -D warnings ok; cargo test --locked ok (157 lib + 587
+      bin x2 + 46 integration/doc tests, all passing); shellcheck --shell=sh clean on all four shell files
+      (pr-review-cycle.sh, pr-review-cycle.test.sh, check-inline-gates.sh, fake-gh/gh); 63/63 shell tests;
+      check-inline-gates.sh rc 0 (5 allowlisted display-only fetches exempted); node .pi/scripts/check-schema-parity.mjs
+      green. Also re-ran the whole suite with sh shadowed to /bin/dash (Ubuntu's /bin/sh) -> 63/63. Deliverable:
+      .pi/scripts/pr-review-cycle.sh with six subcommands (probe-bots, wait-review, request-rereview, wait-rereview,
+      new-comments, unresolved-threads) and documented exit codes 0/1/2/3/4; a fake-gh harness with 50+ fixtures and 63
+      tests; the CI shell-gates job on ubuntu+macos wired into CI Gate's needs and assertion loop; and both markdown
+      files rewritten to call the script (all 17 inline bash blocks across the two files gone for gate logic). TWO
+      THINGS THE SYNTHESIS REVIEWER SHOULD WEIGH. (1) Step 2.5 recorded 3 violated assumptions: shellcheck is absent
+      from the macos-latest runner image (only SwiftLint is listed under Linters) so the brew fallback added in 554bff2
+      is load-bearing, not insurance; the zsh 'skips gracefully' mitigation was deliberately replaced by a hard failure
+      because skip_test exits 0 and would silently drop one of the two call-site tests; and the fixture set was
+      validated against the wrong oracle for its whole life - all 27 logins were spelled bare while the API returns
+      'qodo-code-review[bot]', so the suite was green and blind until the ST10 live probe found request-rereview
+      rejecting probe-bots' own output. That third one is fixed (a376a57) but it is the most interesting finding of the
+      phase. (2) Two acceptance items are deferred to the pr phase by sequencing, both recorded in
+      docs/plans/clo-623-pr-review-cycle-tested.md: ST10's dogfooding of the rewritten skill on this task's own PR with
+      outputs recorded in the PR body, and ST9's CI negative proof (a failing run URL - CI does not run this branch
+      until the PR exists, and opening one earlier would violate Step 4.6; clo-638-l3 forbids substituting a local
+      command for that evidence). The local half of that negative proof is done and green.
+  - timestamp: '2026-09-16T10:35:24.638Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL. Synthesis: PASS_WITH_NOTES (Codex's FAIL downgraded - each defect is local to one function or test
+      and all fit in one pass). All five Must Fix Before PR items applied in commit 1fbfbb7 and the gate re-run green.
+      Item 1 (HIGH, reproduced): jq failures that feed a gate result were unchecked, so an empty result read as a
+      negative verdict even though it means two different things - 'the API said no' and 'we could not read the API'. A
+      comment with "user": null made probe-bots print `none` with exit 0 for a billing-blocked PR, and a truncated body
+      made new-comments report a clean PR; jq_failed + rc checks now cover all eight such call sites, and login filters
+      use (.user.login // ""). Reproductions verified after the fix: null user beside a marker -> exit 4; non-JSON
+      comments body -> exit 3; truncated new-comments body -> exit 3; malformed wait body -> exit 3 instead of the
+      timeout exit 1. Item 2: billing check counts (-gt 0) so two markers no longer fall through to exit 0. Item 3: all
+      five named tests added, plus the fake gh's sequencing bug - confirmed by hand before fixing (a 3-file sequence
+      served 1,2,3,3,1 because n-1 stops naming a real file while n keeps growing), pinned by
+      test_fake_gh_sequence_repeats_the_last_fixture at 1,2,3,3,3; test_wait_rereview_detects_pass_on_second_tick is the
+      first test to reach the retry loop; a filter matching no test now exits non-zero. A further defect was found while
+      applying item 3: moving jq behind a helper argument made shellcheck treat the jq program as a shell string and
+      SC2016 fired seven times, which would have required blanket disables in a file that has none - so jq stays the
+      visible command at each call site and only its status is checked. Item 4: the literal `grep -qi qodo` and the
+      QODO_LOGIN constant are gone; qodo_re() is now the only place in the script that names Qodo, which is what CLO-650
+      has to change. Test count 63 -> 74. Gate after the fix pass: cargo fmt --all -- --check ok; cargo clippy --locked
+      --all-targets -- -D warnings ok; cargo test --locked ok (12 suites); shellcheck --shell=sh clean on all four shell
+      files; 74/74 under /bin/sh (bash) and re-run under /bin/dash; check-inline-gates.sh exit 0; node
+      .pi/scripts/check-schema-parity.mjs ok. One item deliberately NOT fixed and recorded in the report's Re-validation
+      section: unresolved-threads still truncates latest_body to 120 characters - the report classifies it as
+      pre-existing (copied from main's skill) and out of scope, so it stays a follow-up with the design contradiction
+      documented rather than hidden.
+  - timestamp: '2026-09-16T10:36:16.968Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-09-16T10:36:21.224Z'
+    action: validation_fix_iteration_recorded
+    phase: implement
+    details: >-
+      Fix iteration 1 applied by the orchestrating agent itself rather than by a separate reviewer dispatch, so no model
+      token counts are attributable; recorded as 0/0 with a revealing label rather than omitted. Commit 1fbfbb7 closed
+      all five Must Fix items from docs/reviews/clo-623-validation-synthesis.md, and its ## Re-validation section
+      documents the before/after behaviour for both HIGH reproductions. No further issues were revealed by the fixes, so
+      the single permitted iteration stands and no escalation was required.
+  - timestamp: '2026-09-16T10:37:31.267Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-flight / pre-merge gate green on HEAD 1fbfbb7 (plus the 500b9d6 docs commit): cargo fmt --check PASS; cargo
+      clippy -- -D warnings PASS (only the pre-existing 'src/main.rs present in multiple build targets' cargo note,
+      which is also emitted on main and is not a clippy lint); cargo clippy --tests PASS; cargo test PASS - 12 suites,
+      1378 passed, 0 failed. Shell superset also green: shellcheck --shell=sh clean on all four shell files, 74/74 tests
+      under /bin/sh and under /bin/dash, check-inline-gates.sh exit 0, node .pi/scripts/check-schema-parity.mjs OK.
+  - timestamp: '2026-09-16T10:37:48.638Z'
+    action: pr_created
+    phase: pr
+    details: >-
+      PR #115 opened: https://github.com/maxkulish/lok/pull/115 (MERGEABLE, head feat/clo-623-pr-review-cycle-tested).
+      Body records the six subcommands, the exit-code contract, the rewritten markdown, the validation verdicts (Codex
+      FAIL / synthesis PASS_WITH_NOTES with all five Must Fix items applied in 1fbfbb7), the two items deferred to this
+      PR phase (ST9's CI negative proof and ST10's dogfood run), and two follow-ups (the 120-char latest_body cut and
+      the phases/pr.md 5.0 pre-merge gate).
+  - timestamp: '2026-09-16T10:44:12.345Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      All required checks passing on run 35086006135 (head a41d665): CI Gate pass; build / test (ubuntu-latest) pass
+      5m53s; build / test (macos-latest) pass 3m8s; library boundary pass 3m52s; MSRV check (1.83) pass; shell gates
+      (ubuntu-latest) pass 26s; shell gates (macos-latest) pass 31s. etxtbsy-stress skipping (label ci-stress not
+      applied; deliberately outside ci-gate's needs). CI Gate now includes shell-gates in both its needs and its
+      assertion loop, so the new job is a required leg of the single required status check. Real evidence from the logs
+      settles two Step 2.5 assumptions with CI rather than inference: (1) shellcheck was NOT preinstalled on
+      macos-latest - the 'Ensure shellcheck (macOS)' step ran and brew poured shellcheck 0.11.0, so that fallback is
+      load-bearing, not insurance; without it the macOS lint step would have failed with command not found. (2) The
+      Ubuntu leg reports /usr/bin/sh -> dash, jq-1.7 and zsh 5.9, and the suite printed '74 test(s) matched, 0 failed'
+      under dash - so the dash leg is now verified in CI as well as locally. The guard printed 'check-inline-gates: 5
+      allowlisted line(s) exempted' then 'ok: no unexempted inline gate shapes'.
+  - timestamp: '2026-09-16T12:19:16.546Z'
+    action: negative_proof_captured
+    phase: pr
+    details: >-
+      ST9 negative proof part 2 complete with failing run URLs (docs/lessons/clo-638-msrv-gate-lessons.md L3 requires a
+      run URL, not a local command). Temporary commit b4a68a6 appended an unused assignment
+      (cicd_probe_unused_variable=1) to .pi/scripts/pr-review-cycle.sh. CI run 35086625178 (head b4a68a6) went red:
+      shell gates (ubuntu-latest) job 104762847372 failed at the shellcheck step with 'SC2034 (warning):
+      cicd_probe_unused_variable appears unused'; shell gates (macos-latest) job 104762847369 failed identically; CI
+      Gate job 104764620957 failed at 'Assert every required job succeeded' with build-and-test: success,
+      library-boundary: success, msrv-check: success, shell-gates: failure -> exit 1, confirming CI Gate is red BECAUSE
+      OF shell-gates and not another leg. Reverted in 6243a06; CI run 35094626969 (head 6243a06) is fully green
+      including both shell gates and CI Gate, so both go green again.
+  - timestamp: '2026-09-16T12:19:18.834Z'
+    action: dogfood_probes_run
+    phase: pr
+    details: >-
+      ST10 dogfood run, first live exercise of the rewritten skill from the repo root on this task's own PR #115 (head
+      6243a06): probe-bots --repo maxkulish/lok --pr 115 -> stdout 'qodo-code-review[bot]' with rc 4, reporting
+      'qodo-code-review is billing-blocked on PR #115 (workspace out of credits)' from the PR's own <!--
+      qodo:billing-blocked --> comment; unresolved-threads -> rc 0 with empty stdout (no unresolved threads);
+      new-comments -> rc 0, bound printed to stderr as 2026-09-16T10:37:43Z (the PR created_at, correctly the fallback
+      because the author has not replied yet). This also settles the untested design assumption that agents invoke the
+      script from the repo/worktree root - the relative path resolved and every subcommand reached its gate.
+  - timestamp: '2026-09-16T12:19:39.184Z'
+    action: bot_review_billing_blocked
+    phase: pr
+    details: >-
+      Step 4.3 / skill 1a: probe-bots --repo maxkulish/lok --pr 115 returned rc 4 with stdout 'qodo-code-review[bot]'.
+      The PR's own issue comment (created 2026-09-16T10:37:47Z, by qodo-code-review) contains the <!--
+      qodo:billing-blocked --> marker and reads 'Qodo reviews are paused because your workspace is out of credits.' No
+      bot review is coming and no amount of polling changes that (the PR #100 failure mode cost 20 minutes), so no wait
+      was started. Per the skill's billing-blocked branch the user decides whether to proceed without a bot review;
+      bot_review_wait_completed is deliberately NOT recorded yet. Step 3 already ran on the current head:
+      unresolved-threads rc 0 (empty), new-comments rc 0 (empty, bound 2026-09-16T10:37:43Z = PR created_at fallback),
+      so there are currently zero inline comments and zero unresolved threads to address.
+  - timestamp: '2026-09-16T12:21:14.610Z'
+    action: workflow_paused
+    phase: pr
+    details: >-
+      pr-review-cycle step 1a / phases/pr.md Step 4.3: probe-bots --repo maxkulish/lok --pr 115 exited 4 and printed
+      'qodo-code-review[bot]' - qodo-code-review posted <!-- qodo:billing-blocked --> on PR #115 at 2026-09-16T10:37:47Z
+      ('Qodo reviews are paused because your workspace is out of credits'). No review is coming and polling cannot
+      change that, so no wait was started. The workflow schema permits bot_rereview_head_sha: 'none' ONLY when 'Qodo is
+      billing-blocked AND THE USER APPROVED proceeding'; no approval has been given, so bot_review_wait_completed is
+      deliberately NOT recorded and the phase cannot exit. Paused for user guidance exactly as clo-632 did at the same
+      gate (that task's workflow_paused -> workflow_resumed 'User chose proceed' sequence is the precedent). Step 3 is
+      already clean on head 6243a06: unresolved-threads rc 0 (empty), new-comments rc 0 (empty; bound
+      2026-09-16T10:37:43Z = PR created_at fallback). CI run 35094626969 on 6243a06 is fully green and the PR reports
+      CLEAN/MERGEABLE. Resume with 'proceed' to skip the bot review while Qodo is billing-blocked, or restore Qodo
+      credits and re-run the review cycle.
+  - timestamp: '2026-09-16T13:16:20.193Z'
+    action: workflow_resumed
+    phase: pr
+    details: >-
+      Resumed from the billing-blocked pause. The paused checkpoint was answered with option 1 (proceed): the resume
+      turn explicitly directed 'Choose option 1 - proceed' and specified that the resume refresh the billing probe and
+      bind the decision to the current head. No reviewer-bot pass can occur while Qodo is billing-blocked (probe-bots rc
+      4 re-confirmed on head eca6cae after the pause), so the workflow proceeds without a bot review per the documented
+      precedent (clo-632). pending_human_action cleared.
+  - timestamp: '2026-09-16T13:16:22.817Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: >-
+      qodo-code-review is billing-blocked on PR #115 (<!-- qodo:billing-blocked --> at 2026-09-16T10:37:47Z, 'workspace
+      is out of credits'); the option-1 decision to proceed without a bot review was taken at the paused checkpoint and
+      re-confirmed against the current head eca6cae (probe-bots rc 4, stdout 'qodo-code-review[bot]'). No wait was
+      started: polling cannot change a billing block, which is the PR #100 failure mode that cost 20 minutes.
+      INSTALLED_BOTS for any later step is 'qodo-code-review[bot]'.
+  - timestamp: '2026-09-16T13:16:24.552Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      Nothing to address. Step 3 re-run on head eca6cae: unresolved-threads rc 0 with empty stdout (0 unresolved
+      threads), new-comments rc 0 with empty stdout (0 inline comments; bound 2026-09-16T10:37:43Z = PR created_at, the
+      documented fallback because the author has not replied). The PR carries exactly one issue comment, Qodo's
+      billing-blocked notice, which is not an inline review comment. 0 review objects. Replies posted 0/0; declines 0.
+  - timestamp: '2026-09-16T13:16:27.304Z'
+    action: bot_rereview_verified
+    phase: pr
+    details: >-
+      bot_rereview_head_sha recorded as 'none': Qodo is billing-blocked and the option-1 decision approved proceeding,
+      so no /agentic_review was posted (the request would only refresh the billing notice; request-rereview also refuses
+      --bots without qodo-code-review). No re-review pass exists to bind to a head, and the pre-merge gate's
+      head-equality branch is therefore satisfied by the documented 'none' value rather than by a pass that never ran.
+  - timestamp: '2026-09-16T13:16:36.923Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: >-
+      Pre-merge re-fetch passed on head eca6caed5ac83dc5c1ef6a02407918074e4f5d36. bot_rereview_head_sha is 'none' (Qodo
+      billing-blocked, option-1 approved), so the head-equality branch is satisfied by the documented value. Inline
+      comments since the review_addressed event at 2026-09-16T13:16:24.552Z: 0. Unresolved GraphQL reviewThreads: 0
+      (reviewThreads read, not just the comment list). PR is MERGEABLE/CLEAN with CI run 35095363230 green on this head.
+task_title: Make pr-review-cycle shell snippets executable and tested
+task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested

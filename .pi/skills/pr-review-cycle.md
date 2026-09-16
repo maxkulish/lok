@@ -1,6 +1,6 @@
 ---
 name: pr-review-cycle
-description: Bot-review wait, fetch, address, reply, re-fetch - the 9-step PR review procedure owned by the pi `pr` phase. Enforces current-head bot-review completion, CI/bot independence, and one-reply-per-thread. Recognizes qodo-code-review and copilot-pull-request-reviewer, and fails fast when Qodo is billing-blocked. Qodo never re-reviews on push, so every wait ends in an explicit `/agentic_review` request when the head has moved.
+description: Bot-review wait, fetch, address, reply, re-fetch - the 9-step PR review procedure owned by the pi `pr` phase. Every gate is executed by the tested .pi/scripts/pr-review-cycle.sh, not by snippets pasted from this file. Enforces current-head bot-review completion, CI/bot independence, and one-reply-per-thread. Recognizes qodo-code-review and copilot-pull-request-reviewer, and fails fast when Qodo is billing-blocked. Qodo never re-reviews on push, so every wait ends in an explicit `/agentic_review` request when the head has moved.
 ---
 
 # Skill: pr-review-cycle
@@ -19,9 +19,64 @@ This skill expects:
 - `ci_passed` already logged on the workflow.
 - The author has push access and `gh` is authenticated as the PR
   author.
+- **Invocation from the repository or worktree root.** The script is
+  addressed by its repo-relative path below; a call from a subdirectory
+  fails with `not found` rather than with a verdict, and a gate that
+  cannot be reached is not a gate that passed.
+
+```bash
+PR=<n>
+REPO=maxkulish/lok
+```
 
 It writes `bot_review_wait_completed`, `review_addressed` and
 `bot_rereview_verified` history events on success.
+
+## How the gates run
+
+**Every gate in this procedure is executed by
+`.pi/scripts/pr-review-cycle.sh`.** The snippets this skill used to
+carry were pasted into two different files, drifted apart (one waited
+20s and matched only one reviewer login; the other waited 10s and
+matched both), and included paths that *failed open* - an unset
+`INSTALLED_BOTS` read as "no bots installed", a jq `max` over an empty
+array becoming the string `null` and hiding every comment. The script is
+covered by `.pi/scripts/tests/pr-review-cycle.test.sh`, so a gate cannot
+change behaviour without a test changing with it.
+
+Subcommands, all taking `--repo` and `--pr`:
+
+| Subcommand | Answers |
+|---|---|
+| `probe-bots` | Which reviewer bots are installed, and is Qodo billing-blocked? |
+| `wait-review` | Has a bot finished a pass on the current head since the PR opened? |
+| `request-rereview` | Post `/agentic_review` and return the bound GitHub assigned it |
+| `wait-rereview` | Has a fresh pass landed on the post-push head since that bound? |
+| `new-comments` | Which inline comments appeared after your own last reply? |
+| `unresolved-threads` | Which review threads are still unresolved? |
+
+Every subcommand states its verdict through its exit status:
+
+| Exit | Meaning |
+|---|---|
+| 0 | Condition met - the only status that may be recorded as a passed gate |
+| 1 | Negative verdict: no pass before the deadline, or comments/threads found |
+| 2 | Invalid or inapplicable input. Nothing was called or posted |
+| 3 | Upstream failure: `gh` failed, or a response was empty, malformed, or missing a required field |
+| 4 | `probe-bots` only: Qodo is billing-blocked on this PR |
+
+Call sites take this form, and the two statements must stay separate -
+`RC` is read from the assignment, never from a pipeline
+(`docs/lessons/clo-625-l6`):
+
+```bash
+INSTALLED_BOTS=$(.pi/scripts/pr-review-cycle.sh probe-bots --repo "$REPO" --pr "$PR"); RC=$?
+```
+
+Nothing in this file decides anything. Where a decision remains - "the
+user approved proceeding without a bot review", "reviews are back" -
+it is made by the user and written down in prose and in the workflow
+state, never inferred by a shell fragment.
 
 ---
 
@@ -54,12 +109,12 @@ L6):
    `.github/workflows/`. "No CI configured" is NEVER a valid reason to
    skip review fetching.
 2. **Current-head bot review is the primary completion signal.** If a
-   bot review exists for `pull_request.head.sha`, proceed immediately
-   to fetch inline comments and review threads.
+   bot review exists for the PR's current `head.sha`, proceed
+   immediately to fetch inline comments and review threads.
 3. **10 minutes is a hard timeout, not a success condition.** If bots
-   are installed but no current-head bot review appears by
-   `pull_request.created_at + 600s`, block for user guidance instead of
-   silently marking reviews addressed.
+   are installed but no current-head bot review appears within the
+   deadline, block for user guidance instead of silently marking
+   reviews addressed.
 4. **Only confirmed absence of installed bots may skip bot review.**
    Absence is confirmed by 1a below.
 5. **A billing-blocked Qodo fails fast, not after 20 minutes.** When the
@@ -69,57 +124,41 @@ L6):
 
 ### 1a - Probe which bots are installed
 
-Scan the last 10 PRs in any state, plus the current PR's own issue
-comments. Both halves matter: a newly installed bot has no history on
-closed PRs, and Qodo posts its summary as an issue comment about a
-minute before it submits the review. Scanning only closed PRs would have
-reported "not installed" for Qodo on PR #71, its first review.
+`probe-bots` scans the last 10 PRs in any state, plus the current PR's
+own issue comments. Both halves matter: a newly installed bot has no
+history on closed PRs, and Qodo posts its summary as an issue comment
+about a minute before it submits the review. Scanning only closed PRs
+would have reported "not installed" for Qodo on PR #71, its first
+review.
+
+Its stdout is the verdict and is also what step 8 needs, so keep it:
 
 ```bash
-PR=<n>
-REPO=maxkulish/lok
-PR_CREATED_AT=$(gh api repos/${REPO}/pulls/${PR} --jq .created_at)
-HEAD_SHA=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
-BOT_RE='qodo-code-review|copilot-pull-request-reviewer'
-
-INSTALLED_BOTS=$( { gh api "repos/${REPO}/issues/${PR}/comments" --paginate --slurp \
-    | jq -r --arg re "$BOT_RE" '.[][] | select(.user.login | test($re)) | .user.login'
-  gh api "repos/${REPO}/pulls?state=all&per_page=10" --jq '.[].number' \
-    | while read prev_pr; do
-        gh api "repos/${REPO}/pulls/${prev_pr}/reviews" --paginate --slurp \
-          | jq -r --arg re "$BOT_RE" '.[][] | select(.user.login | test($re)) | .user.login'
-      done
-  } | sort -u)
-
-if [ -z "$INSTALLED_BOTS" ]; then
-  echo "No reviewer bots installed; skipping the wait loop and going to step 3"
-fi
-
-QODO_BILLING_BLOCKED=0
-if printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo \
-  && gh api "repos/${REPO}/issues/${PR}/comments" --paginate --slurp \
-    | jq -e '[.[][] | select(.user.login | test("qodo"))
-             | select(.body | contains("<!-- qodo:billing-blocked -->"))] | length > 0' >/dev/null; then
-  QODO_BILLING_BLOCKED=1
-fi
+INSTALLED_BOTS=$(.pi/scripts/pr-review-cycle.sh probe-bots --repo "$REPO" --pr "$PR"); RC=$?
 ```
 
-If `INSTALLED_BOTS` is empty, record the wait gate with the absence
-rationale below and go straight to **step 3**. Do not run 1b.
+It prints `<login>[,<login>...]` or the literal `none` - never an empty
+line, so an empty string can never be mistaken for "no bots".
 
-If `QODO_BILLING_BLOCKED=1`, do not run 1b either. Qodo posts one comment
-per PR opening with `<!-- qodo:billing-blocked -->` ("Qodo reviews are
-paused because your workspace is out of credits") and edits that same
-comment when `/agentic_review` is posted, so both 600s waits are
-guaranteed to time out. PR #100 lost 20 minutes that way. Stop and ask
-the user:
+- **`RC=4`** - Qodo is billing-blocked on this PR (`INSTALLED_BOTS` still
+  names it). Go to the billing branch below.
+- **`RC=3`** - the probe could not determine anything. This is a gate
+  failure, not an absence: fix the `gh` problem and re-run rather than
+  proceeding to step 3.
+- **`RC=2`** - bad arguments. Fix the invocation.
+- **`RC=0`** - proceed.
+  - `INSTALLED_BOTS=none`: no reviewer bots are installed. Record the
+    wait gate with the absence rationale below and go straight to
+    **step 3**. Do not run 1b.
+  - Otherwise a bot is installed: continue to 1b.
 
-```bash
-if [ "$QODO_BILLING_BLOCKED" -eq 1 ]; then
-  echo "GATE FAIL: qodo-code-review is billing-blocked on PR #${PR} (workspace out of credits); no review is coming"
-  exit 1
-fi
-```
+### Billing-blocked Qodo
+
+Qodo posts one comment per PR opening with `<!-- qodo:billing-blocked -->`
+("Qodo reviews are paused because your workspace is out of credits") and
+edits that same comment when `/agentic_review` is posted, so both 600s
+waits are guaranteed to time out. PR #100 lost 20 minutes that way. Stop
+and ask the user; do not start a wait.
 
 The user decides. If they approve proceeding without a bot review,
 record the wait gate with that rationale and go to **step 3**; step 8
@@ -138,16 +177,7 @@ update_workflow_state({
 })
 ```
 
-The notice stays on the PR after credits are restored. If the user says
-reviews are back, set `QODO_BILLING_BLOCKED=0` and `BOT_REVIEW_SEEN=0`
-in this shell, define the 1b helper, and go straight to its
-`/agentic_review` block. The PR-open review never ran, so the first 600s
-wait has nothing to find.
-
-### 1b - Poll for a current-head review
-
-Only run when 1a found at least one installed bot and
-`QODO_BILLING_BLOCKED=0`.
+The absence rationale, for the `INSTALLED_BOTS=none` branch:
 
 ```ts
 update_workflow_state({
@@ -162,90 +192,72 @@ update_workflow_state({
 })
 ```
 
-Define the poll once - step 8 reuses it verbatim. A completed pass
-arrives in one of **two shapes**, and the helper accepts both. A new
-**review object** appears only when the pass has new inline findings to
-attach (all six on PR #71 carried 1-3 inline comments). A **clean pass**
-submits no review object at all - Qodo edits its persistent "Code Review
-by Qodo" comment in place and announces completion with a *new* issue
-comment reading `[Code review](...) by qodo was updated up to the latest
-commit <sha>` (observed on PR #80, where a reviews-endpoint-only poll ran
-to full timeout while the clean pass had already landed). Each shape
-pairs a freshness bound with a covered-commit check, so the helper can
-never mistake an older pass - on the same commit or an old one - for a
-fresh one. The persistent comment's `updated_at` is deliberately not a
-condition: it bumps mid-pass and on post-merge permalink refreshes, so
-it would pass runs that never happened.
+The notice stays on the PR after credits are restored. If the user says
+reviews are back, go straight to the `/agentic_review` request in 1b: the
+PR-open review never ran, so the first wait has nothing to find.
+
+### 1b - Poll for a current-head review
+
+Only run when 1a found at least one installed bot and Qodo is not
+billing-blocked. The first wait covers a pass since the PR opened -
+`wait-review` reads both the head and the lower bound from
+`pulls/<PR>` itself.
 
 ```bash
-# wait_for_bot_review <head_sha> <since_iso8601> [timeout_seconds]
-# Echoes the detection timestamp and returns 0; returns 1 on timeout,
-# on an empty <since> (a failed POST must not widen the window), or on
-# a malformed <head_sha> (an empty head would make the comment leg's
-# contains() vacuously true and pass any fresh completion comment).
-# Accepts both delivery shapes: a review object on <head_sha>, or -
-# qodo only - a completion comment naming <head_sha>.
-wait_for_bot_review() {
-  head="$1"; since="$2"; limit="${3:-600}"
-  printf '%s' "$head" | grep -qE '^[0-9a-f]{40}$' \
-    || { echo "wait_for_bot_review: head '${head}' is not a 40-hex SHA - pulls lookup failed?" >&2; return 1; }
-  [ -n "$since" ] \
-    || { echo "wait_for_bot_review: empty since - the /agentic_review POST (or PR lookup) failed?" >&2; return 1; }
-  deadline=$(( $(date -u +%s) + limit ))
-  while :; do
-    seen=$(gh api repos/${REPO}/pulls/${PR}/reviews --paginate --slurp \
-      | jq -r --arg h "$head" --arg since "$since" --arg re "$BOT_RE" '
-          [.[][]
-           | select(.commit_id == $h)
-           | select(.user.login | test($re))
-           | select(.submitted_at >= $since)
-           | .submitted_at] | last // empty')
-    [ -n "$seen" ] && { printf '%s\n' "$seen"; return 0; }
-    # ?since= is a server-side prefilter on updated_at (never earlier than
-    # created_at, so it cannot drop a comment the created_at gate below would
-    # accept); it keeps each tick from re-downloading the full history.
-    seen=$(gh api "repos/${REPO}/issues/${PR}/comments?since=${since}&per_page=100" --paginate --slurp \
-      | jq -r --arg h "$head" --arg since "$since" '
-          [.[][]
-           | select(.user.login | test("qodo"))
-           | select(.created_at >= $since)
-           | select(.body | test("was updated up to the latest commit"))
-           | select(.body | contains($h))
-           | .created_at] | last // empty')
-    [ -n "$seen" ] && { printf '%s\n' "$seen"; return 0; }
-    [ "$(date -u +%s)" -ge "$deadline" ] && return 1
-    sleep 10
-  done
-}
+BOT_REVIEW_AT=$(.pi/scripts/pr-review-cycle.sh wait-review --repo "$REPO" --pr "$PR"); RC=$?
 ```
 
-Both timestamps are ISO-8601 UTC with the same `Z` suffix, so the `>=`
-string comparison in jq is a valid chronological one.
+A completed pass arrives in one of **two shapes**, and the wait accepts
+both. A new **review object** appears only when the pass has new inline
+findings to attach (all six on PR #71 carried 1-3 inline comments). A
+**clean pass** submits no review object at all - Qodo edits its
+persistent "Code Review by Qodo" comment in place and announces
+completion with a *new* issue comment reading
+`[Code review](...) by qodo was updated up to the latest commit <sha>`
+(observed on PR #80, where a reviews-endpoint-only poll ran to full
+timeout while the clean pass had already landed). Each shape pairs a
+freshness bound with a covered-commit check, so an older pass - on the
+same commit or an old one - can never be mistaken for a fresh one. The
+persistent comment's own edit time is deliberately not a condition: it
+bumps mid-pass and on post-merge permalink refreshes, so it would pass
+runs that never happened.
 
-```bash
-BOT_REVIEW_SEEN=0
-BOT_REVIEW_AT=$(wait_for_bot_review "$HEAD_SHA" "$PR_CREATED_AT" 600) && BOT_REVIEW_SEEN=1
-```
+`BOT_REVIEW_AT` is the timestamp `wait-review` observed, taken from the
+API response and printed on stdout.
 
-**If that timed out, ask for a pass before calling it a failure.** Qodo
+**If that exited 1, ask for a pass before calling it a failure.** Qodo
 reviews on PR open (`pr_commands`) and never on push
 (`handle_push_trigger = False`). Step 3 of `phases/pr.md` waits for CI
 *before* this skill runs, so any CI fix pushed there moved the head past
-the commit Qodo reviewed - and the poll above would then be waiting for a
-review that is never coming. One explicit request is the only exit:
+the commit Qodo reviewed - and the first wait was then waiting for a
+review that is never coming. One explicit request is the only exit.
+`request-rereview` posts it and returns the bound GitHub assigned the
+request:
 
 ```bash
-if [ "$BOT_REVIEW_SEEN" -eq 0 ] && printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo; then
-  REQUESTED_AT=$(gh api repos/${REPO}/issues/${PR}/comments \
-    -X POST -f body='/agentic_review' --jq .created_at)
-  echo "No review on ${HEAD_SHA:0:7}; requested /agentic_review at ${REQUESTED_AT}"
-  BOT_REVIEW_AT=$(wait_for_bot_review "$HEAD_SHA" "$REQUESTED_AT" 600) && BOT_REVIEW_SEEN=1
-fi
+REQUESTED_AT=$(.pi/scripts/pr-review-cycle.sh request-rereview --repo "$REPO" --pr "$PR" --bots "$INSTALLED_BOTS"); RC=$?
 ```
 
-Take `REQUESTED_AT` from the POST response, never from local `date` -
-`submitted_at` comes from GitHub's clock, and a fast local clock would
-exclude the very review it is waiting for. Expect 3-4 minutes.
+`--bots` carries 1a's answer forward: this skill no longer passes gate
+state through shell variables, and a run that skipped 1a would have to
+pass `--bots` explicitly rather than silently defaulting to "no bots".
+
+The bound comes from the POST response, never from local `date` - the
+comparison on the other side is against GitHub's own clock, and a fast
+local clock would exclude the very review it is waiting for. `RC=3`
+means the request failed; do not invent a bound, fix the failure and
+re-run. Expect 3-4 minutes.
+
+Then wait on the requested pass, scoped to that bound and the head as of
+now:
+
+```bash
+BOT_REREVIEW=$(.pi/scripts/pr-review-cycle.sh wait-rereview --repo "$REPO" --pr "$PR" --since "$REQUESTED_AT"); RC=$?
+```
+
+`BOT_REREVIEW` prints `<head_sha> <detected_at>` on success - the head
+the pass covers, which step 9 records and `phases/pr.md` §5.0 re-checks
+against the commit being merged.
 
 Known limit: a clean **initial** pass may deliver neither shape - the
 review object needs findings, and the completion comment is only
@@ -254,11 +266,10 @@ times out and this explicit request is the recovery: the requested pass
 is a re-review, which does announce itself. No worse than a plain
 timeout, and the gate still fails closed if nothing lands.
 
-If `BOT_REVIEW_SEEN` is still 0 after the requested pass, that is a real
-gate failure - go to step 2.
+If the requested wait also exits 1, that is a real gate failure - go to
+step 2.
 
-If `BOT_REVIEW_SEEN=1`, immediately record the wait gate, then proceed
-to step 3:
+If a pass was observed, record the wait gate and proceed to step 3:
 
 ```ts
 update_workflow_state({
@@ -283,26 +294,12 @@ here: an installed bot that did not finish is a gate failure, not a pass.
 Conflating the two is the PR #4 / PR #24 failure mode
 (`lessons/pr-review-failures.md` L1, L2, L6).
 
-`INSTALLED_BOTS` comes from 1a and `BOT_REVIEW_SEEN` from 1b. Run all
-three blocks in one shell. If this block is reached in a fresh shell -
-a resumed session, or a partial re-run - the defaults below make it fail
-closed rather than silently pass an unset `BOT_REVIEW_SEEN` off as a
-success.
-
-```bash
-BOT_REVIEW_SEEN="${BOT_REVIEW_SEEN:-0}"
-
-if [ -z "${INSTALLED_BOTS+x}" ]; then
-  echo "GATE FAIL: INSTALLED_BOTS unset - re-run 1a in this shell before evaluating the gate"
-  exit 1
-fi
-
-if [ "$BOT_REVIEW_SEEN" -eq 0 ]; then
-  echo "GATE FAIL: bots installed but no current-head bot review by 10 min deadline:"
-  echo "$INSTALLED_BOTS"
-  exit 1
-fi
-```
+There is no snippet to run. A non-zero exit from `wait-review` or
+`wait-rereview` **is** the failure - the loop that produced it runs
+inside the tested script, so there is no `INSTALLED_BOTS` to be unset
+and no `BOT_REVIEW_SEEN` to default to the wrong value. A resumed
+session cannot reach this step with a stale verdict: it re-runs 1a and
+1b, and re-running either is cheap.
 
 Stop and ask the user how to proceed. Do not record
 `bot_review_wait_completed`.
@@ -316,45 +313,41 @@ L6):
 - `"Qodo reviewed an earlier commit."` - that is the stale pass, and 1b
   already gave it a chance to produce a fresh one.
 - Any success rationale when installed bots have not produced a
-  current-head review and the 10-minute timeout path was hit.
+  current-head review and the deadline path was hit.
 
 ## 3 - Fetch all inline comments and review threads
 
+Two calls, both paginated and filtered inside the script. `unresolved-threads`
+prints one compact JSON object per line for every thread still open, with
+the file, line, and the *latest* comment - the comment a reply would land
+on, and therefore the one that decides the action in step 7:
+
 ```bash
-gh api repos/${REPO}/pulls/${PR}/reviews --paginate \
-  --jq '.[] | {id, state, submitted_at, commit_id, user: .user.login, body_preview: (.body[0:120])}'
-
-gh api repos/${REPO}/pulls/${PR}/comments --paginate \
-  --jq '.[] | {id, path, line: .original_line, body, user: .user.login, commit_id: .original_commit_id, in_reply_to_id}'
-
-gh api graphql -f query='
-query($owner:String!, $repo:String!, $pr:Int!) {
-  repository(owner:$owner, name:$repo) {
-    pullRequest(number:$pr) {
-      reviewThreads(first:100) {
-        nodes {
-          id
-          isResolved
-          isOutdated
-          path
-          line
-          comments(first:20) {
-            nodes { databaseId createdAt author { login } body }
-          }
-        }
-      }
-    }
-  }
-}' -f owner=maxkulish -f repo=lok -F pr=${PR}
-
-gh pr view ${PR} --json comments \
-  --jq '.comments[] | {id: .databaseId, body, author: .author.login}'
+THREADS=$(.pi/scripts/pr-review-cycle.sh unresolved-threads --repo "$REPO" --pr "$PR"); RC=$?
 ```
 
-`--paginate` is required. Omitting it silently caps results at 30 and
-hides comments on large PRs. GraphQL thread state is required because a
-comment can exist while its thread has already been resolved or marked
-outdated.
+`RC=1` means there are unresolved threads to work through (the objects are
+on stdout); `RC=0` means the PR is clean at thread level and stdout is
+empty; `RC=3` means the thread state could not be read - treat that as a
+gate failure, never as "no unresolved threads".
+
+And the inline comment bodies that step 4 categorizes:
+
+```bash
+NEW_COMMENTS=$(.pi/scripts/pr-review-cycle.sh new-comments --repo "$REPO" --pr "$PR"); RC=$?
+```
+
+With no `--since`, `new-comments` bounds the window at your own latest
+inline comment, falling back to the PR's `created_at` when you have not
+replied yet - so on a first pass this is every inline comment on the PR.
+It prints the bound it used to stderr, and exits 1 when anything is in
+window.
+
+GraphQL thread state is required in addition to the comment list because
+a comment can exist while its thread has already been resolved or marked
+outdated. Both calls are paginated; an unpaginated read silently caps at
+30 results and hides comments on large PRs, which is why the pagination
+lives in the script where a test can hold it.
 
 ## 4 - Categorize comments
 
@@ -433,25 +426,12 @@ reviewers read the replies.
 
 ## 7 - Reply or resolve each thread
 
-Fetch thread state (GraphQL node IDs are required to resolve):
+Re-fetch the thread state, because step 6's push may have changed it -
+`unresolved-threads` returns the GraphQL node ids needed to resolve, plus
+the latest comment per thread:
 
 ```bash
-gh api graphql -f query='
-query($owner:String!, $repo:String!, $pr:Int!) {
-  repository(owner:$owner, name:$repo) {
-    pullRequest(number:$pr) {
-      reviewThreads(first:100) {
-        nodes {
-          id
-          isResolved
-          comments(first:20) {
-            nodes { author { login } body }
-          }
-        }
-      }
-    }
-  }
-}' -f owner=maxkulish -f repo=lok -F pr=<n>
+THREADS=$(.pi/scripts/pr-review-cycle.sh unresolved-threads --repo "$REPO" --pr "$PR"); RC=$?
 ```
 
 ### No reply trailer, but Qodo must be addressed to answer
@@ -532,27 +512,12 @@ The PR #71 worked example: the `timeout --kill-after` finding was
 declined with pasted `timeout --version` output (GNU coreutils 9.11),
 not with "works on my machine".
 
-Record the timestamp of your most recent reply so step 8 can scope its
-re-check window. Take it from GitHub, not local `date` - it is compared
-against `created_at` on other comments, and mixing clock domains lets a
-fast local clock hide comments that arrived just after your replies:
-
-```bash
-ME=$(gh api user --jq .login)
-REPLY_PUSH_TS=$(gh api repos/${REPO}/pulls/${PR}/comments --paginate --slurp \
-  | jq -r --arg me "$ME" '[.[][] | select(.user.login == $me) | .created_at] | max // empty')
-
-# No replies of your own yet - scope the window to the PR instead of leaving
-# the bound empty, which would compare every timestamp against "".
-: "${REPLY_PUSH_TS:=$(gh api repos/${REPO}/pulls/${PR} --jq .created_at)}"
-```
-
-`max` over an empty array returns JSON `null`, which `jq -r` prints as
-the literal string `null`. Left unguarded that lands in the step 8
-filter as `created_at > "null"`, and since `"2026-…" < "null"`
-lexicographically, **every** real comment is filtered out and the
-re-check reports clean while hiding all of them. `// empty` turns the
-null into an empty string so the `:=` default can fire.
+You do **not** need to record a reply timestamp by hand. `new-comments`
+in step 8 recomputes the window from your latest inline comment on the
+PR, taking it from GitHub rather than from local `date` - it is compared
+against the creation time of other comments, and mixing clock domains
+lets a fast local clock hide comments that arrived just after your
+replies.
 
 ## 8 - Re-check for new comments
 
@@ -565,82 +530,72 @@ configured command; `/review` is the legacy PR-Agent name and is not
 wired up here.
 
 **Skip this whole request-and-poll when 1a found no installed bots.**
-There is nothing to ask and nothing to wait for; posting
-`/agentic_review` into a repo with no Qodo app just leaves a stray
-comment and then fails the gate ten minutes later. Jump to the new-
-comment check at the end of this step. The same applies when 1a found
-Qodo billing-blocked and the user approved proceeding: the request would
-only refresh the billing notice.
+There is nothing to ask and nothing to wait for; posting the request into
+a repo with no Qodo app just leaves a stray comment and then fails the
+gate ten minutes later. Jump to the new-comment check at the end of this
+step. The same applies when 1a found Qodo billing-blocked and the user
+approved proceeding: the request would only refresh the billing notice.
 
-Run this in the **same shell as step 1** - it needs `INSTALLED_BOTS` and
-the `wait_for_bot_review` helper. The guard below is what keeps a
-resumed session or a partial re-run from failing open: with
-`INSTALLED_BOTS` merely unset, the `grep` finds nothing, the else-branch
-fires, and the run records `bot_rereview_head_sha: "none"` - a clean
-gate for a re-review that never happened.
+The command refuses that call for you: `--bots` without
+`qodo-code-review` (including `none`) exits 2 and posts nothing, so a
+session that lost 1a's answer stops rather than leaving the stray
+comment. Pass `--bots "$INSTALLED_BOTS"` from 1a.
 
 ```bash
-if [ -z "${INSTALLED_BOTS+x}" ]; then
-  echo "GATE FAIL: INSTALLED_BOTS unset - re-run 1a in this shell before requesting the re-review"
-  exit 1
-fi
+REQUESTED_AT=$(.pi/scripts/pr-review-cycle.sh request-rereview --repo "$REPO" --pr "$PR" --bots "$INSTALLED_BOTS"); RC=$?
 
-BOT_REREVIEW_SHA=""
-BOT_REREVIEW_AT=""
-
-if [ "${QODO_BILLING_BLOCKED:-0}" -eq 1 ]; then
-  BOT_REREVIEW_SHA="none"
-  BOT_REREVIEW_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-elif printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo; then
-  NEW_HEAD=$(gh api repos/${REPO}/pulls/${PR} --jq .head.sha)
-
-  REQUESTED_AT=$(gh api repos/${REPO}/issues/${PR}/comments \
-    -X POST -f body='/agentic_review' --jq .created_at)
-
-  if BOT_REREVIEW_AT=$(wait_for_bot_review "$NEW_HEAD" "$REQUESTED_AT" 600); then
-    BOT_REREVIEW_SHA="$NEW_HEAD"
-    echo "Re-review on ${NEW_HEAD:0:7} at ${BOT_REREVIEW_AT}"
-  else
-    echo "GATE FAIL: no re-review on ${NEW_HEAD:0:7} since ${REQUESTED_AT}"
-    exit 1
-  fi
-else
-  BOT_REREVIEW_SHA="none"
-  BOT_REREVIEW_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-fi
+BOT_REREVIEW=$(.pi/scripts/pr-review-cycle.sh wait-rereview --repo "$REPO" --pr "$PR" --since "$REQUESTED_AT"); RC=$?
 ```
 
-`wait_for_bot_review` is the helper defined in step 1b - it accepts
-both delivery shapes (review object, or qodo's completion comment
-naming the head). Its paired conditions are load-bearing here:
+`BOT_REREVIEW` is `<head_sha> <detected_at>`. Carry both into step 9; they
+are what the workflow YAML records and what the pre-merge gate in
+`phases/pr.md` §5.0 re-checks against the head being merged.
+
+Both conditions the wait enforces are load-bearing here:
 
 - The SHA must be the **post-push** head. A review object on the old
   SHA - or a completion comment naming it - is the stale pass.
 - SHA alone is not proof of a fresh pass. Re-running step 8 without an
-  intervening push, or running it after the `/agentic_review` post
-  failed, would match the *previous* run's pass on the same SHA and
-  report re-validation that never happened. `REQUESTED_AT` is what makes
-  the poll observe this run rather than any run - and it comes from the
-  POST response, not local `date`, so both sides stay in GitHub's clock
-  domain. An empty `REQUESTED_AT` - or a head that is not a 40-hex SHA,
-  as after a failed pulls lookup - makes the helper return 1 immediately
-  rather than poll with a vacuous condition.
+  intervening push, or running it after the request failed, would match
+  the *previous* run's pass on the same SHA and report re-validation that
+  never happened. The bound is what makes the poll observe this run
+  rather than any run - and it comes from the POST response, not local
+  `date`, so both sides stay in GitHub's clock domain. A missing bound or
+  a head that is not a 40-hex SHA, as after a failed pulls lookup, exits 2
+  or fails closed rather than polling with a vacuous condition.
 
-Carry `BOT_REREVIEW_SHA` and `BOT_REREVIEW_AT` into step 9; they are
-what the workflow YAML records and what the pre-merge gate in
-`phases/pr.md` §5.0 re-checks against the head being merged.
+Then check for new comments and unresolved threads, including any human
+reviewer's response:
 
-Observed latency on PR #71 was 3-4 minutes per pass.
+```bash
+NEW_COMMENTS=$(.pi/scripts/pr-review-cycle.sh new-comments --repo "$REPO" --pr "$PR"); RC=$?
 
-Three behaviors to expect, all observed on PR #71:
+THREADS=$(.pi/scripts/pr-review-cycle.sh unresolved-threads --repo "$REPO" --pr "$PR"); RC=$?
+```
 
-- Qodo **edits its existing "Code Review by Qodo" issue comment in
+New findings arrive as new inline comments; the superseded ones remain
+attached to the old commit. `new-comments` uses a strict bound - a
+comment created at the same second as your own last reply is not new -
+so your own reply is never reported back to you as feedback.
+
+The bound it derives is the PR #71 defect, fixed in the script: `max`
+over an empty array returns JSON `null`, which `jq -r` prints as the
+literal string `null`. Left unguarded that lands in the filter as a
+comparison against `"null"`, and since every ISO timestamp sorts before
+`"null"` lexicographically, **every** real comment is filtered out and
+this re-check reports clean while hiding all of them. The script guards
+it with `// empty` and falls back to the PR's `created_at`, and a test
+asserts the findings are still reported rather than only that the bound
+string looks right.
+
+Three behaviours to expect from Qodo, all observed on PR #71:
+
+- It **edits its existing "Code Review by Qodo" issue comment in
   place**. Watching that comment for a new id will miss the re-review;
-  the observable completion signals are the two shapes
-  `wait_for_bot_review` polls - a review object on the head, or the
-  completion comment naming it. Do not fall back to the comment's
-  `updated_at`: it bumps mid-pass and on post-merge permalink
-  refreshes, so it passes runs that never happened.
+  the observable completion signals are the two shapes the wait polls -
+  a review object on the head, or the completion comment naming it. Do
+  not fall back to the comment's edit time: it bumps mid-pass and on
+  post-merge permalink refreshes, so it passes runs that never happened.
 - It posts a transient "Qodo is busy working" comment and then
   **deletes** it. A comment id that 404s on fetch is normal, not an
   error.
@@ -648,39 +603,6 @@ Three behaviors to expect, all observed on PR #71:
   third pass on PR #71 it briefly read `Bugs (0)` before settling on
   `Bugs (1)`. Never read a count while a "busy working" comment is
   present; wait for it to disappear, then read.
-
-New findings arrive as new inline comments; the superseded ones remain
-attached to the old commit. Then check for new unresolved threads,
-including any human reviewer's response:
-
-```bash
-gh pr view ${PR} --json reviews,reviewDecision
-
-gh api repos/${REPO}/pulls/${PR}/comments --paginate --slurp \
-  | jq -r --arg since "$REPLY_PUSH_TS" \
-    '.[][] | select(.created_at > $since) | {id, user: .user.login, body}'
-
-gh api graphql -f query='
-query($owner:String!, $repo:String!, $pr:Int!) {
-  repository(owner:$owner, name:$repo) {
-    pullRequest(number:$pr) {
-      reviewThreads(first:100) {
-        nodes {
-          id
-          isResolved
-          isOutdated
-          path
-          line
-          comments(last:1) { nodes { author { login } body createdAt } }
-        }
-      }
-    }
-  }
-}' -f owner=maxkulish -f repo=lok -F pr=${PR} \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-        | select(.isResolved == false)
-        | {id, path, line, isOutdated, latest_author: .comments.nodes[0].author.login, latest_body: (.comments.nodes[0].body[0:120])}'
-```
 
 If new comments or unresolved threads exist, return to step 4 and
 repeat. Threads already resolved can be skipped.

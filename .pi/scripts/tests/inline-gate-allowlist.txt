@@ -1,0 +1,20 @@
+# One ERE per line, matched against a *line* of the scanned markdown, followed
+# by `#` and the reason it is legitimate. A line that matches a banned shape
+# and one of these EREs is exempted; check-inline-gates.sh prints how many it
+# exempted so the exemptions stay visible.
+#
+# Keep these patterns narrow. A broad entry silently disarms the guard for
+# everything it happens to match, and the guard's self-test replays every
+# banned shape with this file active, so an entry wide enough to cover one of
+# those examples fails a test.
+#
+# These five lines are display reads, not gates. Each fetches comment or
+# review text for the agent to read in Step 3 or in the Qodo/Copilot reference
+# sections; none of them evaluates a condition, and none of their results is
+# compared against anything. They stay inline because the fields they project
+# (full bodies, comment ids for reply POSTs, and the original commit id that
+# Step 4.5's stale check diffs against) are not what any subcommand returns -
+# pr-review-cycle.sh answers gate questions, not display questions.
+pulls/[^ ]*/comments --paginate  # display-only inline-comment listing (Step 3, and the Copilot reference below it)
+pulls/[^ ]*/reviews --paginate   # display-only review-state listing (Step 3); feeds the Step 4 category table, decides nothing
+issues/[^ ]*/comments --paginate # display-only issue-comment listing (Qodo reference); shows what Qodo posted, no gate condition
