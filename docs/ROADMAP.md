@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-09-16 (CLO-631 completed in Phase 15. Phase 17 added; CLO-655, CLO-656 and CLO-788 were added to the roadmap after completion; Phase 13 now names canceled CLO-654; Phase 14 marked CLO-624 Canceled; Phase 15 is 3 of 5; Phase 10's summary count was corrected to 16 of 16)
+**Last Updated**: 2026-09-16 (CLO-795 added to Phase 17, now 3 of 4. Synced from Linear: CLO-623 In Review, CLO-794 added to Phase 15, now 3 of 6. Earlier: CLO-631 completed in Phase 15. Phase 17 added; CLO-655, CLO-656 and CLO-788 were added to the roadmap after completion; Phase 13 now names canceled CLO-654; Phase 14 marked CLO-624 Canceled; Phase 15 is 3 of 5; Phase 10's summary count was corrected to 16 of 16)
 
 ## Summary
 
@@ -19,10 +19,10 @@
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 6 | 6 | Complete |
 | Phase 13: Release Readiness | 4 | 3 | Complete |
-| Phase 14: Orchestration Tooling Hardening | 9 | 1 | In progress |
-| Phase 15: Security Scan Remediation | 5 | 3 | In Progress |
+| Phase 14: Orchestration Tooling Hardening | 9 | 1 | In Progress |
+| Phase 15: Security Scan Remediation | 6 | 3 | In Progress |
 | Phase 16: Task-Pipeline Cleanup | 2 | 0 | Not started |
-| Phase 17: Workflow Engine & Review Gate Repairs | 3 | 3 | Complete |
+| Phase 17: Workflow Engine & Review Gate Repairs | 4 | 3 | In Progress |
 
 ## Phase 11: Health Checks
 
@@ -70,7 +70,7 @@ Nine defects in the markdown-defined orchestration commands, all found by runnin
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
-| [CLO-623](https://linear.app/cloud-ai/issue/CLO-623) | Make pr-review-cycle shell snippets executable and tested | Not started | - |
+| [CLO-623](https://linear.app/cloud-ai/issue/CLO-623) | Make pr-review-cycle shell snippets executable and tested | In Review | - |
 | [CLO-624](https://linear.app/cloud-ai/issue/CLO-624) | Distinguish a bad reviewer invocation from an empty model response | Canceled | - |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | complete.md edits the aggregation files, then checks out main with them uncommitted | Not started | - |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | gh pr merge --delete-branch silently skips the remote deletion when its local checkout fails | Not started | - |
@@ -97,6 +97,9 @@ Five findings from the codex-security scan of `6ac4694` (2026-08-03). They share
 | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | Gate project-layer lok.toml backend commands behind a trust boundary | Done | - |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | Add one path-confinement helper and use it in every worktree writer and reader | Not started | - |
 | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | Default the Gemini backend to the plan agent when no sandbox is requested | Not started | - |
+| [CLO-794](https://linear.app/cloud-ai/issue/CLO-794) | Prevent command_wrapper from re-expanding shell-escaped workflow values | Not started | - |
+
+CLO-794 joined this phase on 2026-09-16, filed during CLO-631 design. CLO-631 escapes step output before it reaches `sh -c`, but a user-configured `defaults.command_wrapper` that places `{cmd}` inside double quotes lets the outer shell expand `$()` and backticks again. No documented wrapper does this, which kept it out of CLO-631, but it weakens the same boundary.
 
 ## Phase 16: Task-Pipeline Cleanup
 
@@ -116,8 +119,11 @@ Three defects that stopped the design-review pipeline producing a review at all,
 | [CLO-655](https://linear.app/cloud-ai/issue/CLO-655) | Shell `${#VAR}` in a workflow step body is parsed as an unterminated Jinja comment, killing the design-review pipeline before any reviewer runs | Done | - |
 | [CLO-656](https://linear.app/cloud-ai/issue/CLO-656) | Every workflow template failure is reported as `UnknownVariable` naming the first `{{ }}` in the template | Done | - |
 | [CLO-788](https://linear.app/cloud-ai/issue/CLO-788) | Review gate repairs: design-review fallback timeout, error-as-review filter, spec-review synthesis guard | Done | - |
+| [CLO-795](https://linear.app/cloud-ai/issue/CLO-795) | Make `lok run` exit non-zero when a step fails, and keep a failed shell step's stdout | Not started | - |
 
 CLO-655 and CLO-656 landed together in PR #101, bundled rather than sequenced; a parallel session's PR #100 for CLO-656 was closed as superseded. CLO-788 followed on 2026-09-15 as the cleanup behind CLO-655's two unverified live gates: the 2m fallback timeout that hid them, and the blank and `REVIEW_FAILED` checks that saved a failed step's `Error:` text as a review. A fourth repair of the same shape landed untracked on 2026-09-15 (PR #113), applying CLO-788's success check to spec-review's own fallback. It carries no issue id, so `docs/PROJECT.md` is the only place it is recorded.
+
+CLO-795 reopened the phase on 2026-09-16. It came from triaging CLO-782, a Personal-health harness ticket whose items 2 and 5 turned out to be lok engine defects: `run_workflow` returns `Ok(())` regardless of step results, and `ShellCommandError` carries no stdout, so a failed gate is invisible to the caller and its reason never reaches the log. Item 5 (`--dir` after positional arguments) was already an untracked Up Next row.
 
 ## Phase 2: Validation Pipeline
 

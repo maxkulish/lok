@@ -1,11 +1,11 @@
 # Dependencies - Lok
-**Last Updated**: 2026-09-16 (CLO-631 completed without unblocking tasks. The `CI Gate` standing constraint now matches ruleset 20153405; CLO-660 and CLO-632 completed without unblocking tasks; the crates.io publishing constraint was corrected)
+**Last Updated**: 2026-09-16 (CLO-795 added as ready. Synced from Linear: CLO-623 is In Review as PR #115, CLO-794 added as ready. Earlier: CLO-631 completed without unblocking tasks. The `CI Gate` standing constraint now matches ruleset 20153405; CLO-660 and CLO-632 completed without unblocking tasks; the crates.io publishing constraint was corrected)
 
 ## Current Blockers
 
 | Blocked Task | Blocked By | Blocker Status | Notes |
 |--------------|------------|----------------|-------|
-| [CLO-650](https://linear.app/cloud-ai/issue/CLO-650) | CLO-623 | Not started | Bot-identity hardening belongs in the script CLO-623 extracts, not in duplicated markdown |
+| [CLO-650](https://linear.app/cloud-ai/issue/CLO-650) | CLO-623 | In Review (PR #115) | Bot-identity hardening belongs in the script CLO-623 extracts, not in duplicated markdown |
 
 One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-591 -> CLO-592, plus CLO-600) closed on 2026-08-02; every other open task is independent.
 
@@ -13,7 +13,6 @@ One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-
 
 | Task | Dependencies Satisfied | Ready Since |
 |------|------------------------|-------------|
-| [CLO-623](https://linear.app/cloud-ai/issue/CLO-623) | PR #71 merged | 2026-08-02 |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | CLO-625 merged | 2026-08-02 |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | CLO-625 merged | 2026-08-02 |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | None. Independent codex-security scan finding | 2026-08-03 |
@@ -23,6 +22,8 @@ One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-
 | [CLO-649](https://linear.app/cloud-ai/issue/CLO-649) | None. Independent spec-review harness fix | 2026-08-06 |
 | [CLO-651](https://linear.app/cloud-ai/issue/CLO-651) | None. Found during the 2026-08-06 Actions outage | 2026-08-07 |
 | [CLO-652](https://linear.app/cloud-ai/issue/CLO-652) | None. Independent agent-template fix | 2026-08-07 |
+| [CLO-794](https://linear.app/cloud-ai/issue/CLO-794) | None. CLO-631 follow-up | 2026-09-16 |
+| [CLO-795](https://linear.app/cloud-ai/issue/CLO-795) | None. From CLO-782 triage | 2026-09-16 |
 
 CLO-609 landed on 2026-08-03 (PR #78, `8b96821`), so the crate metadata is ready for the first crates.io publish under a name this project controls.
 CLO-633 landed the same day (PR #80, `a8f84d8`). It blocked nothing — the five Phase 15 findings
