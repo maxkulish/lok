@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-09-16 (CLO-631 started and was removed from Unblocked & Ready. The `CI Gate` standing constraint now matches ruleset 20153405; CLO-660 and CLO-632 completed without unblocking tasks; the crates.io publishing constraint was corrected)
+**Last Updated**: 2026-09-16 (CLO-631 completed without unblocking tasks. The `CI Gate` standing constraint now matches ruleset 20153405; CLO-660 and CLO-632 completed without unblocking tasks; the crates.io publishing constraint was corrected)
 
 ## Current Blockers
 
