@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-09-16 (Phase 17 added. CLO-655, CLO-656 and CLO-788 closed on 2026-09-14 and 2026-09-15 without ever being recorded in a phase, so no phase view showed them; Phase 13 prose now names CLO-654, canceled as superseded by CLO-660. On 2026-09-15 Phase 14 marked CLO-624 Canceled, as it has been in Linear since 2026-09-13, and CLO-632 put Phase 15 at 2 of 5. Phase 10's summary row read 15 of 15 against a table of 16 Done tasks and now reads 16 of 16. Earlier the same day CLO-660 closed Phase 13 at 3 of 4 with CLO-610 canceled)
+**Last Updated**: 2026-09-16 (CLO-631 started in Phase 15. Phase 17 added; CLO-655, CLO-656 and CLO-788 were added to the roadmap after completion; Phase 13 now names canceled CLO-654; Phase 14 marked CLO-624 Canceled; Phase 15 is 2 of 5; Phase 10's summary count was corrected to 16 of 16)
 
 ## Summary
 
@@ -93,7 +93,7 @@ Five findings from the codex-security scan of `6ac4694` (2026-08-03). They share
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
 | [CLO-633](https://linear.app/cloud-ai/issue/CLO-633) | Fix slice panics on CI log truncation and out-of-range file:line references | Done | - |
-| [CLO-631](https://linear.app/cloud-ai/issue/CLO-631) | Escape or remove step output interpolated into workflow shell fields | Not started | - |
+| [CLO-631](https://linear.app/cloud-ai/issue/CLO-631) | Escape or remove step output interpolated into workflow shell fields | In Progress | - |
 | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | Gate project-layer lok.toml backend commands behind a trust boundary | Done | - |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | Add one path-confinement helper and use it in every worktree writer and reader | Not started | - |
 | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | Default the Gemini backend to the plan agent when no sandbox is requested | Not started | - |
