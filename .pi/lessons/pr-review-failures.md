@@ -228,3 +228,21 @@ reply.
   pasted `timeout --version` output; two of its other three findings
   were real, and chasing one of those surfaced a further defect it had
   not seen. Verify before acting, in both directions.
+
+---
+
+## L9 - Billing-blocked Qodo is a deterministic exception, not a timeout
+
+**Source incident:** CLO-631 / PR #114. Qodo posted its
+`<!-- qodo:billing-blocked -->` notice before the review cycle, so a
+review could not arrive regardless of how long the poll waited. The user
+approved proceeding without a bot review.
+
+**Rule:** Detect the billing marker during the installed-bot probe and
+fail fast for user guidance. If the user approves, record
+`bot_rereview_head_sha: "none"`, skip `/agentic_review`, and still fetch
+all review surfaces and run the pre-merge re-fetch gate.
+
+**How to apply:** Keep the billing flag from the probe in the same shell
+as the review-cycle gates; do not reinterpret the persistent notice as a
+fresh review or spend two ten-minute waits on it.

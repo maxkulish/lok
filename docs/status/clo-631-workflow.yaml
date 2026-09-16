@@ -28,7 +28,7 @@ workflow:
   current_phase: complete
   status: active
   created_at: '2026-09-16T09:01:12.209Z'
-  updated_at: '2026-09-16T12:21:12.177Z'
+  updated_at: '2026-09-16T12:31:26.722Z'
 phases:
   discovery:
     status: complete
@@ -208,6 +208,12 @@ phases:
     pre_merge_refetch_at: '2026-09-16T12:13:00Z'
   complete:
     status: in_progress
+    aggregation_files_updated: true
+    lessons_learned:
+      - L9 - Billing-blocked Qodo is a deterministic exception, not a timeout
+    lessons_file: .pi/lessons/pr-review-failures.md
+    docs_pr_url: https://github.com/maxkulish/lok/pull/116
+    docs_pr_number: 116
 history:
   - timestamp: '2026-09-16T09:01:12.209Z'
     action: workflow_started
@@ -427,5 +433,19 @@ history:
     action: phase_started
     phase: complete
     details: 'PR phase gates complete; PR #114 is ready for merge. Starting completion workflow.'
+  - timestamp: '2026-09-16T12:30:21.127Z'
+    action: project_sync_complete
+    phase: complete
+    details: PROJECT.md, ROADMAP.md, and DEPENDENCIES.md synchronized for CLO-631 completion on the post-merge docs branch.
+  - timestamp: '2026-09-16T12:30:25.906Z'
+    action: lessons_extracted
+    phase: complete
+    details: >-
+      1 durable lesson recorded in .pi/lessons/pr-review-failures.md: billing-blocked Qodo must fail fast and, with user
+      approval, record no bot re-review while retaining all review gates.
+  - timestamp: '2026-09-16T12:31:26.722Z'
+    action: docs_pr_created
+    phase: complete
+    details: 'Docs finalization PR #116 opened: https://github.com/maxkulish/lok/pull/116'
 task_title: Escape or remove step output interpolated into workflow shell fields
 task_url: https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields
