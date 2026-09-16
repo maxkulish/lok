@@ -22,7 +22,7 @@ workflow:
   current_phase: pr
   status: active
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T10:37:31.267Z'
+  updated_at: '2026-09-16T10:44:12.345Z'
 phases:
   discovery:
     status: complete
@@ -277,6 +277,9 @@ phases:
         task_label: validation-fix-iteration-1-applied-inline
   pr:
     status: in_progress
+    pr_number: 115
+    pr_url: https://github.com/maxkulish/lok/pull/115
+    ci_passed: true
   complete:
     status: pending
 history:
@@ -556,5 +559,29 @@ history:
       which is also emitted on main and is not a clippy lint); cargo clippy --tests PASS; cargo test PASS - 12 suites,
       1378 passed, 0 failed. Shell superset also green: shellcheck --shell=sh clean on all four shell files, 74/74 tests
       under /bin/sh and under /bin/dash, check-inline-gates.sh exit 0, node .pi/scripts/check-schema-parity.mjs OK.
+  - timestamp: '2026-09-16T10:37:48.638Z'
+    action: pr_created
+    phase: pr
+    details: >-
+      PR #115 opened: https://github.com/maxkulish/lok/pull/115 (MERGEABLE, head feat/clo-623-pr-review-cycle-tested).
+      Body records the six subcommands, the exit-code contract, the rewritten markdown, the validation verdicts (Codex
+      FAIL / synthesis PASS_WITH_NOTES with all five Must Fix items applied in 1fbfbb7), the two items deferred to this
+      PR phase (ST9's CI negative proof and ST10's dogfood run), and two follow-ups (the 120-char latest_body cut and
+      the phases/pr.md 5.0 pre-merge gate).
+  - timestamp: '2026-09-16T10:44:12.345Z'
+    action: ci_passed
+    phase: pr
+    details: >-
+      All required checks passing on run 35086006135 (head a41d665): CI Gate pass; build / test (ubuntu-latest) pass
+      5m53s; build / test (macos-latest) pass 3m8s; library boundary pass 3m52s; MSRV check (1.83) pass; shell gates
+      (ubuntu-latest) pass 26s; shell gates (macos-latest) pass 31s. etxtbsy-stress skipping (label ci-stress not
+      applied; deliberately outside ci-gate's needs). CI Gate now includes shell-gates in both its needs and its
+      assertion loop, so the new job is a required leg of the single required status check. Real evidence from the logs
+      settles two Step 2.5 assumptions with CI rather than inference: (1) shellcheck was NOT preinstalled on
+      macos-latest - the 'Ensure shellcheck (macOS)' step ran and brew poured shellcheck 0.11.0, so that fallback is
+      load-bearing, not insurance; without it the macOS lint step would have failed with command not found. (2) The
+      Ubuntu leg reports /usr/bin/sh -> dash, jq-1.7 and zsh 5.9, and the suite printed '74 test(s) matched, 0 failed'
+      under dash - so the dash leg is now verified in CI as well as locally. The guard printed 'check-inline-gates: 5
+      allowlisted line(s) exempted' then 'ok: no unexempted inline gate shapes'.
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested

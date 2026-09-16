@@ -825,3 +825,8 @@ main() {
 }
 
 main "$@"
+
+# Temporary probe for the ST9 negative CI proof. An assignment nothing reads is
+# an SC2034 warning that the 74-test suite cannot see, so this isolates the lint
+# step as the thing CI catches it with.
+cicd_probe_unused_variable=1
