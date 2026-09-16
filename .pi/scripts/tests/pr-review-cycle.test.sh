@@ -393,6 +393,89 @@ test_wait_rereview_times_out_closed() {
   assert_out_empty || return 1
 }
 
+# --- new-comments ---------------------------------------------------------
+
+test_new_comments_reports_comments_after_the_bound() {
+  use_fixture new_comments_after_bound
+  run_script new-comments --repo maxkulish/lok --pr 71 --me me-user
+  assert_rc 1 || return 1
+  case "$OUT" in
+    *'"id":2'*'qodo-code-review'*'still broken'*) : ;;
+    *) fail_test "the later comment was not reported: $OUT" || return 1 ;;
+  esac
+  # one compact object per line
+  [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] \
+    || fail_test "expected exactly one object: $OUT" || return 1
+  case "$OUT" in
+    *'"user":"qodo-code-review"'*) : ;;
+    *) fail_test "body should be flat JSON with a string user: $OUT" || return 1 ;;
+  esac
+}
+
+test_new_comments_exits_0_when_clean() {
+  use_fixture new_comments_clean
+  run_script new-comments --repo maxkulish/lok --pr 71 --me me-user
+  assert_rc 0 || return 1
+  assert_out_empty || return 1
+}
+
+test_new_comments_excludes_comment_exactly_at_bound() {
+  # Strict `>`: the bound is the caller's own last reply, so a comment stamped
+  # at exactly that second is not new.
+  use_fixture new_comments_exact_bound
+  run_script new-comments --repo maxkulish/lok --pr 71 --since 2026-09-10T10:06:00Z
+  assert_rc 0 || return 1
+  assert_out_empty || return 1
+}
+
+test_new_comments_null_max_falls_back_to_pr_created_at() {
+  use_fixture new_comments_null_max
+  run_script new-comments --repo maxkulish/lok --pr 71 --me me-user
+  assert_rc 1 || return 1
+  assert_err_contains "2026-09-10T10:00:00Z" || return 1
+}
+
+test_new_comments_never_hides_findings_behind_a_null_bound() {
+  # The PR #71 defect: `max` over an empty array is JSON null, `jq -r` prints
+  # the literal string "null", and every ISO timestamp sorts before "null" -
+  # so the re-check reported clean while hiding every finding.
+  use_fixture new_comments_null_max
+  run_script new-comments --repo maxkulish/lok --pr 71 --me me-user
+  assert_rc 1 || return 1
+  case "$OUT" in
+    *'"id":5'*) : ;;
+    *) fail_test "the finding was hidden by a null bound: $OUT" || return 1 ;;
+  esac
+  case "$ERR" in
+    *'bound: null'*) fail_test "the bound fell through to the literal null: $ERR" || return 1 ;;
+    *) : ;;
+  esac
+}
+
+test_new_comments_resolves_the_login_when_me_is_omitted() {
+  use_fixture new_comments_me_lookup
+  run_script new-comments --repo maxkulish/lok --pr 71
+  assert_rc 1 || return 1
+  case "$(calls)" in
+    *'user'*) : ;;
+    *) fail_test "the login was not resolved from the API: $(calls)" || return 1 ;;
+  esac
+}
+
+test_new_comments_fails_closed_when_inline_lookup_errors() {
+  use_fixture new_comments_error
+  run_script new-comments --repo maxkulish/lok --pr 71 --me me-user
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_new_comments_rejects_malformed_since() {
+  use_fixture new_comments_exact_bound
+  run_script new-comments --repo maxkulish/lok --pr 71 --since 'last tuesday'
+  assert_rc 2 || return 1
+  [ -z "$(calls)" ] || fail_test "a malformed bound must fail before any API call" || return 1
+}
+
 # --- the fake gh is itself a guard ---------------------------------------
 
 test_fake_gh_rejects_jq_and_arg_flags() {

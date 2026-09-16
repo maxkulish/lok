@@ -131,6 +131,13 @@ require_installed_bots() {
   fi
 }
 
+require_login() {
+  l=${1:-}
+  printf '%s' "$l" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$' \
+    || fail "$EX_INVALID" "invalid --me '$l' (want a GitHub login)"
+  ME=$l
+}
+
 # --- required-field extraction ------------------------------------------
 
 jq_field() {
@@ -518,7 +525,61 @@ cmd_wait_rereview() {
 }
 
 cmd_new_comments() {
-  fail "$EX_UPSTREAM" "new-comments is not implemented in this revision"
+  REPO=""; PR=""; SINCE=""; ME=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo)  require_repo  "${2:-}"; shift 2 ;;
+      --pr)    require_pr    "${2:-}"; shift 2 ;;
+      --since) require_since "${2:-}"; shift 2 ;;
+      --me)    require_login "${2:-}"; shift 2 ;;
+      -h|--help) usage; exit "$EX_OK" ;;
+      *) fail "$EX_INVALID" "unexpected argument '$1'" ;;
+    esac
+  done
+  [ -n "$REPO" ] || fail "$EX_INVALID" "--repo is required"
+  [ -n "$PR" ]   || fail "$EX_INVALID" "--pr is required"
+
+  pr_lookup
+  gh_capture "repos/$REPO/pulls/$PR/comments" --paginate --slurp
+  comments=$GH_BODY
+
+  if [ -n "$SINCE" ]; then
+    bound=$SINCE
+  else
+    if [ -z "$ME" ]; then
+      gh_capture user
+      jq_field "$GH_BODY" '.login'
+      ME=$JQ_VALUE
+    fi
+    # `max` over an empty array is JSON null, which `jq -r` prints as the
+    # literal string "null". Unguarded that reaches the filter below as
+    # created_at > "null", and since every ISO timestamp sorts before "null"
+    # lexicographically, *every* real comment is dropped and the re-check
+    # reports clean while hiding all of them (the PR #71 defect). `// empty`
+    # turns the null into an empty string so the fallback can fire.
+    bound=$(printf '%s' "$comments" | jq -r --arg me "$ME" \
+      '[.[][] | select(.user.login == $me) | .created_at] | max // empty')
+    # No replies of our own yet - scope the window to the PR instead of
+    # comparing every timestamp against "".
+    [ -n "$bound" ] || bound=$PR_CREATED_AT
+  fi
+
+  diag "$SUB" "new-comment bound: $bound"
+
+  # gh_api runs under a command substitution, so its scratch dir (and its EXIT
+  # trap) live only in that subshell. The parent needs its own.
+  gb_tmp_ensure
+  out=$(mktemp "$GH_TMP/new.XXXXXX") || fail "$EX_UPSTREAM" "could not create a scratch file"
+  # Strict `>`: the bound is the caller's own last reply, and reporting that
+  # reply back as new would never terminate. One compact object per line.
+  printf '%s' "$comments" | jq -c --arg since "$bound" \
+    '.[][] | select(.created_at > $since) | {id, user: .user.login, body}' > "$out"
+
+  if [ -s "$out" ]; then
+    cat "$out"
+    exit "$EX_NEGATIVE"
+  fi
+  exit "$EX_OK"
 }
 
 cmd_unresolved_threads() {
