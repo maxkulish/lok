@@ -1,0 +1,230 @@
+task_id: clo-623
+task_type: development
+classification_reason: >-
+  Title 'Make pr-review-cycle shell snippets executable and tested' describes code extraction, tests, and CI changes on
+  a development repo; ACs are product-code work, not operational runbook or pure spec.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Backlog
+  blocks: []
+  blocked_by: []
+  branch_actual: feat/clo-623-pr-review-cycle-tested
+  priority: Medium
+workflow:
+  current_phase: implement
+  status: active
+  created_at: '2026-09-16T07:45:44.278Z'
+  updated_at: '2026-09-16T08:12:45.041Z'
+phases:
+  discovery:
+    status: complete
+    approach_chosen: extract-to-script
+    approaches_identified: 3
+    approved: true
+    baseline_score: 4
+    discovery_debt: []
+    discovery_report: docs/discovery/clo-623.md
+    prd_created: true
+    prd_exists: true
+    prd_file: docs/prds/clo-623-pr-review-cycle-tested.md
+    problem_framed: true
+  design:
+    status: complete
+    design_doc: docs/designs/clo-623-pr-review-cycle-tested.md
+    discovery_context_used: true
+    draft_ready: true
+    draft_source: claude-designer
+    assumptions:
+      - confidence: high
+        text: >-
+          CI Gate is not a required status check today: on 2026-09-16 ruleset 20153405 on main returned only deletion
+          and non_fast_forward rules, so docs/lessons/clo-625-l2 is stale on this point. The new job appears in CI Gate
+          but does not block merges by itself.
+        verification: >-
+          Verified during the soft gate: gh api repos/maxkulish/lok/rulesets/20153405 returned rules [deletion,
+          non_fast_forward] and required_checks []
+      - confidence: medium
+        text: shellcheck and jq are preinstalled on the ubuntu-latest and macos-latest runner images.
+        verification: First CI run prints shellcheck --version and jq --version; fall back to apt-get/brew install if missing
+      - confidence: medium
+        text: >-
+          zsh is not preinstalled on ubuntu-latest; the job installs it with apt-get for the call-site tests, and the
+          zsh leg skips gracefully if unavailable.
+        verification: First CI run on ubuntu-latest
+      - confidence: medium
+        text: >-
+          /bin/sh differs between hosts (dash on Ubuntu, bash-compatible sh on macOS); code passing shellcheck
+          --shell=sh plus the test suite on both OSes behaves the same for the constructs used.
+        verification: Run the test suite locally on macOS and in CI on Ubuntu
+      - confidence: high
+        text: >-
+          Every agent host has a gh supporting gh api --paginate --slurp, since the current snippets already depend on
+          it (local gh 2.101.0).
+        verification: gh api --help
+      - confidence: medium
+        text: >-
+          Qodo's observable signals still match the prose: review object only for passes with findings, 'was updated up
+          to the latest commit' completion comment for re-review passes, and the qodo:billing-blocked marker.
+        verification: 'Record fixtures from PRs #71, #80, #100, #106 during implementation and compare to the prose'
+      - confidence: medium
+        text: >-
+          Live data on PRs #71, #80, #89 and #106 is still retrievable for fixture recording; Qodo edits comments in
+          place, so fixtures may need hand-trimming to the shapes the prose documents.
+        verification: Fetch during implementation
+      - confidence: medium
+        text: >-
+          Agents invoke the script from the repository or worktree root, so the relative path
+          .pi/scripts/pr-review-cycle.sh resolves.
+        verification: Skill prerequisites section states it; dogfood run on this task's own PR exercises it
+      - confidence: high
+        text: The script reads no repository files at runtime; all inputs are arguments.
+        verification: Tests run with an empty FAKE_GH_STATE working area
+      - confidence: high
+        text: >-
+          Discovery's objection to Approach B (stale lok binary runs stale gates) does not apply here because the script
+          ships in the same checkout as the markdown that calls it.
+        verification: Design reasoning; no runtime check
+    assumptions_surfaced: true
+    applied_suggestions:
+      - >-
+        Fake gh: added `graphql` endpoint and `-f query=<text>` to the allowlist and fixture resolver, plus a GraphQL
+        fixture (finding 1)
+      - >-
+        Per-request `gh` deadline via `PR_REVIEW_CYCLE_CALL_DEADLINE` (default 30s, background-process + kill), `.hang`
+        fixture, and a named hung-request test (finding 2)
+      - Goals now list all six subcommands explicitly (finding 3)
+      - >-
+        Decision 5 rewritten with exact banned EREs, file scope, allowlist file format, and
+        `test_inline_gate_guard_fails_on_each_banned_shape` (finding 4)
+      - 'POSIX shell rules stated: no local/[[ ]]/arrays/pipefail, `set -u` yes, `set -e` no (finding 5)'
+      - >-
+        GraphQL fail-closed rules added to Architecture: non-zero exit, non-empty `errors`, missing/null `data`,
+        malformed node -> exit 3 (finding 6)
+      - Whole-second `YYYY-MM-DDTHH:MM:SSZ` shape documented for every consumed endpoint (finding 7)
+      - All JSON output required to be `jq -c`, never shell interpolation (finding 8)
+      - >-
+        Boundary tests added: unresolved-threads pagination, inclusive pass-at-since, strict new-comments bound,
+        mid-poll head change (finding 9)
+    flagged_suggestions: []
+    review_completed: true
+    review_ollama: docs/reviews/clo-623-review-ollama.md
+    review_synthesis: docs/reviews/clo-623-review-synthesis.md
+    review_verdict: approve_with_changes
+    token_usage:
+      - recorded_at: '2026-09-16T08:06:42.027Z'
+        provider: ollama
+        model: glm-5.3:cloud
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-ollama
+      - recorded_at: '2026-09-16T08:06:42.027Z'
+        provider: claude
+        model: claude-opus-5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-synthesis
+    human_review_completed: true
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-623-pr-review-cycle-tested.md
+    token_usage:
+      - recorded_at: '2026-09-16T08:12:39.422Z'
+        provider: claude
+        model: claude-opus-5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: plan-authoring
+    approved: true
+  implement:
+    status: pending
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-09-16T07:45:44.278Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-623 as development
+  - timestamp: '2026-09-16T07:49:08.248Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: task extracts pr-review-cycle gate logic from markdown into a tested shell script with
+      CI enforcement - code, tests, and workflow changes, not a pure spec or ops run. Prior lessons consulted:
+      clo-625-l3/l4/l6 (shell snippet gotchas), clo-625-l1/l2/l5 (repo merge settings), clo-632-l1 (.lok/lok.toml
+      lookup).
+  - timestamp: '2026-09-16T07:49:15.586Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-09-16T07:50:16.583Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: extract-to-script. Baseline 4/10. 3 approaches considered (A shell script + fixture tests, B gates in
+      Rust binary, C snippet-extraction harness). No discovery debt. Auto-approved in Auto Mode: all exit fields
+      populated, debt empty.
+  - timestamp: '2026-09-16T07:50:21.126Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-09-16T07:59:54.700Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated by claude-designer via design-draft workflow at docs/designs/clo-623-pr-review-cycle-tested.md;
+      soft gate applied: 5 open questions resolved into decisions, sixth subcommand unresolved-threads added, verified
+      ruleset 20153405 currently has no required checks (clo-625-l2 partially stale).
+  - timestamp: '2026-09-16T08:00:06.492Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: '10 assumptions surfaced (high: 5, medium: 5, low: 0). See design doc § Assumptions.'
+  - timestamp: '2026-09-16T08:06:42.027Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Review verdict: approve_with_changes (APPROVE_WITH_SUGGESTIONS, Ollama). All 9 findings applied, 0 flagged. P1:
+      fake gh GraphQL support; per-request gh deadline + hung-request test. P2: six-subcommand goal; exact tested CI
+      guard EREs; POSIX shell rules; GraphQL fail-closed rules. P3: whole-second timestamps; jq -c output; boundary
+      tests.
+  - timestamp: '2026-09-16T08:07:33.957Z'
+    action: design_human_review_complete
+    phase: design
+    details: Human reviewer approved the design after the Plannotator annotate session closed with no annotations.
+  - timestamp: '2026-09-16T08:07:38.952Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design ready for plan phase. 6-subcommand POSIX script contract, fail-closed exit codes 0-4, hermetic fake-gh test
+      harness, tested CI guard, and a concrete test plan are all finalized; no open blocking questions.
+  - timestamp: '2026-09-16T08:07:39.788Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-09-16T08:12:39.422Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 10 sub-tasks at docs/plans/clo-623-pr-review-cycle-tested.md
+  - timestamp: '2026-09-16T08:12:43.785Z'
+    action: plan_approved
+    phase: plan
+    details: >-
+      Plan approved. 10 sub-tasks queued: ST1 harness/fake-gh/skeleton, ST2 probe-bots+deadline, ST3 wait-review+poll,
+      ST4 request/wait-rereview, ST5 new-comments, ST6 unresolved-threads, ST7 skill markdown, ST8
+      /pr:review+phases/pr.md, ST9 CI shell-gates+guard, ST10 dogfood.
+  - timestamp: '2026-09-16T08:12:45.041Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+task_title: Make pr-review-cycle shell snippets executable and tested
+task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested

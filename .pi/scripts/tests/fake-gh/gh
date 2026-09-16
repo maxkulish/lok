@@ -1,0 +1,134 @@
+#!/bin/sh
+# fake-gh/gh - a recording stand-in for the `gh` CLI.
+#
+# Placed first on PATH by pr-review-cycle.test.sh, so
+# `.pi/scripts/pr-review-cycle.sh` talks to this instead of GitHub.
+#
+# It accepts only the argv shapes the real script uses. Anything else -
+# notably `--jq` and `--arg`, which is the PR #71 `gh api --jq --arg`
+# defect - exits 1 with an unknown-flag message, so that class of bug
+# fails a test instead of passing silently.
+#
+# Fixture resolution: `<METHOD> <path without query string>` maps to
+# `<scenario>/<method_lower>__<path with / -> __>.json`, and the single
+# `graphql` endpoint maps to `<scenario>/graphql__reviewThreads.json`.
+#
+#   GET  repos/o/r/pulls/71          -> get__repos__o__r__pulls__71.json
+#   GET  repos/o/r/issues/71/comments?since=X -> get__repos__o__r__issues__71__comments.json
+#   POST repos/o/r/issues/71/comments -> post__repos__o__r__issues__71__comments.json
+#   GET  user                        -> get__user.json
+#   POST graphql                     -> graphql__reviewThreads.json
+#
+# Per-fixture modifiers:
+#   <base>.exit   forces a non-zero exit (content = exit code, default 1)
+#   <base>.hang   sleeps 60s before responding, to trip a call deadline
+#   <base>.1.json, <base>.2.json, ...  serve successive calls (poll ticks);
+#                once the sequence runs out the final page repeats
+#
+# Env:
+#   FAKE_GH_SCENARIO  fixture directory (required)
+#   FAKE_GH_STATE     scratch dir for calls.log and sequence counters (required)
+
+set -u
+
+if [ -z "${FAKE_GH_SCENARIO:-}" ]; then
+  echo "fake-gh: FAKE_GH_SCENARIO is required" >&2
+  exit 1
+fi
+if [ -z "${FAKE_GH_STATE:-}" ]; then
+  echo "fake-gh: FAKE_GH_STATE is required" >&2
+  exit 1
+fi
+
+# The original argv, recorded before parsing so that a rejected invocation is
+# still visible to the tests (asserting "nothing else ran" needs to see the
+# call that failed too).
+orig=$(printf '%s ' "$@")
+printf '%s\n' "$orig" >> "$FAKE_GH_STATE/calls.log"
+
+method=GET
+path=""
+
+while [ $# -gt 0 ]; do
+  a=$1
+  shift
+  case "$a" in
+    api)        : ;;
+    graphql)    path=graphql ;;
+    --paginate) : ;;
+    --slurp)    : ;;
+    -X)
+      [ $# -ge 1 ] || { echo "fake-gh: -X needs a value" >&2; exit 1; }
+      method=$1
+      shift
+      ;;
+    -f|-F)
+      [ $# -ge 1 ] || { echo "fake-gh: $a needs a value" >&2; exit 1; }
+      kv=$1
+      shift
+      key=${kv%%=*}
+      case "$key" in
+        body|query|owner|repo|pr) : ;;
+        *) echo "fake-gh: unknown -f/-F field '$key'" >&2; exit 1 ;;
+      esac
+      ;;
+    --*) echo "fake-gh: unknown flag '$a'" >&2; exit 1 ;;
+    -*)  echo "fake-gh: unknown flag '$a'" >&2; exit 1 ;;
+    *)   [ -n "$path" ] || path=$a ;;
+  esac
+done
+
+if [ -z "$path" ]; then
+  echo "fake-gh: no path in: $orig" >&2
+  exit 1
+fi
+
+method_lower=$(printf '%s' "$method" | tr '[:upper:]' '[:lower:]')
+
+if [ "$path" = "graphql" ]; then
+  base=graphql__reviewThreads
+else
+  bare=${path%%\?*}      # drop the query string: ?since= is a prefilter only
+  bare=${bare#/}
+  base=$(printf '%s__%s' "$method_lower" "$bare" | sed 's|/|__|g')
+fi
+
+# A `.hang` fixture sleeps past any sane per-call deadline.
+if [ -f "$FAKE_GH_SCENARIO/$base.hang" ]; then
+  sleep 60
+fi
+
+# A `.exit` fixture fails the call without producing a body.
+if [ -f "$FAKE_GH_SCENARIO/$base.exit" ]; then
+  code=$(cat "$FAKE_GH_SCENARIO/$base.exit")
+  [ -n "$code" ] || code=1
+  echo "fake-gh: forced failure for '$method $path' (exit $code)" >&2
+  exit "$code"
+fi
+
+file="$FAKE_GH_SCENARIO/$base.json"
+
+# Sequenced fixtures: serve .1.json, .2.json, ... one per call.
+if [ -f "$FAKE_GH_SCENARIO/$base.1.json" ]; then
+  count_file="$FAKE_GH_STATE/$base.count"
+  n=0
+  [ -f "$count_file" ] && n=$(cat "$count_file")
+  n=$((n + 1))
+  printf '%s' "$n" > "$count_file"
+  if [ -f "$FAKE_GH_SCENARIO/$base.$n.json" ]; then
+    file="$FAKE_GH_SCENARIO/$base.$n.json"
+  else
+    # Sequence exhausted: the final observed state repeats, which is what a
+    # poll that keeps ticking against an unchanged PR would see.
+    prev=$((n - 1))
+    file="$FAKE_GH_SCENARIO/$base.$prev.json"
+    [ -f "$file" ] || file="$FAKE_GH_SCENARIO/$base.1.json"
+  fi
+fi
+
+if [ ! -f "$file" ]; then
+  echo "fake-gh: no fixture for '$method $path' (wanted $base.json in $FAKE_GH_SCENARIO)" >&2
+  exit 1
+fi
+
+cat "$file"
