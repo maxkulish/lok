@@ -73,7 +73,7 @@ Until the crate has a name this project can publish, every library consumer is l
   - a crate that already depends on `lokomotiv` through git keeps its `lokomotiv::` imports with `lokomotiv = { package = "lok-backend", git = "https://github.com/maxkulish/lok", tag = "v20260916.0.0", default-features = false }`, and a crate pinned to an older tag is unaffected
   - log filters written against the literal `lokomotiv::retry` must use `RETRY_LOG_TARGET` or `lok_backend::retry`
 
-  The Quick Start installs with `cargo install --locked --git https://github.com/maxkulish/lok --tag v20260916.0.0 lok-backend`, and its trailing comment says the install puts `lok` on `PATH`. The note that `cargo install lokomotiv` without `--git` installs the upstream crate stays. The tag-format example uses `v20260916.0.0`. The Versioning note names `lok-backend`. The etymology line (`:562`) is unchanged.
+  The Quick Start installs with `cargo install --locked --git https://github.com/maxkulish/lok --tag v20260916.0.0 lok-backend`, and its trailing comment says the install puts `lok` on `PATH`. The note that `cargo install lokomotiv` without `--git` installs the upstream crate stays. The tag-format example uses `v20260916.0.0`. The Versioning note names `lok-backend`. The etymology line (`:571`) is unchanged.
 - [ ] **AC6 lib.rs docs.** The quick-start snippet and import match AC5 exactly. The downstream-publishing sentence and `# Versioning` name `lok-backend` and say it is not on crates.io. The `cli` feature row says it is required by the `lok` binary.
 - [ ] **AC7 DEPENDENCIES.** The "crates.io publishing" entry records the decision:
   - this project will publish as `lok-backend`, unregistered on 2026-09-16 and not yet published
@@ -140,7 +140,7 @@ Commands run from the worktree root. `WT` is the worktree's absolute path, `EV` 
 | 9 | Installed binaries (AC13) | `lok` only | `root=$(mktemp -d); cargo install --locked --path . --root "$root"; ls "$root/bin"` |
 | 10 | Consumer examples, path (AC13) | `direct exit=0`, `alias exit=0` | Script 10 |
 | 11 | Living-doc grep (AC15) | Every hit classified (a)-(f), discovery lists nothing | Script 11 |
-| 12 | Change set (AC15) | Only files named in section 4 and this spec | `git diff --name-only "$(git merge-base origin/main HEAD)"` |
+| 12 | Change set (AC15) | Only files named in section 4, this spec and its plan `docs/plans/2026-09-16-lok-backend-rename.md` | `git diff --name-only "$(git merge-base origin/main HEAD)"` |
 | 13 | Release tag exists (AC14) | Tag listed | `git ls-remote --tags origin v20260916.0.0` |
 | 14 | Consumer and install, git (AC14) | `git exit=0`, `bin/` holds `lok` only, `lok 20260916.0.0` | Script 14 |
 
