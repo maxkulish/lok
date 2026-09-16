@@ -167,6 +167,36 @@ test_probe_bots_exits_4_when_qodo_billing_blocked() {
   assert_out "qodo-code-review[bot]" || return 1
 }
 
+# GitHub's REST schema allows a null user (a deleted account, or a bot whose app
+# was uninstalled). Before the login filters tolerated it, `test($re)` raised,
+# the login list came back empty, and this scenario printed `none` with exit 0 -
+# a billing-blocked PR reported as clean.
+test_probe_bots_tolerates_a_null_user_beside_a_billing_marker() {
+  use_fixture probe_bots_null_user_billing_blocked
+  probe_bots
+  assert_rc 4 || return 1
+  assert_out "qodo-code-review[bot]" || return 1
+}
+
+# A count, not a yes/no: `-eq 1` let a PR carrying two markers fall through to
+# exit 0, which is what happens when Qodo posts its notice and then edits a
+# second comment.
+test_probe_bots_detects_duplicate_billing_markers() {
+  use_fixture probe_bots_duplicate_billing_marker
+  probe_bots
+  assert_rc 4 || return 1
+  assert_out "qodo-code-review[bot]" || return 1
+}
+
+# An unreadable body is not an empty one. `none` with exit 0 would record a
+# passed gate for a probe that never ran.
+test_probe_bots_fails_closed_on_a_malformed_comments_body() {
+  use_fixture probe_bots_malformed_comments
+  probe_bots
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
 test_probe_bots_rejects_missing_pr_before_any_api_call() {
   use_fixture probe_bots_missing_pr
   run_script probe-bots --repo maxkulish/lok
@@ -277,6 +307,16 @@ test_wait_review_fails_closed_on_malformed_head_from_lookup() {
   assert_out_empty || return 1
 }
 
+# A malformed reviews body must not be read as "no pass yet". Reading it that way
+# ends the wait in the deadline exit 1, which is a different verdict from "we
+# could not read the API" and is the one a caller is tempted to override.
+test_wait_review_fails_closed_on_a_malformed_reviews_body() {
+  use_fixture wait_review_malformed_reviews
+  wait_review
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
 test_wait_review_call_deadline_respects_overall_timeout() {
   # .pi/lessons/timeout-layering.md L1: the per-call deadline must be clamped to
   # the caller's remaining budget. With a hung call and a 3s overall timeout,
@@ -313,6 +353,16 @@ test_request_rereview_fails_closed_when_post_returns_no_created_at() {
   # a genuine pass.
   use_fixture request_rereview_no_created_at
   run_script request-rereview --repo maxkulish/lok --pr 71 --bots qodo-code-review
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_request_rereview_fails_closed_when_post_errors() {
+  # A failed POST must not yield a plausible bound: an invented bound makes the
+  # following poll succeed against nothing.
+  use_fixture request_rereview_post_error
+  run_script request-rereview --repo maxkulish/lok --pr 71 \
+    --bots qodo-code-review --head 1111111111111111111111111111111111111111
   assert_rc 3 || return 1
   assert_out_empty || return 1
 }
@@ -453,6 +503,41 @@ test_wait_rereview_times_out_closed() {
   assert_out_empty || return 1
 }
 
+# The retry loop, which no other test reached: `.1` has nothing and `.2` has the
+# pass, so a pass can only be reported if a second reviews call happened. With a
+# 10s budget and a zero poll interval the second tick lands microseconds after
+# the first, so the assertion does not depend on wall time - it depends on the
+# sequence, and the call-count check below states that outright.
+test_wait_rereview_detects_pass_on_second_tick() {
+  use_fixture wait_rereview_second_tick
+  run_script wait-rereview --repo maxkulish/lok --pr 71 \
+    --since 2026-09-10T11:00:00Z --head 1111111111111111111111111111111111111111 --timeout 10
+  assert_rc 0 || return 1
+  assert_out "1111111111111111111111111111111111111111 2026-09-10T11:05:00Z" || return 1
+  reviews_calls=$(calls | grep -c 'pulls/71/reviews')
+  [ "$reviews_calls" -ge 2 ] \
+    || fail_test "expected at least two reviews calls, got $reviews_calls: $(calls)" || return 1
+}
+
+# The bound is what makes the poll observe *this* run. Without it, re-running the
+# step after a failed request matches the previous run's pass on the same head
+# and reports a re-validation that never happened.
+test_wait_rereview_rejects_previous_run_pass_on_same_sha() {
+  use_fixture wait_rereview_before_bound
+  run_script wait-rereview --repo maxkulish/lok --pr 71 \
+    --since 2026-09-10T11:00:00Z --head 1111111111111111111111111111111111111111 --timeout 0
+  assert_rc 1 || return 1
+  assert_out_empty || return 1
+}
+
+test_wait_rereview_rejects_short_head_as_invalid() {
+  use_fixture wait_rereview_before_bound
+  run_script wait-rereview --repo maxkulish/lok --pr 71 \
+    --since 2026-09-10T11:00:00Z --head 1111111 --timeout 0
+  assert_rc 2 || return 1
+  [ -z "$(calls)" ] || fail_test "a malformed head must fail before any API call" || return 1
+}
+
 # --- new-comments ---------------------------------------------------------
 
 test_new_comments_reports_comments_after_the_bound() {
@@ -534,6 +619,24 @@ test_new_comments_rejects_malformed_since() {
   run_script new-comments --repo maxkulish/lok --pr 71 --since 'last tuesday'
   assert_rc 2 || return 1
   [ -z "$(calls)" ] || fail_test "a malformed bound must fail before any API call" || return 1
+}
+
+# Resolving the bound needs the authenticated user; a failing lookup must not
+# silently fall back to the PR's created_at, which would widen the window to the
+# whole PR and report every comment as new.
+test_new_comments_fails_closed_when_the_user_lookup_errors() {
+  use_fixture new_comments_user_lookup_error
+  run_script new-comments --repo maxkulish/lok --pr 71
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+# An unreadable inline-comments body is not a clean PR.
+test_new_comments_fails_closed_on_a_malformed_body() {
+  use_fixture new_comments_malformed_body
+  run_script new-comments --repo maxkulish/lok --pr 71 --me me-user
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
 }
 
 # --- unresolved-threads ---------------------------------------------------
@@ -620,6 +723,27 @@ test_unresolved_threads_fails_closed_when_gh_call_errors() {
 }
 
 # --- the fake gh is itself a guard ---------------------------------------
+
+# Pins the sequence-exhaustion bug: `n - 1` stopped naming a real file from call
+# (length + 2) on, so the first fixture came back instead of the last. Every test
+# built on a sequence then silently compared against the wrong state.
+test_fake_gh_sequence_repeats_the_last_fixture() {
+  use_fixture fake_gh_sequence
+  got="$FAKE_GH_STATE/seq.got"
+  want="$FAKE_GH_STATE/seq.want"
+  # The fixture body carries no trailing newline, so each call's output is
+  # followed by one here to keep the comparison readable.
+  : > "$got"
+  i=1
+  while [ "$i" -le 5 ]; do
+    fake_gh api repos/o/r/sequence >> "$got" 2>&1
+    printf '\n' >> "$got"
+    i=$((i + 1))
+  done
+  printf '[{"page": 1}]\n[{"page": 2}]\n[{"page": 3}]\n[{"page": 3}]\n[{"page": 3}]\n' > "$want"
+  cmp -s "$got" "$want" \
+    || fail_test "sequence served the wrong fixtures (want 1,2,3,3,3): $(tr '\n' '/' < "$got")"
+}
 
 test_fake_gh_rejects_jq_and_arg_flags() {
   use_fixture fake_gh_flags
@@ -768,6 +892,15 @@ done < "$names_file"
 printf '\n%s test(s) matched, %s failed\n' "$total" "$failed"
 if [ -n "$failed_names" ]; then
   printf 'failed:%s\n' "$failed_names"
+fi
+
+# A filter that matches nothing is a typo, not a pass. Without this, every
+# acceptance command in the plan that filters by name - `... 'test_wait_review'`
+# - would go green against a name that no longer exists, which is the same
+# fail-open shape the guard rejects in the markdown.
+if [ "$total" -eq 0 ]; then
+  printf 'no test matched the pattern %s\n' "$PATTERN" >&2
+  exit 1
 fi
 
 [ "$failed" -eq 0 ] || exit 1

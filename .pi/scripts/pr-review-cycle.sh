@@ -19,7 +19,6 @@ PROG=pr-review-cycle
 # The re-review request command. `/agentic_review` is Qodo's configured trigger;
 # `/review` is the legacy PR-Agent name and is not wired up here.
 REQUEST_REREVIEW_COMMAND='/agentic_review'
-QODO_LOGIN=qodo-code-review
 
 # $owner/$repo/$pr/$cursor are GraphQL variables, not shell ones: they must
 # reach gh unexpanded.
@@ -200,6 +199,24 @@ jq_field() {
   fi
 }
 
+jq_failed() {
+  # The shared diagnostic for a jq that exited non-zero on a *gate* input.
+  #
+  # `gh_capture` checks gh's exit status; this closes the other half of the
+  # response path, because an empty result means two different things - "the API
+  # said no" and "we could not read the API" - and only the first may pass a
+  # gate. Left unchecked, a comments body carrying one `"user": null` (allowed
+  # by GitHub's REST schema) made probe-bots print `none` with exit 0 for a
+  # billing-blocked PR, and a truncated body made new-comments report a PR
+  # clean.
+  #
+  # `fail` exits, and every call site is a plain statement - never a pipeline
+  # and never a command substitution - so the exit reaches the caller. Each call
+  # site therefore reads `rc=$?` from the assignment and checks it, which is
+  # also why no call site pipes jq's result anywhere.
+  fail "$EX_UPSTREAM" "jq exited non-zero on $1 - refusing to read an unreadable body as a negative verdict"
+}
+
 # --- gh plumbing ---------------------------------------------------------
 # The only place the script talks to `gh`. No status that matters is ever read
 # from a pipeline (.pi/lessons/pr-review-failures.md, docs/lessons/clo-625-l6).
@@ -375,9 +392,11 @@ poll_for_pass() {
     seen=$(printf '%s' "$GH_BODY" | jq -r --arg h "$head" --arg since "$since" --arg re "$re" '
       [.[][]
        | select(.commit_id == $h)
-       | select(.user.login | test($re))
+       | select((.user.login // "") | test($re))
        | select(.submitted_at >= $since)
        | .submitted_at] | last // empty')
+    rc=$?
+    [ "$rc" -eq 0 ] || jq_failed "the reviews response"
     if [ -n "$seen" ]; then
       printf '%s\n' "$seen"
       return "$EX_OK"
@@ -390,11 +409,13 @@ poll_for_pass() {
     gh_capture "repos/$REPO/issues/$PR/comments?since=$since&per_page=100" --paginate --slurp
     seen=$(printf '%s' "$GH_BODY" | jq -r --arg h "$head" --arg since "$since" --arg re "$qre" '
       [.[][]
-       | select(.user.login | test($re))
+       | select((.user.login // "") | test($re))
        | select(.created_at >= $since)
        | select(.body | test("was updated up to the latest commit"))
        | select(.body | contains($h))
        | .created_at] | last // empty')
+    rc=$?
+    [ "$rc" -eq 0 ] || jq_failed "the issue-comments response"
     if [ -n "$seen" ]; then
       printf '%s\n' "$seen"
       return "$EX_OK"
@@ -496,25 +517,48 @@ cmd_probe_bots() {
   pulls=$GH_BODY
 
   logins=$(mktemp "$GH_TMP/logins.XXXXXX") || fail "$EX_UPSTREAM" "could not create a scratch file"
-  printf '%s' "$comments" \
-    | jq -r --arg re "$re" '.[][] | select(.user.login | test($re)) | .user.login' >> "$logins"
+
+  # `(.user.login // "")` because GitHub's REST schema allows a null user - a
+  # deleted account, or a bot whose app was uninstalled. Without it `test($re)`
+  # raises, and while the jq status was unchecked that error left this list
+  # empty, so a billing-blocked PR came back as `none` with exit 0. Tolerating a
+  # null user and checking jq are two different jobs: this one says a null user
+  # is "not a bot", and a checked jq makes a malformed body exit 3.
+  printf '%s' "$comments" | jq -r --arg re "$re" \
+    '.[][] | select((.user.login // "") | test($re)) | .user.login' > "$logins"
+  rc=$?
+  [ "$rc" -eq 0 ] || jq_failed "this PR's comments response"
 
   prev_file=$(mktemp "$GH_TMP/prev.XXXXXX") || fail "$EX_UPSTREAM" "could not create a scratch file"
   printf '%s' "$pulls" | jq -r '.[].number' > "$prev_file"
+  rc=$?
+  [ "$rc" -eq 0 ] || jq_failed "the pull list"
   while IFS= read -r prev; do
     [ -n "$prev" ] || continue
     gh_capture "repos/$REPO/pulls/$prev/reviews" --paginate --slurp
     printf '%s' "$GH_BODY" \
-      | jq -r --arg re "$re" '.[][] | select(.user.login | test($re)) | .user.login' >> "$logins"
+      | jq -r --arg re "$re" '.[][] | select((.user.login // "") | test($re)) | .user.login' >> "$logins"
+    rc=$?
+    [ "$rc" -eq 0 ] || jq_failed "PR #$prev's reviews response"
   done < "$prev_file"
 
   bots=$(sort -u "$logins" | jq -Rrs 'split("\n") | map(select(length > 0)) | join(",")')
+  rc=$?
+  [ "$rc" -eq 0 ] || jq_failed "the login list"
 
+  # Identity is decided by qodo_re() alone, so CLO-650's tightening stays a
+  # one-line change. The literal `grep -qi qodo` that used to sit here and the
+  # removed QODO_LOGIN constant were a second and third copy of the same fact.
+  # The count, not a yes/no, because `-eq 1` let a PR carrying two markers -
+  # which happens when Qodo posts its notice and then edits a second comment -
+  # fall through to exit 0.
   blocked=0
-  if [ -n "$bots" ] && printf '%s\n' "$bots" | grep -qi qodo; then
+  if [ -n "$bots" ] && printf '%s\n' "$bots" | grep -qE "$(qodo_re)"; then
     blocked=$(printf '%s' "$comments" | jq -r --arg re "$(qodo_re)" \
-      '[.[][] | select(.user.login | test($re))
+      '[.[][] | select((.user.login // "") | test($re))
              | select(.body | contains("<!-- qodo:billing-blocked -->"))] | length')
+    rc=$?
+    [ "$rc" -eq 0 ] || jq_failed "the billing-marker scan"
   fi
 
   # Absence is explicit: `none`, never an empty line, so an unset caller
@@ -525,7 +569,7 @@ cmd_probe_bots() {
     printf '%s\n' "$bots"
   fi
 
-  if [ "$blocked" = "1" ]; then
+  if [ "$blocked" -gt 0 ]; then
     diag "$SUB" "qodo-code-review is billing-blocked on PR #$PR (workspace out of credits)"
     exit "$EX_BILLING"
   fi
@@ -578,10 +622,12 @@ cmd_request_rereview() {
   # comment on the PR and then fails the gate ten minutes later. Whether to skip
   # is the caller's decision; the request is inapplicable, so nothing is posted
   # and the exit status says so.
-  case ",$BOTS," in
-    *",$QODO_LOGIN,"*) : ;;
-    *) fail "$EX_INVALID" "--bots '$BOTS' does not include $QODO_LOGIN - nothing to request (nothing posted)" ;;
-  esac
+  # Identity through qodo_re() only, so CLO-650 has one place to change. The
+  # comparison used to be `case` equality against a QODO_LOGIN constant, which
+  # also rejected this flag's own input: the API reports the app as
+  # `qodo-code-review[bot]`.
+  printf '%s\n' "$BOTS" | tr ',' '\n' | grep -qE "$(qodo_re)" \
+    || fail "$EX_INVALID" "--bots '$BOTS' does not include a qodo login - nothing to request (nothing posted)"
 
   if [ -z "$HEAD" ]; then
     pr_lookup
@@ -666,6 +712,8 @@ cmd_new_comments() {
     # turns the null into an empty string so the fallback can fire.
     bound=$(printf '%s' "$comments" | jq -r --arg me "$ME" \
       '[.[][] | select(.user.login == $me) | .created_at] | max // empty')
+    rc=$?
+    [ "$rc" -eq 0 ] || jq_failed "the inline comments response"
     # No replies of our own yet - scope the window to the PR instead of
     # comparing every timestamp against "".
     [ -n "$bound" ] || bound=$PR_CREATED_AT
@@ -679,8 +727,13 @@ cmd_new_comments() {
   out=$(mktemp "$GH_TMP/new.XXXXXX") || fail "$EX_UPSTREAM" "could not create a scratch file"
   # Strict `>`: the bound is the caller's own last reply, and reporting that
   # reply back as new would never terminate. One compact object per line.
-  printf '%s' "$comments" | jq -c --arg since "$bound" \
-    '.[][] | select(.created_at > $since) | {id, user: .user.login, body}' > "$out"
+  found=$(printf '%s' "$comments" | jq -c --arg since "$bound" \
+    '.[][] | select(.created_at > $since) | {id, user: (.user.login // ""), body}')
+  rc=$?
+  [ "$rc" -eq 0 ] || jq_failed "the inline comments response"
+  # An empty result is written as no file content at all, not as a blank line:
+  # the `-s` test below treats a one-newline file as "findings present".
+  [ -n "$found" ] && printf '%s\n' "$found" > "$out"
 
   if [ -s "$out" ]; then
     cat "$out"

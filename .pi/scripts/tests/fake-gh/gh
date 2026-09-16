@@ -108,22 +108,23 @@ fi
 
 file="$FAKE_GH_SCENARIO/$base.json"
 
-# Sequenced fixtures: serve .1.json, .2.json, ... one per call.
+# Sequenced fixtures: serve .1.json, .2.json, ... one per call, then repeat the
+# last one for every later call.
 if [ -f "$FAKE_GH_SCENARIO/$base.1.json" ]; then
   count_file="$FAKE_GH_STATE/$base.count"
   n=0
   [ -f "$count_file" ] && n=$(cat "$count_file")
   n=$((n + 1))
   printf '%s' "$n" > "$count_file"
-  if [ -f "$FAKE_GH_SCENARIO/$base.$n.json" ]; then
-    file="$FAKE_GH_SCENARIO/$base.$n.json"
-  else
-    # Sequence exhausted: the final observed state repeats, which is what a
-    # poll that keeps ticking against an unchanged PR would see.
-    prev=$((n - 1))
-    file="$FAKE_GH_SCENARIO/$base.$prev.json"
-    [ -f "$file" ] || file="$FAKE_GH_SCENARIO/$base.1.json"
-  fi
+  # Clamp to the highest fixture that exists. Using `n - 1` served .1.json again
+  # from call (length + 2) on, because `n` keeps growing while `n - 1` stops
+  # naming a real file - so a third tick saw the first tick's state. That is
+  # indistinguishable from a PR whose comments reappeared, and it silently
+  # disarmed every test built on a sequence.
+  while [ "$n" -gt 1 ] && [ ! -f "$FAKE_GH_SCENARIO/$base.$n.json" ]; do
+    n=$((n - 1))
+  done
+  file="$FAKE_GH_SCENARIO/$base.$n.json"
 fi
 
 if [ ! -f "$file" ]; then

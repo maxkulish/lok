@@ -22,7 +22,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T10:15:24.395Z'
+  updated_at: '2026-09-16T10:19:50.167Z'
 phases:
   discovery:
     status: complete
@@ -145,7 +145,7 @@ phases:
         task_label: plan-authoring
     approved: true
   implement:
-    status: pending
+    status: validating
     commits:
       - b0d2a05
       - 02f1623
@@ -157,6 +157,99 @@ phases:
       - 0bad64b
       - 815d933
       - 554bff2
+      - a376a57
+    assumption_outcomes:
+      - evidence: >-
+          gh api repos/maxkulish/lok/rulesets/20153405 --jq '.rules[].type' -> 'deletion non_fast_forward' (re-run
+          2026-09-16); gh api repos/maxkulish/lok/branches/main/protection -> HTTP 404 'Branch not protected'.
+          clo-625-l2 is confirmed stale; shell-gates is wired into CI Gate's needs and assertion loop but that context
+          is not required.
+        outcome: held
+        text: >-
+          CI Gate is not a required status check today: on 2026-09-16 ruleset 20153405 on main returned only deletion
+          and non_fast_forward rules, so docs/lessons/clo-625-l2 is stale on this point. The new job appears in CI Gate
+          but does not block merges by itself.
+      - evidence: >-
+          actions/runner-images readmes fetched 2026-09-16: Ubuntu2404 lists shellcheck 0.9.0-1 and jq
+          1.7.1-3ubuntu0.24.04.2; macos-15 lists jq 1.8.2 but its '### Linters' section contains only SwiftLint 0.65.1
+          and the whole readme has no shellcheck mention. Mitigation already landed: .github/workflows/ci.yml 'Ensure
+          shellcheck (macOS)' runs `command -v shellcheck || brew install shellcheck`, so the lint step cannot become a
+          silent no-op.
+        outcome: violated
+        text: shellcheck and jq are preinstalled on the ubuntu-latest and macos-latest runner images.
+      - evidence: >-
+          Ubuntu2404 readme: 0 occurrences of 'zsh', so the install is required and the job does it (apt-get install -y
+          zsh). The 'skips gracefully' half was deliberately replaced: pr-review-cycle.test.sh's skip_test exits 0, so
+          an absent zsh would silently drop test_call_site_status_capture_under_zsh - one of only two call-site tests.
+          The job now fails loudly on Linux if zsh is missing rather than letting the skip mask a broken install.
+        outcome: violated
+        text: >-
+          zsh is not preinstalled on ubuntu-latest; the job installs it with apt-get for the call-site tests, and the
+          zsh leg skips gracefully if unavailable.
+      - evidence: >-
+          Verified beyond the assumption: dash is present on this host, so the suite was run with sh shadowed to
+          /bin/dash via PATH - `PATH=/tmp/clo623-dashbin:$PATH dash .pi/scripts/tests/pr-review-cycle.test.sh` -> 63
+          test(s) matched, 0 failed, and the guard -> rc 0. shellcheck --shell=sh clean on all four shell files;
+          test_call_site_status_capture_under_bash and _under_zsh pin the two agent shells.
+        outcome: held
+        text: >-
+          /bin/sh differs between hosts (dash on Ubuntu, bash-compatible sh on macOS); code passing shellcheck
+          --shell=sh plus the test suite on both OSes behaves the same for the constructs used.
+      - evidence: >-
+          gh version 2.101.0 (2026-09-15). The paginated-slurped legs were exercised against the live API rather than
+          only fixtures: probe-bots on PRs 106 and 89, new-comments on PR 71, unresolved-threads on PRs
+          24/71/80/89/100/106, and wait-rereview on PR 80.
+        outcome: held
+        text: >-
+          Every agent host has a gh supporting gh api --paginate --slurp, since the current snippets already depend on
+          it (local gh 2.101.0).
+      - evidence: >-
+          PR 80: completion comment '[Code review](...) by qodo was updated up to the latest commit
+          https://github.com/maxkulish/lok/commit/48eb001e438bfd43d9b7f820b7835770c281b815' created
+          2026-08-03T13:54:56Z, alongside a persistent comment reading 'Bugs (0)' - the clean-pass shape. PR 106: the
+          <!-- qodo:billing-blocked --> marker makes `probe-bots --repo maxkulish/lok --pr 106` exit 4.
+        outcome: held
+        text: >-
+          Qodo's observable signals still match the prose: review object only for passes with findings, 'was updated up
+          to the latest commit' completion comment for re-review passes, and the qodo:billing-blocked marker.
+      - evidence: >-
+          Data was retrievable for all four PRs, but the fixtures were hand-trimmed to the prose's spelling rather than
+          the API's: all 27 login values read 'qodo-code-review'/'copilot-pull-request-reviewer' while the API returns
+          'qodo-code-review[bot]'. The suite was green and structurally blind; the ST10 live probe exposed it when
+          request-rereview rejected probe-bots' own stdout with exit 2 (real value: qodo-code-review[bot] on PRs 106 and
+          89). Fixed in a376a57 - require_bots strips the suffix and all 26 fixtures moved to the API's spelling, with
+          test_request_rereview_accepts_probe_bots_output_verbatim running probe-bots and feeding its stdout straight
+          into request-rereview.
+        outcome: violated
+        text: >-
+          Live data on PRs #71, #80, #89 and #106 is still retrievable for fixture recording; Qodo edits comments in
+          place, so fixtures may need hand-trimming to the shapes the prose documents.
+      - evidence: >-
+          Documented as a prerequisite in .pi/skills/pr-review-cycle.md ('Invocation from the repository or worktree
+          root: a call from a subdirectory fails with not found rather than with a verdict') and relied on by the Step
+          9.5 calls in .claude/commands/pr/review.md. No agent run has exercised it yet; the first real check is this
+          task's own pr phase.
+        outcome: untested
+        text: >-
+          Agents invoke the script from the repository or worktree root, so the relative path
+          .pi/scripts/pr-review-cycle.sh resolves.
+      - evidence: >-
+          grep -nE 'lok\.toml|\.lok/|cat [^"'\'']*\.(toml|json|yaml)|source |\. \./' .pi/scripts/pr-review-cycle.sh ->
+          no matches. The only file I/O is a mktemp scratch file under $GH_TMP for the paginated thread accumulator,
+          removed by trap. No ~/.config/lok/lok.toml and no ./lok.toml read, which is the clo-632-l1 trust-boundary
+          question for this script.
+        outcome: held
+        text: The script reads no repository files at runtime; all inputs are arguments.
+      - evidence: >-
+          git ls-files shows .pi/scripts/pr-review-cycle.sh, its test runner, the fake gh, the guard, the allowlist and
+          both rewritten markdown files all tracked in the same commits on this branch, and the CI job checks out a
+          single rev before linting, testing and guarding - there is no separately versioned artefact that can skew
+          against the markdown.
+        outcome: held
+        text: >-
+          Discovery's objection to Approach B (stale lok binary runs stale gates) does not apply here because the script
+          ships in the same checkout as the markdown that calls it.
+    assumptions_revalidated: true
   pr:
     status: pending
   complete:
@@ -322,5 +415,71 @@ history:
       pair -> assertion loop rc=1. CI half of the negative proof deferred to ST10 (needs a failing run URL; CI does not
       run this branch until the PR exists, and opening one earlier violates Step 4.6) - recorded in the plan per
       clo-638-l3. Commit 554bff2.
+  - timestamp: '2026-09-16T10:18:43.840Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST10 (implement-phase portion) done. Live read-only probes run against real GitHub: probe-bots --pr 106 -> rc 4
+      (billing-blocked), stdout qodo-code-review[bot]; probe-bots --pr 89 -> rc 0, stdout qodo-code-review[bot];
+      wait-rereview --pr 80 --head 48eb001e438bfd43d9b7f820b7835770c281b815 --since 2026-08-03T13:37:55Z --timeout 0 ->
+      rc 0 printing '<covered sha> 2026-08-03T13:54:56Z' (matches the real completion comment's created_at); the same
+      probe against PR 80's actual head 090332286712dcfcf03be89a00c8fb76346fec9d -> rc 1, head-movement guard fails
+      closed on real data; new-comments --pr 71 reports bound 2026-08-02T13:23:27Z, which is exactly the author's latest
+      inline comment on PR 71 (PR created_at is 12:30:42Z, so the bound came from the reply, not the fallback);
+      unresolved-threads live across PRs 106/89/100/80/71/4 -> rc 0 with 0 threads, and PR 24 -> rc 1 with one real
+      object (PRRT_kwDOR0Ln1c6DY95v, src/backend/gemini.rs:134, latest_author gemini-code-assist) - the GraphQL path
+      verified against the real API, previously fixture-only. Acceptance grep over both markdown files: no matches. node
+      .pi/scripts/check-schema-parity.mjs green. DOGFOODING FOUND A REAL BUG: probe-bots returns 'qodo-code-review[bot]'
+      from the live API while every fixture spelled logins bare, so request-rereview's exact comparison rejected the one
+      input --bots exists to carry; fixed in a376a57 (require_bots strips the suffix; all 26 fixtures moved to the API's
+      spelling; 2 new round-trip tests; 63 tests total). DEFERRED to the pr phase: dogfooding the rewritten skill on
+      this task's own PR with outputs recorded in the PR body, and ST9's deferred CI negative proof (needs a failing run
+      URL).
+  - timestamp: '2026-09-16T10:19:42.724Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      10 assumptions reviewed. held: 5, violated: 3, untested: 1, plus 1 held-with-more-evidence-than-assumed.
+      Violations: (1) shellcheck is NOT preinstalled on macos-latest - the macOS 15 runner image's 'Linters' section
+      lists only SwiftLint, though the Ubuntu 24.04 image carries shellcheck 0.9.0 - so the macOS linter leg needed the
+      brew fallback I added speculatively in 554bff2; jq held on both (Ubuntu 1.7.1, macOS 1.8.2). (2) the zsh 'skips
+      gracefully' mitigation was deliberately NOT implemented: skip_test exits 0, so a broken apt install would silently
+      drop one of the two call-site tests; the job now fails loudly instead. (3) the fixture-fidelity assumption was
+      violated in the way that mattered - fixtures were trimmed to the prose's bare login spelling rather than the
+      API's, so all 27 login values read 'qodo-code-review' while the real API returns 'qodo-code-review[bot]'; the
+      suite was green and structurally blind, and the ST10 live probe found request-rereview rejecting probe-bots' own
+      output with exit 2 (fixed in a376a57). Also verified beyond the assumption: dash is present on this host, so the
+      whole suite was re-run with sh shadowed to /bin/dash (Ubuntu's /bin/sh) - 63/63 green and the guard exits 0.
+      Untested: that agents invoke the script from the repo/worktree root; documented as a prerequisite but first
+      exercised in this task's own pr phase. Violations 1 and 2 require no code change (both mitigations are already in
+      554bff2); violation 3 is already fixed, and its general lesson - a fixture trimmed to the prose tests the prose,
+      not the API - is the one thing here the synthesis reviewer should weigh, since it means the fixture set was
+      validated against the wrong oracle for its whole life.
+  - timestamp: '2026-09-16T10:19:50.167Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All 10 sub-tasks landed in 11 commits (b0d2a05..a376a57). Pre-merge gate green on the current HEAD: cargo fmt
+      --all -- --check ok; cargo clippy --locked --all-targets -- -D warnings ok; cargo test --locked ok (157 lib + 587
+      bin x2 + 46 integration/doc tests, all passing); shellcheck --shell=sh clean on all four shell files
+      (pr-review-cycle.sh, pr-review-cycle.test.sh, check-inline-gates.sh, fake-gh/gh); 63/63 shell tests;
+      check-inline-gates.sh rc 0 (5 allowlisted display-only fetches exempted); node .pi/scripts/check-schema-parity.mjs
+      green. Also re-ran the whole suite with sh shadowed to /bin/dash (Ubuntu's /bin/sh) -> 63/63. Deliverable:
+      .pi/scripts/pr-review-cycle.sh with six subcommands (probe-bots, wait-review, request-rereview, wait-rereview,
+      new-comments, unresolved-threads) and documented exit codes 0/1/2/3/4; a fake-gh harness with 50+ fixtures and 63
+      tests; the CI shell-gates job on ubuntu+macos wired into CI Gate's needs and assertion loop; and both markdown
+      files rewritten to call the script (all 17 inline bash blocks across the two files gone for gate logic). TWO
+      THINGS THE SYNTHESIS REVIEWER SHOULD WEIGH. (1) Step 2.5 recorded 3 violated assumptions: shellcheck is absent
+      from the macos-latest runner image (only SwiftLint is listed under Linters) so the brew fallback added in 554bff2
+      is load-bearing, not insurance; the zsh 'skips gracefully' mitigation was deliberately replaced by a hard failure
+      because skip_test exits 0 and would silently drop one of the two call-site tests; and the fixture set was
+      validated against the wrong oracle for its whole life - all 27 logins were spelled bare while the API returns
+      'qodo-code-review[bot]', so the suite was green and blind until the ST10 live probe found request-rereview
+      rejecting probe-bots' own output. That third one is fixed (a376a57) but it is the most interesting finding of the
+      phase. (2) Two acceptance items are deferred to the pr phase by sequencing, both recorded in
+      docs/plans/clo-623-pr-review-cycle-tested.md: ST10's dogfooding of the rewritten skill on this task's own PR with
+      outputs recorded in the PR body, and ST9's CI negative proof (a failing run URL - CI does not run this branch
+      until the PR exists, and opening one earlier would violate Step 4.6; clo-638-l3 forbids substituting a local
+      command for that evidence). The local half of that negative proof is done and green.
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested
