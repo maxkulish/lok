@@ -83,13 +83,8 @@ The conductor (an LLM) will implement this plan, so be precise.
 name = "comment"
 depends_on = ["debate"]
 shell = """
-gh issue comment {{ arg.1 }} --body "$(cat <<'LOKEOF'
-## lok Proposal ({{ workflow.backends }} consensus)
-
-{{ steps.debate.output }}
-
----
-*Automated proposal by lok fix workflow. Conductor will implement.*
-LOKEOF
-)"
+BODY=$(printf '%s\\n\\n%s\\n\\n---\\n*Automated proposal by lok fix workflow. Conductor will implement.*\\n' \\
+  '## lok Proposal ({{ workflow.backends }} consensus)' \\
+  {{ steps.debate.output | shell_escape }})
+gh issue comment {{ arg.1 }} --body "$BODY"
 """

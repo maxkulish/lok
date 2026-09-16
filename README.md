@@ -213,8 +213,17 @@ prompt = "Investigate these findings: {{ steps.scan.output }}"
 [[steps]]
 name = "comment"
 depends_on = ["deep-dive"]
-shell = "gh issue comment 123 --body '{{ steps.deep-dive.output }}'"
+shell = "gh issue comment 123 --body {{ steps[\"deep-dive\"].output | shell_escape }}"
 ```
+
+Step output inserted into a `shell` field is data, not shell source. End every
+`steps.*` output expression with `| shell_escape`, and place it as a complete
+shell word or assignment value; do not put it inside another quote or a dynamic
+heredoc. Use `printf '%s\\n'` for file output, `string` before `shell_escape`
+for numeric or other non-string parsed fields, and validate model JSON before
+passing its fields as quoted CLI arguments. The documented single-quoted or
+bare `command_wrapper` forms preserve this boundary; custom double-quoted
+wrappers are not safe and are tracked separately.
 
 ### Workflow Resolution
 

@@ -207,13 +207,9 @@ TASK_LC=$(printf '%s' "$TASK" | tr '[:upper:]' '[:lower:]')
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-cat <<'LOK_WF_CODEX_OUTPUT_EOF' > "$TMP_DIR/codex.md"
-{{ steps.codex_review.output }}
-LOK_WF_CODEX_OUTPUT_EOF
+printf '%s\n' {{ steps.codex_review.output | shell_escape }} > "$TMP_DIR/codex.md"
 
-cat <<'LOK_WF_SYNTH_OUTPUT_EOF' > "$TMP_DIR/synthesis.md"
-{{ steps.synthesis.output }}
-LOK_WF_SYNTH_OUTPUT_EOF
+printf '%s\n' {% if steps.synthesis is defined %}{{ steps.synthesis.output | shell_escape }}{% else %}'NO_REVIEWS_AVAILABLE'{% endif %} > "$TMP_DIR/synthesis.md"
 
 REVIEW_DATE=$(date +%Y-%m-%d)
 
@@ -268,9 +264,7 @@ write_review \
   "Codex (${CODEX_MODEL:-gpt-5.6-sol})"
 
 {% if steps.claude_fallback is defined %}
-cat <<'LOK_WF_FALLBACK_OUTPUT_EOF' > "$TMP_DIR/fallback.md"
-{{ steps.claude_fallback.output }}
-LOK_WF_FALLBACK_OUTPUT_EOF
+printf '%s\n' {{ steps.claude_fallback.output | shell_escape }} > "$TMP_DIR/fallback.md"
 
 write_review \
   "$TMP_DIR/fallback.md" \

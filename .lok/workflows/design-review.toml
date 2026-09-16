@@ -24,7 +24,7 @@ retries = 3
 continue_on_error = true
 depends_on = ["health_check"]
 shell = """
-if echo '{{ steps.health_check.output }}' | grep -q 'ollama=false'; then
+if printf '%s\n' {{ steps.health_check.output | shell_escape }} | grep -q 'ollama=false'; then
   echo "REVIEW_FAILED: Ollama CLI unreachable (pre-flight check failed)"
   exit 0
 fi
@@ -224,15 +224,11 @@ mkdir -p docs/reviews
 REVIEW_DATE=$(date +%Y-%m-%d)
 
 printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5.3:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '' '---' '' > docs/reviews/{{ arg.2 }}-review-ollama.md
-cat >> docs/reviews/{{ arg.2 }}-review-ollama.md << 'ENDOLLAMA'
-{{ steps.ollama_review.output }}
-ENDOLLAMA
+printf '%s\n' {{ steps.ollama_review.output | shell_escape }} >> docs/reviews/{{ arg.2 }}-review-ollama.md
 
 {% if steps.claude_fallback is defined and steps.claude_fallback.success %}
 FALLBACK_FILE=docs/reviews/{{ arg.2 }}-review-claude-fallback.md
-cat > "$FALLBACK_FILE.tmp" << 'ENDFALLBACK'
-{{ steps.claude_fallback.output }}
-ENDFALLBACK
+printf '%s\n' {{ steps.claude_fallback.output | shell_escape }} > "$FALLBACK_FILE.tmp"
 if grep -q '[^[:space:]]' "$FALLBACK_FILE.tmp" && ! grep -q 'REVIEW_FAILED' "$FALLBACK_FILE.tmp"; then
   printf '%s\n' '# Design Review: {{ arg.2 }}' '' '**Reviewer**: Claude (fallback)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Note**: External reviewers failed; this is the fallback review' '' '---' '' > "$FALLBACK_FILE"
   cat "$FALLBACK_FILE.tmp" >> "$FALLBACK_FILE"
@@ -241,9 +237,7 @@ rm -f "$FALLBACK_FILE.tmp"
 {% endif %}
 
 printf '%s\n' '# Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok design-review' '**Reviewers**: Codex/Ollama (glm-5.3:cloud), Claude (fallback if needed)' '' '---' '' > docs/reviews/{{ arg.2 }}-review-synthesis.md
-cat >> docs/reviews/{{ arg.2 }}-review-synthesis.md << 'ENDSYNTH'
-{{ steps.synthesis.output }}
-ENDSYNTH
+printf '%s\n' {{ steps.synthesis.output | shell_escape }} >> docs/reviews/{{ arg.2 }}-review-synthesis.md
 
 echo "Reviews written to docs/reviews/{{ arg.2 }}-review-*.md"
 """

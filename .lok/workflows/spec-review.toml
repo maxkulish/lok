@@ -160,21 +160,15 @@ mkdir -p docs/reviews
 REVIEW_DATE=$(date +%Y-%m-%d)
 
 printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Codex via Ollama (glm-5.3:cloud)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-ollama.md
-cat >> docs/reviews/{{ arg.2 }}-spec-review-ollama.md << 'ENDOLLAMA'
-{{ steps.ollama_review.output }}
-ENDOLLAMA
+printf '%s\n' {{ steps.ollama_review.output | shell_escape }} >> docs/reviews/{{ arg.2 }}-spec-review-ollama.md
 
 {% if steps.claude_fallback is defined and steps.claude_fallback.success %}
 printf '%s\n' '# Spec Review: {{ arg.2 }}' '' '**Reviewer**: Claude (fallback)' "**Reviewed**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '**Note**: The external reviewer failed; this is the fallback review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-claude-fallback.md
-cat >> docs/reviews/{{ arg.2 }}-spec-review-claude-fallback.md << 'ENDCLAUDE'
-{{ steps.claude_fallback.output }}
-ENDCLAUDE
+printf '%s\n' {{ steps.claude_fallback.output | shell_escape }} >> docs/reviews/{{ arg.2 }}-spec-review-claude-fallback.md
 {% endif %}
 
 printf '%s\n' '# Spec Review Synthesis: {{ arg.2 }}' '' "**Synthesized**: $REVIEW_DATE" '**Pipeline**: lok spec-review' '' '---' '' > docs/reviews/{{ arg.2 }}-spec-review-synthesis.md
-cat >> docs/reviews/{{ arg.2 }}-spec-review-synthesis.md << 'ENDSYNTH'
-{% if steps.synthesis is defined %}{{ steps.synthesis.output }}{% else %}NO_REVIEWS_AVAILABLE{% endif %}
-ENDSYNTH
+printf '%s\n' {% if steps.synthesis is defined %}{{ steps.synthesis.output | shell_escape }}{% else %}'NO_REVIEWS_AVAILABLE'{% endif %} >> docs/reviews/{{ arg.2 }}-spec-review-synthesis.md
 
 echo "Spec reviews written to docs/reviews/{{ arg.2 }}-spec-review-*.md"
 """

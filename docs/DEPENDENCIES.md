@@ -1,5 +1,5 @@
 # Dependencies - Lok
-**Last Updated**: 2026-09-15 (the `CI Gate` standing constraint now matches ruleset 20153405, which has not required the check since 2026-08-07. CLO-660 completed; it blocked nothing, so no task became ready. The crates.io publishing entry under Standing constraints replaces the earlier note that measured deadlines against a first publish; CLO-632 completed and blocked nothing)
+**Last Updated**: 2026-09-16 (CLO-631 started and was removed from Unblocked & Ready. The `CI Gate` standing constraint now matches ruleset 20153405; CLO-660 and CLO-632 completed without unblocking tasks; the crates.io publishing constraint was corrected)
 
 ## Current Blockers
 
@@ -16,7 +16,6 @@ One task waits by design (above). The Phase 12 chain (CLO-589 -> CLO-593 -> CLO-
 | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623) | PR #71 merged | 2026-08-02 |
 | [CLO-627](https://linear.app/cloud-ai/issue/CLO-627) | CLO-625 merged | 2026-08-02 |
 | [CLO-628](https://linear.app/cloud-ai/issue/CLO-628) | CLO-625 merged | 2026-08-02 |
-| [CLO-631](https://linear.app/cloud-ai/issue/CLO-631) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-634](https://linear.app/cloud-ai/issue/CLO-634) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-635](https://linear.app/cloud-ai/issue/CLO-635) | None. Independent codex-security scan finding | 2026-08-03 |
 | [CLO-639](https://linear.app/cloud-ai/issue/CLO-639) | None. CLO-633 follow-up | 2026-08-03 |

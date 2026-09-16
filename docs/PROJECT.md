@@ -1,18 +1,17 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-09-15 (spec-review fallback success check and CLO-660's doc drift fixed; row moved to Recently Completed. Earlier the same day CLO-632 completed via PR #109 and moved to Recently Completed; five follow-ups from it added to Up Next. Earlier the same day CLO-660 completed and the crates.io naming decision was added to Up Next)
+**Last Updated**: 2026-09-16 (CLO-631 started. Earlier: spec-review fallback success check and CLO-660's doc drift fixed; CLO-632 and CLO-660 completed and moved to Recently Completed)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| - | - | - | - | - |
+| [CLO-631](https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields) | Escape or remove step output interpolated into workflow shell fields | In Progress | Phase 15 | - |
 
 ## Up Next (Prioritized Backlog)
 
 | Priority | Task | Title | Dependencies | Target |
 |----------|------|-------|--------------|--------|
-| High | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields) | Escape or remove step output interpolated into workflow shell fields — `shell_escape` is registered as a filter and used nowhere, so model output reaches `sh -c` as source | None — codex-security scan finding | Next (HITL) |
 | High | [CLO-651](https://linear.app/cloud-ai/issue/CLO-651) | `gh pr checks --watch` reports failure instantly when a PR has no checks yet, so `finalize.md` prints `CI_NOT_PASSED` in under a second and refuses to merge. Indistinguishable from a real red build | None - found during the 2026-08-06 Actions outage | Next |
 | Medium | - | Decide how the library reaches crates.io: co-ownership of `lokomotiv` from upstream `ducks`, or a new crate name. This is a prerequisite of any library publish, of any downstream crate publishing with a `lokomotiv` dependency, and of revisiting the workspace split (`docs/decisions/clo-592-workspace-split.md`). Revisit `Cargo.toml`'s `documentation = "https://docs.rs/lokomotiv"`, `authors = ["ducks"]` and the `:55` comment "default so `cargo install lokomotiv` keeps working" with it, and reassess migration cost for known and unknown git consumers at that point. Facts in `docs/DEPENDENCIES.md` under crates.io publishing | None - found during CLO-660 | Next (HITL) |
 | Medium | [CLO-623](https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested) | Make pr-review-cycle shell snippets executable and tested — extract the gate logic to `.pi/scripts/`, shellcheck in CI, fixture tests asserting each gate fails *closed*, and collapse the skill/`/pr:review` duplication | None — PR #71 merged | Next |
