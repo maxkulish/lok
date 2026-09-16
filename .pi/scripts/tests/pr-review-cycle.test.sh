@@ -630,6 +630,70 @@ test_call_site_status_capture_under_zsh() {
   call_site_status_capture zsh
 }
 
+# --- the inline-gate guard (CLO-623 acceptance criterion 1) ---------------
+
+GUARD="$HERE/check-inline-gates.sh"
+
+# The guard enumerates its own ban list and this replays it, so a regex that
+# stops matching fails a test instead of silently disarming the guard. Writing
+# the pattern text into the scratch file would be a useless probe - `\| *jq -r`
+# does not match its own spelling - so each row carries an example line.
+test_inline_gate_guard_fails_on_each_banned_shape() {
+  scratch="$FAKE_GH_STATE/scratch.md"
+  patterns="$FAKE_GH_STATE/patterns.txt"
+
+  sh "$GUARD" --patterns > "$patterns" 2>"$FAKE_GH_STATE/err"
+  RC=$?
+  [ "$RC" -eq 0 ] \
+    || { fail_test "guard --patterns exited $RC: $(cat "$FAKE_GH_STATE/err")"; return 1; }
+
+  n=0
+  while IFS= read -r row; do
+    [ -n "$row" ] || continue
+    pat=${row%%@@*}
+    ex=${row#*@@}
+    [ "$pat" != "$row" ] \
+      || { fail_test "enumerated row has no '@@' separator: $row"; return 1; }
+    printf '%s\n' "$ex" > "$scratch"
+    if sh "$GUARD" "$scratch" >/dev/null 2>&1; then
+      fail_test "guard accepted the banned shape '$pat' (example: $ex)"
+      return 1
+    fi
+    n=$(( n + 1 ))
+  done < "$patterns"
+
+  [ "$n" -ge 10 ] \
+    || { fail_test "only $n banned shapes enumerated; the ban list lost an entry"; return 1; }
+}
+
+# The rewritten skill needs no exemption; /pr:review keeps five display-only
+# fetches, and the guard must report them rather than passing quietly.
+test_inline_gate_guard_exempts_only_the_allowlist() {
+  out=$(sh "$GUARD" "$ROOT/.pi/skills/pr-review-cycle.md" 2>&1)
+  RC=$?
+  [ "$RC" -eq 0 ] \
+    || { fail_test "guard rejected the skill file (rc=$RC): $out"; return 1; }
+  [ "$out" = "ok: no inline gate shapes" ] \
+    || fail_test "expected the clean-file message, got: $out"
+
+  out=$(sh "$GUARD" "$ROOT/.claude/commands/pr/review.md" 2>&1)
+  RC=$?
+  [ "$RC" -eq 0 ] \
+    || { fail_test "guard rejected the allowlisted file (rc=$RC): $out"; return 1; }
+  case "$out" in
+    *"allowlisted line(s) exempted"*) return 0 ;;
+    *) fail_test "guard passed the allowlisted file without reporting the exemptions: $out" ;;
+  esac
+}
+
+# A guard that cannot find its target must not report success - failing open
+# on a missing input is the defect class this task exists to remove.
+test_inline_gate_guard_rejects_a_missing_file() {
+  sh "$GUARD" "$FAKE_GH_STATE/does-not-exist.md" >/dev/null 2>&1
+  RC=$?
+  [ "$RC" -eq 2 ] || fail_test "expected exit 2 for a missing file, got $RC"
+}
+
 # --- runner --------------------------------------------------------------
 
 run_one() {

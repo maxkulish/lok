@@ -103,7 +103,8 @@ Step 9.5's inline billing check, request and poll become script calls (`probe-bo
 - `inline-gate-allowlist.txt`: one ERE per line with a trailing `#` rationale, for legitimate illustrative one-liners.
 - `test_inline_gate_guard_fails_on_each_banned_shape`: for every banned ERE, write it into a scratch file and assert the guard fails; assert the allowlist example passes. A regex that stops matching must fail a test.
 - CI job: no `paths:` filter (`docs/lessons/clo-625-l2`); runs on `ubuntu-latest` and `macos-latest`; prints `shellcheck --version`/`jq --version`; runs `shellcheck --shell=sh` over the script, the test runner and the fake `gh`; runs the test runner; runs the guard. The Ubuntu leg `apt-get install -y zsh`; the zsh test leg skips gracefully if that fails. Add the job to `ci-gate`'s `needs` **and** to the assertion loop (the loop checks only listed jobs, so `needs` alone would not fail `CI Gate`).
-- Negative proof: push a temporary commit with a `shellcheck` warning and confirm both the job and `CI Gate` fail; revert.
+- Negative proof, part 1 (**local, done at ST9**): a scratch copy of `pr-review-cycle.sh` with `probe_unused_variable=1` appended makes `shellcheck --shell=sh` exit 1 (SC2034), a scratch copy of the skill with `DEADLINE=...` appended makes the guard exit 1 naming the line, and the `ci-gate` assertion loop exits 1 given a `shell-gates:failure` pair.
+- Negative proof, part 2 (**deferred to ST10**, by sequencing). Confirming the job *and* `CI Gate` go red needs a failing CI run, and CI does not run this branch until the PR exists - `push` is filtered to `main` and `pull_request` needs the PR. Opening one earlier would violate the implement phase's Step 4.6. ST10 records the failing run URL per `docs/lessons/clo-638-msrv-gate-lessons.md` L3, which forbids substituting a local command for that evidence: push a temporary commit with a `shellcheck` warning, capture both the `shell-gates` and `CI Gate` run URLs, then revert.
 
 ### ST10 Dogfood and acceptance verification
 **Files:** none (verification only; PR body records results)
@@ -112,9 +113,11 @@ Step 9.5's inline billing check, request and poll become script calls (`probe-bo
 
 Run the read-only live probes from the design's Manual verification §2 (`probe-bots --pr 106` → 4; `probe-bots --pr 89` → 0 with non-`none`; `wait-rereview --pr 80 --head <COVERED_SHA> --since <TS> --timeout 0` → 0; `new-comments --pr 71` reports its bound), then dogfood steps 1–9 of the rewritten skill on this PR. Confirm `node .pi/scripts/check-schema-parity.mjs` stays green.
 
+Also complete ST9's deferred negative proof (part 2): push a temporary commit carrying a `shellcheck` warning, record the `shell-gates` and `CI Gate` failing run URLs, confirm `CI Gate` is red *because of* `shell-gates` and not some other leg, then revert the commit and confirm both go green.
+
 ## Pre-merge gate
 - `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`
-- `shellcheck --shell=sh .pi/scripts/pr-review-cycle.sh .pi/scripts/tests/pr-review-cycle.test.sh .pi/scripts/tests/fake-gh/gh`
+- `shellcheck --shell=sh .pi/scripts/pr-review-cycle.sh .pi/scripts/tests/pr-review-cycle.test.sh .pi/scripts/tests/check-inline-gates.sh .pi/scripts/tests/fake-gh/gh`
 - `sh .pi/scripts/tests/pr-review-cycle.test.sh`
 - `sh .pi/scripts/tests/check-inline-gates.sh`
 
@@ -123,7 +126,8 @@ The Rust line is the documented repository gate and still runs (no Rust code cha
 ## Risks
 - **Fixture staleness.** Qodo edits comments in place, so a fixture recorded today may show a post-edit state rather than the state at pass time. Mitigation: hand-trim to the shapes the prose documents, and keep the fixture fields to exactly what the jq filters read.
 - **`shellcheck` absent on the local macOS host.** Present here (0.11.0, Homebrew), but a contributor without it cannot run the gate locally. Mitigation: CI is the enforcement point; the local command is documented, not required.
-- **`zsh` install on `ubuntu-latest`.** Unverified (medium confidence). Mitigation: the tests skip the zsh leg with a note rather than failing the job.
+- **`zsh` install on `ubuntu-latest`.** Unverified (medium confidence). Mitigation: the runner skips the zsh leg with a note rather than failing, and the job installs zsh first so the skip should never fire on Linux. Re-validated at Step 2.5.
+- **`shellcheck` present on both CI images.** Assumed (medium confidence). Mitigation: the macOS leg installs it via brew when absent, so a missing linter fails loudly instead of silently no-op'ing the step that is the gate.
 - **Markdown rewrite is the largest diff.** 17 bash blocks across two files; a missed inline block is caught by ST9's guard, and a semantic drift is caught by ST10's dogfood run.
 - **Lesson `clo-625-l6` (pipeline status laundering).** The guard explicitly bans `| jq -r` and `DEADLINE=`/`sleep 1` inline poll scaffolding; the script checks every status explicitly and never pipes `gh` into `jq`.
 - **Lesson `clo-625-l4` (zsh does not word-split).** Every expansion is quoted; the call-site tests run under both `zsh` and `bash`.
