@@ -19,10 +19,10 @@ linear:
   branch_actual: feat/clo-623-pr-review-cycle-tested
   priority: Medium
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T10:35:24.638Z'
+  updated_at: '2026-09-16T10:37:31.267Z'
 phases:
   discovery:
     status: complete
@@ -269,8 +269,14 @@ phases:
         prompt_tokens: 0
         completion_tokens: 0
         task_label: pre-pr-validation-synthesis
+      - recorded_at: '2026-09-16T10:36:21.224Z'
+        provider: n/a
+        model: n/a (agent-applied fix)
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: validation-fix-iteration-1-applied-inline
   pr:
-    status: pending
+    status: in_progress
   complete:
     status: pending
 history:
@@ -528,5 +534,27 @@ history:
       section: unresolved-threads still truncates latest_body to 120 characters - the report classifies it as
       pre-existing (copied from main's skill) and out of scope, so it stays a follow-up with the design contradiction
       documented rather than hidden.
+  - timestamp: '2026-09-16T10:36:16.968Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-09-16T10:36:21.224Z'
+    action: validation_fix_iteration_recorded
+    phase: implement
+    details: >-
+      Fix iteration 1 applied by the orchestrating agent itself rather than by a separate reviewer dispatch, so no model
+      token counts are attributable; recorded as 0/0 with a revealing label rather than omitted. Commit 1fbfbb7 closed
+      all five Must Fix items from docs/reviews/clo-623-validation-synthesis.md, and its ## Re-validation section
+      documents the before/after behaviour for both HIGH reproductions. No further issues were revealed by the fixes, so
+      the single permitted iteration stands and no escalation was required.
+  - timestamp: '2026-09-16T10:37:31.267Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-flight / pre-merge gate green on HEAD 1fbfbb7 (plus the 500b9d6 docs commit): cargo fmt --check PASS; cargo
+      clippy -- -D warnings PASS (only the pre-existing 'src/main.rs present in multiple build targets' cargo note,
+      which is also emitted on main and is not a clippy lint); cargo clippy --tests PASS; cargo test PASS - 12 suites,
+      1378 passed, 0 failed. Shell superset also green: shellcheck --shell=sh clean on all four shell files, 74/74 tests
+      under /bin/sh and under /bin/dash, check-inline-gates.sh exit 0, node .pi/scripts/check-schema-parity.mjs OK.
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested
