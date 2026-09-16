@@ -22,7 +22,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T10:19:50.167Z'
+  updated_at: '2026-09-16T10:35:24.638Z'
 phases:
   discovery:
     status: complete
@@ -145,7 +145,7 @@ phases:
         task_label: plan-authoring
     approved: true
   implement:
-    status: validating
+    status: complete
     commits:
       - b0d2a05
       - 02f1623
@@ -250,6 +250,25 @@ phases:
           Discovery's objection to Approach B (stale lok binary runs stale gates) does not apply here because the script
           ships in the same checkout as the markdown that calls it.
     assumptions_revalidated: true
+    codex_report: docs/reviews/clo-623-codex-validation.md
+    codex_validated: true
+    codex_verdict: FAIL
+    validation_fix_iteration_count: 1
+    validation_synthesis_report: docs/reviews/clo-623-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    token_usage:
+      - recorded_at: '2026-09-16T10:35:24.638Z'
+        provider: codex
+        model: gpt-5.6-sol
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-09-16T10:35:24.638Z'
+        provider: claude
+        model: claude-opus-5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
   pr:
     status: pending
   complete:
@@ -481,5 +500,33 @@ history:
       outputs recorded in the PR body, and ST9's CI negative proof (a failing run URL - CI does not run this branch
       until the PR exists, and opening one earlier would violate Step 4.6; clo-638-l3 forbids substituting a local
       command for that evidence). The local half of that negative proof is done and green.
+  - timestamp: '2026-09-16T10:35:24.638Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex: FAIL. Synthesis: PASS_WITH_NOTES (Codex's FAIL downgraded - each defect is local to one function or test
+      and all fit in one pass). All five Must Fix Before PR items applied in commit 1fbfbb7 and the gate re-run green.
+      Item 1 (HIGH, reproduced): jq failures that feed a gate result were unchecked, so an empty result read as a
+      negative verdict even though it means two different things - 'the API said no' and 'we could not read the API'. A
+      comment with "user": null made probe-bots print `none` with exit 0 for a billing-blocked PR, and a truncated body
+      made new-comments report a clean PR; jq_failed + rc checks now cover all eight such call sites, and login filters
+      use (.user.login // ""). Reproductions verified after the fix: null user beside a marker -> exit 4; non-JSON
+      comments body -> exit 3; truncated new-comments body -> exit 3; malformed wait body -> exit 3 instead of the
+      timeout exit 1. Item 2: billing check counts (-gt 0) so two markers no longer fall through to exit 0. Item 3: all
+      five named tests added, plus the fake gh's sequencing bug - confirmed by hand before fixing (a 3-file sequence
+      served 1,2,3,3,1 because n-1 stops naming a real file while n keeps growing), pinned by
+      test_fake_gh_sequence_repeats_the_last_fixture at 1,2,3,3,3; test_wait_rereview_detects_pass_on_second_tick is the
+      first test to reach the retry loop; a filter matching no test now exits non-zero. A further defect was found while
+      applying item 3: moving jq behind a helper argument made shellcheck treat the jq program as a shell string and
+      SC2016 fired seven times, which would have required blanket disables in a file that has none - so jq stays the
+      visible command at each call site and only its status is checked. Item 4: the literal `grep -qi qodo` and the
+      QODO_LOGIN constant are gone; qodo_re() is now the only place in the script that names Qodo, which is what CLO-650
+      has to change. Test count 63 -> 74. Gate after the fix pass: cargo fmt --all -- --check ok; cargo clippy --locked
+      --all-targets -- -D warnings ok; cargo test --locked ok (12 suites); shellcheck --shell=sh clean on all four shell
+      files; 74/74 under /bin/sh (bash) and re-run under /bin/dash; check-inline-gates.sh exit 0; node
+      .pi/scripts/check-schema-parity.mjs ok. One item deliberately NOT fixed and recorded in the report's Re-validation
+      section: unresolved-threads still truncates latest_body to 120 characters - the report classifies it as
+      pre-existing (copied from main's skill) and out of scope, so it stays a follow-up with the design contradiction
+      documented rather than hidden.
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested

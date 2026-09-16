@@ -57,3 +57,72 @@ PROCEED_WITH_FIXES. In one pass:
 5. Send the literal `qodo` match and `QODO_LOGIN` through the single identity check.
 
 After that, run the pre-merge gate again and open the PR. ST10's dogfood run and the failing-then-green CI proof then happen in the PR phase.
+
+## Re-validation
+
+Applied all five `Must Fix Before PR` items in one pass (commit `1fbfbb7`), then
+re-ran the gate. One further defect was found and fixed while applying item 3.
+
+**1. Unchecked `jq` failures (HIGH).** Added `jq_failed` and a `rc=$?` check at
+every call site whose jq output decides a gate result: both `poll_for_pass` legs,
+all four `probe-bots` legs, and both `new-comments` legs. All login filters are
+now `(.user.login // "")`. Both reproductions now behave correctly:
+
+| Scenario | Before | After |
+|---|---|---|
+| `probe-bots`, null user beside a billing marker | `none`, exit 0 | `qodo-code-review[bot]`, exit 4 |
+| `probe-bots`, non-JSON comments body | `none`, exit 0 | empty, exit 3 |
+| `new-comments`, truncated body | exit 0, "clean" | exit 3 |
+| `wait-review`, malformed reviews body | exit 1 (timeout) | exit 3 |
+
+`jq` deliberately remains the visible command at each call site rather than
+moving behind a wrapper. A wrapper taking the jq program as an argument makes
+shellcheck treat it as a shell string instead of a foreign-language program, and
+SC2016 fired seven times — the fix would have required blanket disables in a file
+that has none. `jq` as the command keeps shellcheck's suppression, and the
+pipeline's status is jq's status, so `rc=$?` is still the right check.
+
+**2. Billing count (MEDIUM).** Now `-gt 0`. `test_probe_bots_detects_duplicate_billing_markers`
+pins the two-marker case at exit 4.
+
+**3. Missing tests and the fake `gh`.** All five named tests exist, plus fixtures
+for a null user, a malformed body and a duplicate marker:
+`test_wait_rereview_detects_pass_on_second_tick` (the first test to reach the
+retry loop; asserts rc 0, the exact `<head> <timestamp>` line, and at least two
+reviews calls), `test_request_rereview_fails_closed_when_post_errors`,
+`test_wait_rereview_rejects_short_head_as_invalid`,
+`test_wait_rereview_rejects_previous_run_pass_on_same_sha`,
+`test_new_comments_fails_closed_when_the_user_lookup_errors`, plus
+`test_probe_bots_tolerates_a_null_user_beside_a_billing_marker`,
+`test_probe_bots_detects_duplicate_billing_markers`,
+`test_probe_bots_fails_closed_on_a_malformed_comments_body`,
+`test_new_comments_fails_closed_on_a_malformed_body` and
+`test_wait_review_fails_closed_on_a_malformed_reviews_body`.
+
+The sequencing bug was confirmed by hand before fixing — a 3-file sequence served
+`1,2,3,3,1`, and a 2-file sequence `1,2,2,1,1`. `n - 1` stops naming a real file
+from call (length + 2) on while `n` keeps growing, so the old fallback returned
+`.1.json` rather than the last fixture.
+`test_fake_gh_sequence_repeats_the_last_fixture` pins `1,2,3,3,3`.
+
+A filter matching no test now exits non-zero, verified directly:
+`sh .pi/scripts/tests/pr-review-cycle.test.sh 'test_no_such_test_exists'` → exit 1.
+
+**4. Single identity check.** The literal `grep -qi qodo` and the `QODO_LOGIN`
+constant are gone. `qodo_re()` is now the only place in the script that names
+Qodo; `require_bots` validates against a login shape, not an identity, and
+`request-rereview` matches `--bots` entries through `qodo_re()`. No occurrence of
+`qodo` outside that function and its tests.
+
+**Gate after the fix pass.** `cargo fmt --all -- --check` ok;
+`cargo clippy --locked --all-targets -- -D warnings` ok; `cargo test --locked` ok
+(12 suites, all green); `shellcheck --shell=sh` clean on all four shell files;
+74 tests, 0 failed, under `/bin/sh` (bash) and re-run under `/bin/dash`;
+`check-inline-gates.sh` exit 0; `node .pi/scripts/check-schema-parity.mjs` ok.
+
+Test count 63 → 74.
+
+**Deferred item noted, not fixed.** `unresolved-threads` still truncates
+`latest_body` to 120 characters. The report classifies it as pre-existing (copied
+from `main`'s skill) and out of scope for this PR; it remains a follow-up, and the
+contradiction with the design's `<BODY>` contract is recorded rather than hidden.
