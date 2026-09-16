@@ -22,7 +22,7 @@ workflow:
   current_phase: complete
   status: complete
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T13:27:11.360Z'
+  updated_at: '2026-09-16T13:27:24.316Z'
 phases:
   discovery:
     status: complete
@@ -294,6 +294,8 @@ phases:
     merge_commit: b1872b43a83d2d681fa1c347cc8bf484647eb5c4
     merged_at: '2026-09-16T13:24:45Z'
     merged_by: maxkulish
+    finalize_pr_number: 118
+    finalize_pr_url: https://github.com/maxkulish/lok/pull/118
 history:
   - timestamp: '2026-09-16T07:45:44.278Z'
     action: workflow_started
@@ -721,5 +723,12 @@ history:
       Task CLO-623 fully completed. Implementation PR #115 squash-merged as b1872b43a83d2d681fa1c347cc8bf484647eb5c4 at
       2026-09-16T13:24:45Z; aggregation files synced on docs/clo-623-finalize. Linear CLO-623 is In Review and moves to
       Done once the finalize PR merges.
+  - timestamp: '2026-09-16T13:27:24.316Z'
+    action: finalize_pr_opened
+    phase: complete
+    details: >-
+      Finalize PR #118 opened on docs/clo-623-finalize: https://github.com/maxkulish/lok/pull/118. Docs-only: the three
+      aggregation files plus docs/status/clo-623-workflow.yaml. CI Gate is required on main with no bypass actors, so
+      this is the normal path rather than a direct push.
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested
