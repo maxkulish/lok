@@ -289,17 +289,9 @@ test_wait_review_call_deadline_respects_overall_timeout() {
 
 # --- request-rereview / wait-rereview -------------------------------------
 
-# request-rereview reads the installed-bot list from the environment, exactly as
-# the skill's `INSTALLED_BOTS` does, so the port is a mechanical replacement.
-with_bots() {
-  INSTALLED_BOTS=$1
-  export INSTALLED_BOTS
-}
-
 test_request_rereview_posts_agentic_review_and_returns_post_created_at() {
   use_fixture request_rereview_ok
-  with_bots qodo-code-review
-  run_script request-rereview --repo maxkulish/lok --pr 71
+  run_script request-rereview --repo maxkulish/lok --pr 71 --bots qodo-code-review
   assert_rc 0 || return 1
   assert_out "2026-09-10T11:00:00Z" || return 1
   case "$(calls)" in
@@ -317,37 +309,55 @@ test_request_rereview_fails_closed_when_post_returns_no_created_at() {
   # GitHub-clock timestamps, and a fast local clock would widen the window past
   # a genuine pass.
   use_fixture request_rereview_no_created_at
-  with_bots qodo-code-review
-  run_script request-rereview --repo maxkulish/lok --pr 71
+  run_script request-rereview --repo maxkulish/lok --pr 71 --bots qodo-code-review
   assert_rc 3 || return 1
   assert_out_empty || return 1
 }
 
-test_request_rereview_requires_installed_bots() {
-  # The ${INSTALLED_BOTS+x} guard, ported: an unset list is not "no bots".
+test_request_rereview_requires_bots() {
+  # The design's replacement for ${INSTALLED_BOTS+x}: the installed-bot verdict
+  # arrives as an argument, so an unset variable cannot be read as "no bots".
   use_fixture request_rereview_ok
-  unset INSTALLED_BOTS
   run_script request-rereview --repo maxkulish/lok --pr 71
-  assert_rc 1 || return 1
+  assert_rc 2 || return 1
   [ -z "$(calls)" ] || fail_test "the guard must fire before any API call" || return 1
 }
 
-test_request_rereview_prints_none_when_qodo_absent() {
+test_request_rereview_rejects_bots_without_qodo() {
+  # Nothing to ask - posting anyway leaves a stray comment on the PR and then
+  # fails the gate ten minutes later.
   use_fixture request_rereview_ok
-  with_bots copilot-pull-request-reviewer
-  run_script request-rereview --repo maxkulish/lok --pr 71
-  assert_rc 0 || return 1
-  assert_out "none" || return 1
+  run_script request-rereview --repo maxkulish/lok --pr 71 --bots copilot-pull-request-reviewer
+  assert_rc 2 || return 1
+  case "$(calls)" in
+    *"-X POST"*) fail_test "nothing to ask: no POST should be issued" || return 1 ;;
+    *) : ;;
+  esac
+  assert_out_empty || return 1
+}
+
+test_request_rereview_rejects_none_bots() {
+  use_fixture request_rereview_ok
+  run_script request-rereview --repo maxkulish/lok --pr 71 --bots none
+  assert_rc 2 || return 1
   case "$(calls)" in
     *"-X POST"*) fail_test "nothing to ask: no POST should be issued" || return 1 ;;
     *) : ;;
   esac
 }
 
+test_request_rereview_accepts_a_multi_bot_list() {
+  use_fixture request_rereview_ok
+  run_script request-rereview --repo maxkulish/lok --pr 71 \
+    --bots copilot-pull-request-reviewer,qodo-code-review
+  assert_rc 0 || return 1
+  assert_out "2026-09-10T11:00:00Z" || return 1
+}
+
 test_request_rereview_rejects_malformed_head() {
   use_fixture request_rereview_ok
-  with_bots qodo-code-review
-  run_script request-rereview --repo maxkulish/lok --pr 71 --head not-a-sha
+  run_script request-rereview --repo maxkulish/lok --pr 71 \
+    --bots qodo-code-review --head not-a-sha
   assert_rc 2 || return 1
 }
 
@@ -356,7 +366,18 @@ test_wait_rereview_accepts_pass_exactly_at_post_bound() {
   run_script wait-rereview --repo maxkulish/lok --pr 71 \
     --since 2026-09-10T11:00:00Z --timeout 0
   assert_rc 0 || return 1
-  assert_out "2026-09-10T11:00:00Z" || return 1
+  assert_out "1111111111111111111111111111111111111111 2026-09-10T11:00:00Z" || return 1
+}
+
+test_wait_rereview_reports_the_head_it_covered() {
+  # Both halves are reported: step 9 records the covered head, and phases/pr.md
+  # 5.0 re-checks that head against the one being merged.
+  use_fixture wait_rereview_boundary
+  run_script wait-rereview --repo maxkulish/lok --pr 71 \
+    --since 2026-09-10T11:00:00Z --head 2222222222222222222222222222222222222222 \
+    --timeout 0
+  assert_rc 1 || return 1
+  assert_out_empty || return 1
 }
 
 test_wait_rereview_fails_closed_when_head_changes_mid_poll() {

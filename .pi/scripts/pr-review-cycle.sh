@@ -19,6 +19,7 @@ PROG=pr-review-cycle
 # The re-review request command. `/agentic_review` is Qodo's configured trigger;
 # `/review` is the legacy PR-Agent name and is not wired up here.
 REQUEST_REREVIEW_COMMAND='/agentic_review'
+QODO_LOGIN=qodo-code-review
 
 # $owner/$repo/$pr/$cursor are GraphQL variables, not shell ones: they must
 # reach gh unexpanded.
@@ -144,14 +145,21 @@ require_sha40() {
   HEAD=$h
 }
 
-require_installed_bots() {
-  # The `${INSTALLED_BOTS+x}` guard, ported. `probe-bots` must have run in the
-  # same shell and its result exported. An unset list is not "no bots": with it
-  # merely unset the qodo grep finds nothing, the else-branch fires, and the run
-  # records a clean status for a re-review that never happened.
-  if [ -z "${INSTALLED_BOTS+x}" ]; then
-    fail "$EX_NEGATIVE" "GATE FAIL: INSTALLED_BOTS is unset - run \`pr-review-cycle.sh probe-bots\` first and export its output"
+require_bots() {
+  # --bots takes probe-bots' stdout verbatim, or the literal `none`.
+  #
+  # This is the design's replacement for the skill's `${INSTALLED_BOTS+x}`
+  # shell variable: subcommands read no caller state, so the installed-bot
+  # verdict has to arrive as an argument. An unset variable could be silently
+  # read as "no bots"; an empty or absent argument cannot.
+  b=${1:-}
+  [ -n "$b" ] \
+    || fail "$EX_INVALID" "invalid --bots '' (want a comma-separated login list or 'none')"
+  if [ "$b" != "none" ]; then
+    printf '%s' "$b" | grep -qE '^[A-Za-z0-9-]+(,[A-Za-z0-9-]+)*$' \
+      || fail "$EX_INVALID" "invalid --bots '$b' (want a comma-separated login list or 'none')"
   fi
+  BOTS=$b
 }
 
 require_login() {
@@ -540,30 +548,31 @@ cmd_wait_review() {
 }
 
 cmd_request_rereview() {
-  REPO=""; PR=""; HEAD=""
+  REPO=""; PR=""; HEAD=""; BOTS=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --repo) require_repo   "${2:-}"; shift 2 ;;
-      --pr)   require_pr     "${2:-}"; shift 2 ;;
-      --head) require_sha40  "${2:-}"; shift 2 ;;
+      --repo) require_repo  "${2:-}"; shift 2 ;;
+      --pr)   require_pr    "${2:-}"; shift 2 ;;
+      --head) require_sha40 "${2:-}"; shift 2 ;;
+      --bots) require_bots  "${2:-}"; shift 2 ;;
       -h|--help) usage; exit "$EX_OK" ;;
       *) fail "$EX_INVALID" "unexpected argument '$1'" ;;
     esac
   done
   [ -n "$REPO" ] || fail "$EX_INVALID" "--repo is required"
   [ -n "$PR" ]   || fail "$EX_INVALID" "--pr is required"
-  require_installed_bots
+  [ -n "$BOTS" ] || fail "$EX_INVALID" "--bots is required (probe-bots' stdout, verbatim)"
 
-  # Qodo does not re-review on push (handle_push_trigger is False), so without
-  # an explicit request its findings stay pinned to the pre-fix commit. Skip the
-  # request entirely when there is nothing to ask: posting into a repo with no
-  # Qodo app leaves a stray comment and then fails the gate ten minutes later,
-  # and when Qodo is billing-blocked the request only refreshes the notice.
-  if [ "${QODO_BILLING_BLOCKED:-0}" = "1" ] \
-     || ! printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo; then
-    printf 'none\n'
-    exit "$EX_OK"
-  fi
+  # Qodo does not re-review on push (handle_push_trigger is False), so without an
+  # explicit request its findings stay pinned to the pre-fix commit. Asking when
+  # there is nothing to ask - no Qodo, or Qodo billing-blocked - leaves a stray
+  # comment on the PR and then fails the gate ten minutes later. Whether to skip
+  # is the caller's decision; the request is inapplicable, so nothing is posted
+  # and the exit status says so.
+  case ",$BOTS," in
+    *",$QODO_LOGIN,"*) : ;;
+    *) fail "$EX_INVALID" "--bots '$BOTS' does not include $QODO_LOGIN - nothing to request (nothing posted)" ;;
+  esac
 
   if [ -z "$HEAD" ]; then
     pr_lookup
@@ -599,15 +608,17 @@ cmd_wait_rereview() {
   # happened. The whole point of this subcommand is the exogenous since-bound.
   [ -n "$SINCE" ] || fail "$EX_INVALID" "--since is required (the POST response's created_at)"
 
-  if [ -z "$HEAD" ]; then
-    pr_lookup
-    HEAD=$PR_HEAD
-  fi
+  # No --head means the head as of now, which is the post-push head in step 8 -
+  # the caller has just pushed the fixes it is asking to have re-reviewed.
+  [ -n "$HEAD" ] || { pr_lookup; HEAD=$PR_HEAD; }
 
   at=$(poll_for_pass "$HEAD" "$SINCE" "$TIMEOUT")
   rc=$?
   [ "$rc" -eq 0 ] || exit "$rc"
-  printf '%s\n' "$at"
+  # Both halves are reported: step 9 records the head the pass covers alongside
+  # the timestamp, and phases/pr.md 5.0 re-checks that head against the one
+  # being merged.
+  printf '%s %s\n' "$HEAD" "$at"
   exit "$EX_OK"
 }
 
