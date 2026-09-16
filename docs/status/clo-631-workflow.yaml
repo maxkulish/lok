@@ -24,10 +24,10 @@ linear:
   labels:
     - HITL
 workflow:
-  current_phase: implement
+  current_phase: pr
   status: active
   created_at: '2026-09-16T09:01:12.209Z'
-  updated_at: '2026-09-16T10:27:38.786Z'
+  updated_at: '2026-09-16T10:29:27.064Z'
 phases:
   discovery:
     status: complete
@@ -194,7 +194,7 @@ phases:
         completion_tokens: 0
         task_label: pre-pr-validation-fix-iteration
   pr:
-    status: pending
+    status: in_progress
   complete:
     status: pending
 history:
@@ -351,5 +351,15 @@ history:
       Codex validation produced FAIL with 4 findings; Claude synthesis classified the bounded issues as PASS_WITH_NOTES.
       One fix iteration applied in b03f6de, full fmt+clippy+test rerun passed, and synthesis re-validation was recorded
       in be4bdb5. No pivot or user decision required.
+  - timestamp: '2026-09-16T10:28:10.867Z'
+    action: phase_transition
+    phase: implement
+    details: Transitioned from implement to pr
+  - timestamp: '2026-09-16T10:29:27.064Z'
+    action: pre_flight_checks_passed
+    phase: pr
+    details: >-
+      Pre-merge gate green: cargo fmt --check, cargo clippy -- -D warnings, cargo clippy --tests, and cargo test all
+      pass.
 task_title: Escape or remove step output interpolated into workflow shell fields
 task_url: https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields
