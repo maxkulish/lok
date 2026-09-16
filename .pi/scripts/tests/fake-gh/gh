@@ -68,7 +68,7 @@ while [ $# -gt 0 ]; do
       shift
       key=${kv%%=*}
       case "$key" in
-        body|query|owner|repo|pr) : ;;
+        body|query|owner|repo|pr|cursor) : ;;
         *) echo "fake-gh: unknown -f/-F field '$key'" >&2; exit 1 ;;
       esac
       ;;

@@ -1,0 +1,1 @@
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"PRRT_a","isResolved":true,"isOutdated":false,"path":"src/lib.rs","line":42,"comments":{"nodes":[{"author":{"login":"qodo-code-review"},"body":"fixed","createdAt":"2026-09-10T10:05:00Z"}]}}]}}}}}

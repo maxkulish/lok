@@ -20,6 +20,29 @@ PROG=pr-review-cycle
 # `/review` is the legacy PR-Agent name and is not wired up here.
 REQUEST_REREVIEW_COMMAND='/agentic_review'
 
+# $owner/$repo/$pr/$cursor are GraphQL variables, not shell ones: they must
+# reach gh unexpanded.
+# shellcheck disable=SC2016
+REVIEW_THREADS_QUERY='query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
+  repository(owner:$owner, name:$repo) {
+    pullRequest(number:$pr) {
+      reviewThreads(first:100, after:$cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          comments(last:1) { nodes { author { login } body createdAt } }
+        }
+      }
+    }
+  }
+}'
+
+REVIEW_THREADS_MAX_PAGES=50
+
 # --- exit codes (design: "Public API surface") ---------------------------
 # The published contract the markdown call sites switch on. Rendered through
 # usage() so the table cannot drift from the implementation.
@@ -136,6 +159,11 @@ require_login() {
   printf '%s' "$l" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$' \
     || fail "$EX_INVALID" "invalid --me '$l' (want a GitHub login)"
   ME=$l
+}
+
+split_repo() {
+  OWNER=${REPO%%/*}
+  NAME=${REPO##*/}
 }
 
 # --- required-field extraction ------------------------------------------
@@ -361,6 +389,65 @@ poll_for_pass() {
   done
 }
 
+graphql_query_review_threads() {
+  # graphql_query_review_threads <cursor> - sets THREADS_JSON to one raw page.
+  #
+  # The single copy of the reviewThreads query. It appears verbatim three times
+  # in the skill, which is exactly the drift this task exists to stop; CLO-650
+  # changes the query in one place. The caller is responsible for walking
+  # pageInfo, so the loop below is also the only pagination implementation.
+  cur=$1
+  if [ -n "$cur" ]; then
+    gh_capture graphql \
+      -f query="$REVIEW_THREADS_QUERY" \
+      -f owner="$OWNER" -f repo="$NAME" -F pr="$PR" \
+      -f cursor="$cur"
+  else
+    gh_capture graphql \
+      -f query="$REVIEW_THREADS_QUERY" \
+      -f owner="$OWNER" -f repo="$NAME" -F pr="$PR"
+  fi
+  THREADS_JSON=$GH_BODY
+}
+
+validate_threads_page() {
+  # validate_threads_page <json> - fails closed (EX_UPSTREAM) on every response
+  # that would otherwise degrade into "no unresolved threads".
+  #
+  # A GraphQL error body, a missing/null data envelope, or a thread node missing
+  # a field the report needs all mean the same thing here: the gate does not
+  # know. Reporting clean in any of those cases is the fail-open shape this task
+  # exists to close.
+  page=$1
+
+  errors=$(printf '%s' "$page" | jq -r 'if (.errors // []) | length > 0 then "yes" else "no" end' 2>/dev/null)
+  [ "$errors" = "no" ] \
+    || fail "$EX_UPSTREAM" "GraphQL returned errors: $(printf '%s' "$page" | jq -c '.errors // .' 2>/dev/null)"
+
+  threads=$(printf '%s' "$page" | jq -r 'if .data.repository.pullRequest.reviewThreads == null then "no" else "yes" end' 2>/dev/null)
+  [ "$threads" = "yes" ] \
+    || fail "$EX_UPSTREAM" "GraphQL response has no data.repository.pullRequest.reviewThreads"
+
+  # pageInfo has to be a real boolean: a missing one would otherwise end the
+  # loop after page 1 and silently truncate the report.
+  next=$(printf '%s' "$page" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage | if . == null then "missing" else tostring end' 2>/dev/null)
+  case "$next" in
+    true|false) : ;;
+    *) fail "$EX_UPSTREAM" "GraphQL pageInfo.hasNextPage is missing or non-boolean (got '$next')" ;;
+  esac
+
+  bad=$(printf '%s' "$page" | jq -r '
+    [ .data.repository.pullRequest.reviewThreads.nodes[]
+      | select(
+          (.id == null) or (.path == null) or (.isResolved == null)
+          or ((.comments.nodes | length) == 0)
+          or (.comments.nodes[0].author.login == null)
+          or (.comments.nodes[0].body == null)
+        ) ] | length' 2>/dev/null)
+  [ "$bad" = "0" ] \
+    || fail "$EX_UPSTREAM" "GraphQL returned malformed review-thread node(s) (count '$bad')"
+}
+
 # --- subcommands ---------------------------------------------------------
 # Each command resets the globals it owns, so an inherited environment
 # variable can never stand in for a required flag.
@@ -583,7 +670,65 @@ cmd_new_comments() {
 }
 
 cmd_unresolved_threads() {
-  fail "$EX_UPSTREAM" "unresolved-threads is not implemented in this revision"
+  REPO=""; PR=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo) require_repo "${2:-}"; shift 2 ;;
+      --pr)   require_pr   "${2:-}"; shift 2 ;;
+      -h|--help) usage; exit "$EX_OK" ;;
+      *) fail "$EX_INVALID" "unexpected argument '$1'" ;;
+    esac
+  done
+  [ -n "$REPO" ] || fail "$EX_INVALID" "--repo is required"
+  [ -n "$PR" ]   || fail "$EX_INVALID" "--pr is required"
+
+  # The PR must exist before the GraphQL query runs, so a typo cannot look like
+  # an empty thread list.
+  pr_lookup
+  split_repo
+  gb_tmp_ensure
+
+  out=$(mktemp "$GH_TMP/threads.XXXXXX") || fail "$EX_UPSTREAM" "could not create a scratch file"
+  : > "$out"
+
+  cursor=""
+  seen_cursors=""
+  page_no=0
+  while :; do
+    page_no=$(( page_no + 1 ))
+    [ "$page_no" -le "$REVIEW_THREADS_MAX_PAGES" ] \
+      || fail "$EX_UPSTREAM" "reviewThreads pagination exceeded $REVIEW_THREADS_MAX_PAGES pages"
+
+    graphql_query_review_threads "$cursor"
+    validate_threads_page "$THREADS_JSON"
+
+    # Only unresolved threads are reported; the latest comment is the one a
+    # reply would land on, so it is the one whose author decides the action.
+    printf '%s' "$THREADS_JSON" | jq -c '
+      .data.repository.pullRequest.reviewThreads.nodes[]
+      | select(.isResolved == false)
+      | {id, path, line, is_outdated: .isOutdated,
+         latest_author: .comments.nodes[0].author.login,
+         latest_body: (.comments.nodes[0].body[0:120])}' >> "$out"
+
+    next=$(printf '%s' "$THREADS_JSON" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+    [ "$next" = "true" ] || break
+
+    cursor=$(printf '%s' "$THREADS_JSON" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+    if [ -z "$cursor" ] || [ "$cursor" = "null" ]; then
+      fail "$EX_UPSTREAM" "pageInfo.hasNextPage is true but endCursor is empty - would truncate the report"
+    fi
+    case "$seen_cursors" in
+      *"|$cursor|"*) fail "$EX_UPSTREAM" "reviewThreads pagination revisited cursor '$cursor'" ;;
+      *) seen_cursors="$seen_cursors|$cursor|" ;;
+    esac
+  done
+
+  if [ -s "$out" ]; then
+    cat "$out"
+    exit "$EX_NEGATIVE"
+  fi
+  exit "$EX_OK"
 }
 
 main() {

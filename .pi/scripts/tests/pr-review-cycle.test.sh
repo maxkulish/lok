@@ -476,6 +476,89 @@ test_new_comments_rejects_malformed_since() {
   [ -z "$(calls)" ] || fail_test "a malformed bound must fail before any API call" || return 1
 }
 
+# --- unresolved-threads ---------------------------------------------------
+
+test_unresolved_threads_exits_0_when_only_resolved_threads_exist() {
+  use_fixture unresolved_threads_clean
+  run_script unresolved-threads --repo maxkulish/lok --pr 71
+  assert_rc 0 || return 1
+  assert_out_empty || return 1
+}
+
+test_unresolved_threads_reports_unresolved_threads() {
+  use_fixture unresolved_threads_reports
+  run_script unresolved-threads --repo maxkulish/lok --pr 71
+  assert_rc 1 || return 1
+  case "$OUT" in *PRRT_b*) : ;; *) fail_test "thread id missing: $OUT" || return 1 ;; esac
+  case "$OUT" in *'"path":"src/main.rs"'*) : ;; *) fail_test "path missing: $OUT" || return 1 ;; esac
+  case "$OUT" in *'"is_outdated":false'*) : ;; *) fail_test "is_outdated missing: $OUT" || return 1 ;; esac
+  case "$OUT" in
+    *'"latest_author":"qodo-code-review"'*) : ;;
+    *) fail_test "latest_author missing: $OUT" || return 1 ;;
+  esac
+  case "$OUT" in *'off by one'*) : ;; *) fail_test "body missing: $OUT" || return 1 ;; esac
+}
+
+test_unresolved_threads_paginates_multiple_threads() {
+  # pageInfo says there is a second page; a first-page-only report would hide
+  # the second page's thread entirely.
+  use_fixture unresolved_threads_paginates_multiple_threads
+  run_script unresolved-threads --repo maxkulish/lok --pr 71
+  assert_rc 1 || return 1
+  [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "2" ] \
+    || fail_test "expected a thread from each page, got: $OUT" || return 1
+  case "$OUT" in *PRRT_p1*) : ;; *) fail_test "page 1 thread missing: $OUT" || return 1 ;; esac
+  case "$OUT" in *PRRT_p2*) : ;; *) fail_test "page 2 thread missing: $OUT" || return 1 ;; esac
+  case "$OUT" in
+    *'"is_outdated":true'*) : ;;
+    *) fail_test "the outdated flag was not carried through: $OUT" || return 1 ;;
+  esac
+}
+
+test_unresolved_threads_fails_closed_when_graphql_errors() {
+  use_fixture unresolved_threads_graphql_errors
+  run_script unresolved-threads --repo maxkulish/lok --pr 71
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_unresolved_threads_fails_closed_on_missing_data() {
+  use_fixture unresolved_threads_missing_data
+  run_script unresolved-threads --repo maxkulish/lok --pr 71
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_unresolved_threads_fails_closed_on_null_review_threads() {
+  use_fixture unresolved_threads_null_threads
+  run_script unresolved-threads --repo maxkulish/lok --pr 71
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_unresolved_threads_fails_closed_on_malformed_node() {
+  use_fixture unresolved_threads_malformed_node
+  run_script unresolved-threads --repo maxkulish/lok --pr 71
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_unresolved_threads_fails_closed_on_missing_pageinfo() {
+  # Without pageInfo.hasNextPage the walk would stop after page 1 and silently
+  # truncate the report while still exiting 0.
+  use_fixture unresolved_threads_missing_pageinfo
+  run_script unresolved-threads --repo maxkulish/lok --pr 71
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_unresolved_threads_fails_closed_when_gh_call_errors() {
+  use_fixture unresolved_threads_gh_error
+  run_script unresolved-threads --repo maxkulish/lok --pr 71
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
 # --- the fake gh is itself a guard ---------------------------------------
 
 test_fake_gh_rejects_jq_and_arg_flags() {

@@ -1,0 +1,1 @@
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":"CUR2"},"nodes":[{"id":"PRRT_p2","isResolved":false,"isOutdated":true,"path":"src/b.rs","line":2,"comments":{"nodes":[{"author":{"login":"copilot-pull-request-reviewer"},"body":"second page","createdAt":"2026-09-10T10:05:00Z"}]}}]}}}}}
