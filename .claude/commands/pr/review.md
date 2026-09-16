@@ -329,63 +329,41 @@ config.push_commands        = ['/agentic_review']
 
 After pushing fixes and posting replies, request one re-review for the whole PR.
 
-**Check for a billing-blocked Qodo first.** When the workspace is out of credits, Qodo answers every PR, and every `/agentic_review`, by posting or editing one comment containing `<!-- qodo:billing-blocked -->`. The request cannot produce a review, and the poll below would run its full 10 minutes:
+**Check for a billing-blocked Qodo first.** When the workspace is out of credits, Qodo answers every PR, and every `/agentic_review`, by posting or editing one comment containing `<!-- qodo:billing-blocked -->`. The request cannot produce a review, and the poll below would run its full 10 minutes. `probe-bots` detects the marker and exits 4:
 
 ```bash
-gh api repos/{owner}/{repo}/issues/[number]/comments --paginate --slurp \
-  | jq -e '[.[][] | select(.user.login|test("qodo"))
-           | select(.body|contains("<!-- qodo:billing-blocked -->"))] | length > 0' >/dev/null \
-  && { echo "qodo-code-review is billing-blocked on this PR; skip the re-review request and ask the user"; exit 1; }
+INSTALLED_BOTS=$(.pi/scripts/pr-review-cycle.sh probe-bots --repo "$REPO" --pr "$PR"); RC=$?
 ```
 
-If it is billing-blocked, do not post. Ask the user. When they approve proceeding without a bot review, record `bot_rereview_head_sha: "none"` with that rationale. The notice stays on the PR after credits are restored, so if the user says reviews are back, run the request and poll below anyway.
+- **`RC=4`** - Qodo is billing-blocked. Do not post. Ask the user. When they approve proceeding without a bot review, record `bot_rereview_head_sha: "none"` with that rationale. The notice stays on the PR after credits are restored, so if the user says reviews are back, run the request and poll below anyway.
+- **`RC=3`** - the probe could not determine anything. Fix the `gh` failure and re-run; do not read this as "no bots installed".
+- **`RC=0`** - continue. When `INSTALLED_BOTS=none` there is no bot to request from: skip both the request and the poll and go to Step 11.
 
 Post the request and keep the timestamp **GitHub** assigns it:
 
 ```bash
-REQUESTED_AT=$(gh api repos/{owner}/{repo}/issues/[number]/comments \
-  -X POST -f body='/agentic_review' --jq .created_at)
+REQUESTED_AT=$(.pi/scripts/pr-review-cycle.sh request-rereview --repo "$REPO" --pr "$PR" --bots "$INSTALLED_BOTS"); RC=$?
 ```
 
-Read the timestamp off the POST response rather than from local `date`. The review's `submitted_at` comes from GitHub's clock, so a locally generated bound compares two clock domains - a local clock running fast would filter out the very re-review it is waiting for and time out. This costs no extra API call.
+`--bots` carries the probe's verdict forward, and the script refuses the call when that list does not include `qodo-code-review` (including `none`) - exit 2, nothing posted. Posting into a repo with no Qodo app leaves a stray comment on the PR and then fails the gate ten minutes later.
+
+The bound is read off the POST response rather than from local `date`. The review's submission timestamp comes from GitHub's clock, so a locally generated bound compares two clock domains - a local clock running fast would filter out the very re-review it is waiting for and time out. `RC=3` means the POST failed; do not invent a bound, fix the failure and re-run.
 
 Then poll for the completed pass on the **post-push** head SHA. A completed pass arrives in one of **two shapes** (the per-pass delivery rule in "How Qodo posts" below): a new **review object** appears only when the pass has new inline findings to attach; a **clean pass** edits the existing "Code Review by Qodo" comment in place and announces completion with a *new* issue comment reading `[Code review](...) by qodo was updated up to the latest commit <sha>`. Polling only the reviews endpoint therefore times out precisely when the re-review came back clean - the success case (observed on PR #80).
 
 Each shape pairs a freshness bound with a covered-commit check, and both conditions matter. Freshness alone would accept a previous run's pass - re-running this step without an intervening push, or after the `/agentic_review` post failed, must not report a re-validation that never happened. The commit check alone would accept the stale pass on the old head.
 
 ```bash
-NEW_HEAD=$(gh api repos/{owner}/{repo}/pulls/[number] --jq .head.sha)
-printf '%s' "$NEW_HEAD" | grep -qE '^[0-9a-f]{40}$' || { echo "Bad head SHA '${NEW_HEAD}' - the pulls lookup failed; fix that first"; exit 1; }
-[ -n "$REQUESTED_AT" ] || { echo "Empty REQUESTED_AT - the /agentic_review POST failed; fix that first"; exit 1; }
-DEADLINE=$(( $(date -u +%s) + 600 ))
-
-while :; do
-  # Shape 1: a new review object - submitted only when the pass carries new inline findings
-  REREVIEW=$(gh api repos/{owner}/{repo}/pulls/[number]/reviews --paginate --slurp \
-    | jq -r --arg h "$NEW_HEAD" --arg since "$REQUESTED_AT" \
-      '[.[][] | select(.commit_id==$h) | select(.user.login|test("qodo"))
-        | select(.submitted_at >= $since) | .submitted_at] | last // empty')
-  [ -n "$REREVIEW" ] && { echo "Re-review (new findings) on ${NEW_HEAD:0:7} at ${REREVIEW}"; break; }
-
-  # Shape 2: a clean pass - a new completion comment naming the covered commit.
-  # ?since= is a server-side prefilter (GitHub filters on updated_at, which is
-  # never earlier than created_at, so it cannot drop a comment the client-side
-  # created_at gate would accept) - it keeps each poll tick from re-downloading
-  # the PR's whole comment history. The jq created_at check remains the gate.
-  UPDATED=$(gh api "repos/{owner}/{repo}/issues/[number]/comments?since=${REQUESTED_AT}&per_page=100" --paginate --slurp \
-    | jq -r --arg h "$NEW_HEAD" --arg since "$REQUESTED_AT" \
-      '[.[][] | select(.user.login|test("qodo")) | select(.created_at >= $since)
-        | select(.body|test("was updated up to the latest commit"))
-        | select(.body|contains($h)) | .created_at] | last // empty')
-  [ -n "$UPDATED" ] && { echo "Re-review (clean pass) covering ${NEW_HEAD:0:7} at ${UPDATED}"; break; }
-
-  [ "$(date -u +%s)" -ge "$DEADLINE" ] && {
-    echo "No re-review since ${REQUESTED_AT}: no qodo review object on ${NEW_HEAD:0:7} and no completion comment naming it. Inspect the PR before overriding - do not treat this as a pass."
-    exit 1
-  }
-  sleep 20
-done
+BOT_REREVIEW=$(.pi/scripts/pr-review-cycle.sh wait-rereview --repo "$REPO" --pr "$PR" --since "$REQUESTED_AT"); RC=$?
 ```
+
+`BOT_REREVIEW` prints `<head_sha> <detected_at>` on success - the head the pass covers, which Step 10 records and `phases/pr.md` §5.0 re-checks against the head being merged. The head is read inside the script and required to be a 40-hex SHA: a pulls lookup that returned an empty string would otherwise make the commit check vacuously true. A missing or malformed `--since` is rejected rather than compared, for the same reason.
+
+- **`RC=0`** - the pass landed. Break out and continue to Step 10.
+- **`RC=1`** - no pass since `REQUESTED_AT` and no completion comment for the post-push head. Inspect the PR before overriding - do not treat this as a pass.
+- **`RC=3`** - `gh` or a response failed. That is a gate failure, not "no review": fix it and re-run.
+
+**This step's rhythm changed with the port.** The old inline poll waited 20 seconds between ticks and matched only `qodo` on the reviews leg. The script uses the skill's 10 seconds and matches both reviewer logins (`qodo-code-review`, `copilot-pull-request-reviewer`), so this step now also accepts a Copilot pass it would previously have ignored. That is intended: one implementation, not two.
 
 **Why not the persistent comment's `updated_at`?** It bumps when a re-review has *not* landed: the comment cycles through intermediate states during a pass, and Qodo also refreshes it outside passes entirely - on PR #80 it was edited 10 seconds after merge, with no `/agentic_review` posted and no completion comment, just permalinks refreshed to a head no pass had covered. `updated_at >= REQUESTED_AT` is corroborating evidence, never the gate; gating on it reports re-validations that never happened.
 
@@ -411,13 +389,25 @@ Expect 3-4 minutes per pass. Whichever shape lands, the "Code Review by Qodo" co
 phases:
   pr:
     reviews_addressed: [increment count]
+    # From Step 9.5's `wait-rereview`: `<head_sha> <detected_at>`, split on the
+    # space. Recorded as a pair so the pre-merge gate in phases/pr.md §5.0 can
+    # re-check the head the pass actually covered against the head being merged.
+    bot_rereview_head_sha: [first field of BOT_REREVIEW]
+    bot_rereview_at: [second field of BOT_REREVIEW]
 
 history:
   - timestamp: [ISO timestamp]
     action: review_addressed
     phase: pr
     details: "Addressed [count] review comments, pushed [commit SHA]"
+
+  - timestamp: [ISO timestamp]
+    action: bot_rereview_verified
+    phase: pr
+    details: "qodo-code-review re-reviewed [BOT_REREVIEW head] at [BOT_REREVIEW timestamp] after /agentic_review; [count] new findings."
 ```
+
+Write `bot_rereview_head_sha: "none"` - never a plausible-looking SHA - when Step 9.5 skipped the request (no bots installed) or the user approved proceeding while Qodo was billing-blocked, and say which in `details`. A head recorded without a pass behind it is exactly the drift this field exists to catch.
 
 ### Step 11: Re-check Review Status
 
