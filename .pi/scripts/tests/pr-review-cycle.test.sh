@@ -185,6 +185,108 @@ test_gh_call_hung_request_fails_closed_after_deadline() {
     || fail_test "the per-call deadline did not fire (took ${elapsed}s)" || return 1
 }
 
+# --- wait-review and the shared poll -------------------------------------- #
+
+wait_review() {
+  run_script wait-review --repo maxkulish/lok --pr 71 --timeout 0
+}
+
+test_wait_review_accepts_review_object_on_head() {
+  use_fixture wait_review_pass_review_object
+  wait_review
+  assert_rc 0 || return 1
+  assert_out "2026-09-10T10:05:00Z" || return 1
+}
+
+test_wait_review_accepts_qodo_completion_comment_naming_head() {
+  # A clean pass submits no review object at all; it announces itself by
+  # editing a persistent comment and posting a new completion comment naming
+  # the head (the PR #80 shape). A reviews-endpoint-only poll times out here.
+  use_fixture wait_review_pass_completion_comment
+  wait_review
+  assert_rc 0 || return 1
+  assert_out "2026-09-10T10:06:00Z" || return 1
+}
+
+test_wait_review_rejects_review_on_older_commit() {
+  use_fixture wait_review_stale_commit
+  wait_review
+  assert_rc 1 || return 1
+  assert_out_empty || return 1
+}
+
+test_wait_review_rejects_completion_comment_naming_other_sha() {
+  use_fixture wait_review_completion_other_sha
+  wait_review
+  assert_rc 1 || return 1
+  assert_out_empty || return 1
+}
+
+test_wait_review_rejects_pass_before_since() {
+  use_fixture wait_review_pass_before_since
+  wait_review
+  assert_rc 1 || return 1
+  assert_out_empty || return 1
+}
+
+test_wait_review_ignores_persistent_comment_updated_at() {
+  # updated_at bumps mid-pass and on post-merge permalink refreshes, so a fresh
+  # updated_at is not evidence of a pass.
+  use_fixture wait_review_persistent_comment_updated_at
+  wait_review
+  assert_rc 1 || return 1
+}
+
+test_wait_review_gates_on_created_at_not_server_since() {
+  # The fake ignores ?since=, so this pins that the jq created_at comparison - # not the query string - is the gate.
+  use_fixture wait_review_old_comment_ignored_by_created_at
+  wait_review
+  assert_rc 1 || return 1
+}
+
+test_wait_review_accepts_pass_exactly_at_since() {
+  # Pins the inclusive >= boundary: a pass and the request in the same second
+  # must still count.
+  use_fixture wait_review_pass_exactly_at_since
+  wait_review
+  assert_rc 0 || return 1
+  assert_out "2026-09-10T10:00:00Z" || return 1
+}
+
+test_wait_review_times_out_closed() {
+  use_fixture wait_review_timeout
+  run_script wait-review --repo maxkulish/lok --pr 71 --timeout 0
+  assert_rc 1 || return 1
+  assert_out_empty || return 1
+}
+
+test_wait_review_fails_closed_when_pulls_lookup_errors() {
+  use_fixture wait_review_pulls_error
+  wait_review
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_wait_review_fails_closed_on_malformed_head_from_lookup() {
+  use_fixture wait_review_malformed_head
+  wait_review
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_wait_review_call_deadline_respects_overall_timeout() {
+  # .pi/lessons/timeout-layering.md L1: the per-call deadline must be clamped to
+  # the caller's remaining budget. With a hung call and a 3s overall timeout,
+  # an unclamped 30s per-call deadline would keep the gate blocked for 30s.
+  use_fixture wait_review_hang
+  start=$(date -u +%s)
+  run_script wait-review --repo maxkulish/lok --pr 71 --timeout 3
+  elapsed=$(( $(date -u +%s) - start ))
+  [ "$RC" -ne 0 ] || fail_test "a hung call must not report a pass" || return 1
+  [ "$elapsed" -lt 20 ] \
+    || fail_test "the inner deadline outlived the outer timeout (took ${elapsed}s)" || return 1
+}
+
 # --- the fake gh is itself a guard ---------------------------------------
 
 test_fake_gh_rejects_jq_and_arg_flags() {

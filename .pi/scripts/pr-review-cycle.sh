@@ -91,6 +91,32 @@ require_pr() {
   PR=$p
 }
 
+require_timeout() {
+  n=${1:-}
+  case "$n" in
+    ''|*[!0-9]*) fail "$EX_INVALID" "invalid --timeout '$n' (want whole seconds)" ;;
+    *) : ;;
+  esac
+  TIMEOUT=$n
+}
+
+# --- required-field extraction ------------------------------------------
+
+jq_field() {
+  # jq_field <json> <jq-expression> - sets JQ_VALUE from the response.
+  #
+  # Fails closed with EX_UPSTREAM when jq errors (malformed JSON) or the field
+  # is absent or null. A missing field must never read as "nothing to see":
+  # that is the shape the `null` bound in PR #71 took to hide every comment.
+  src=$1
+  expr=$2
+  JQ_VALUE=$(printf '%s' "$src" | jq -r "$expr" 2>/dev/null)
+  rc=$?
+  if [ "$rc" -ne 0 ] || [ -z "$JQ_VALUE" ] || [ "$JQ_VALUE" = "null" ]; then
+    fail "$EX_UPSTREAM" "required field '$expr' is missing, null, or malformed in the API response"
+  fi
+}
+
 # --- gh plumbing ---------------------------------------------------------
 # The only place the script talks to `gh`. No status that matters is ever read
 # from a pipeline (.pi/lessons/pr-review-failures.md, docs/lessons/clo-625-l6).
@@ -151,12 +177,22 @@ gh_api() {
   # The watchdog checks the done-marker before signalling, so it can never
   # target a PID that has already been reaped.
   (
+    # Reset the inherited EXIT/INT/TERM cleanup trap first. A trapped signal is
+    # deferred until the current foreground command finishes, so an inherited
+    # trap would make this watchdog unkillable for the whole sleep and let a
+    # finished call block for the full deadline anyway.
+    #
+    # The redirects are load-bearing: gh_api runs inside a command substitution,
+    # and a background child that inherits that pipe keeps its write end open, so
+    # the caller would block on EOF until this sleep finished even though the
+    # call returned immediately.
+    trap - EXIT INT TERM
     sleep "$limit"
     if [ ! -f "$done_file" ]; then
       : > "$timed_out"
       kill -TERM "$gh_pid" 2>/dev/null
     fi
-  ) &
+  ) >/dev/null 2>&1 &
   watchdog_pid=$!
 
   wait "$gh_pid"
@@ -193,6 +229,98 @@ gh_capture() {
   rc=$?
   [ "$rc" -eq 0 ] || exit "$rc"
   return 0
+}
+
+pr_lookup() {
+  # Sets PR_HEAD and PR_CREATED_AT from pulls/<PR>. Both are validated here, so
+  # a failed or partial lookup can never become a vacuous comparison downstream
+  # (an empty head makes `contains($h)` true for any completion comment).
+  gh_capture "repos/$REPO/pulls/$PR"
+  jq_field "$GH_BODY" '.head.sha'
+  PR_HEAD=$JQ_VALUE
+  jq_field "$GH_BODY" '.created_at'
+  PR_CREATED_AT=$JQ_VALUE
+  printf '%s' "$PR_HEAD" | grep -qE '^[0-9a-f]{40}$' \
+    || fail "$EX_UPSTREAM" "pulls/$PR returned a head.sha that is not 40-hex ('$PR_HEAD')"
+  printf '%s' "$PR_CREATED_AT" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' \
+    || fail "$EX_UPSTREAM" "pulls/$PR returned a created_at that is not whole-second UTC ('$PR_CREATED_AT')"
+}
+
+poll_for_pass() {
+  # poll_for_pass <head_sha> <since_iso8601> <timeout_seconds>
+  #
+  # Prints the detection timestamp and returns EX_OK when a reviewer pass is
+  # observed on <head_sha> no earlier than <since>; returns EX_NEGATIVE on
+  # timeout. Ports the skill's wait_for_bot_review, including both delivery
+  # shapes:
+  #
+  #   - a review object on <head_sha> from a reviewer bot whose submitted_at
+  #     is >= <since> (a pass that carried inline findings);
+  #   - qodo only: a completion comment with created_at >= <since> whose body
+  #     says "was updated up to the latest commit" and names <head_sha>
+  #     (a clean pass, which submits no review object at all).
+  #
+  # The persistent review comment's updated_at is deliberately not a condition:
+  # it bumps mid-pass and on post-merge permalink refreshes, so gating on it
+  # would pass runs that never happened.
+  head=$1
+  since=$2
+  limit=$3
+
+  printf '%s' "$head" | grep -qE '^[0-9a-f]{40}$' \
+    || fail "$EX_INVALID" "head '$head' is not a 40-hex SHA - the pulls lookup failed?"
+  [ -n "$since" ] \
+    || fail "$EX_INVALID" "empty since-bound - the request POST (or PR lookup) failed?"
+
+  re=$(reviewer_re)
+  qre=$(qodo_re)
+  deadline=$(( $(date -u +%s) + limit ))
+  first=1
+
+  while :; do
+    now=$(date -u +%s)
+    # The first tick always runs, so `--timeout 0` still consults the API once
+    # and reports a real negative verdict instead of skipping the check.
+    if [ "$first" -eq 0 ] && [ "$now" -ge "$deadline" ]; then
+      return "$EX_NEGATIVE"
+    fi
+    remaining=$(( deadline - now ))
+    [ "$remaining" -ge 0 ] || remaining=0
+    CALL_BUDGET=$remaining
+
+    gh_capture "repos/$REPO/pulls/$PR/reviews" --paginate --slurp
+    seen=$(printf '%s' "$GH_BODY" | jq -r --arg h "$head" --arg since "$since" --arg re "$re" '
+      [.[][]
+       | select(.commit_id == $h)
+       | select(.user.login | test($re))
+       | select(.submitted_at >= $since)
+       | .submitted_at] | last // empty')
+    if [ -n "$seen" ]; then
+      printf '%s\n' "$seen"
+      return "$EX_OK"
+    fi
+
+    # ?since= is a server-side prefilter on updated_at (never earlier than
+    # created_at, so it cannot drop a comment the created_at gate below would
+    # accept); it keeps each tick from re-downloading the whole history. The jq
+    # comparison is the gate, never the query string.
+    gh_capture "repos/$REPO/issues/$PR/comments?since=$since&per_page=100" --paginate --slurp
+    seen=$(printf '%s' "$GH_BODY" | jq -r --arg h "$head" --arg since "$since" --arg re "$qre" '
+      [.[][]
+       | select(.user.login | test($re))
+       | select(.created_at >= $since)
+       | select(.body | test("was updated up to the latest commit"))
+       | select(.body | contains($h))
+       | .created_at] | last // empty')
+    if [ -n "$seen" ]; then
+      printf '%s\n' "$seen"
+      return "$EX_OK"
+    fi
+
+    first=0
+    [ "$(date -u +%s)" -lt "$deadline" ] || return "$EX_NEGATIVE"
+    sleep "${PR_REVIEW_CYCLE_POLL_INTERVAL:-10}"
+  done
 }
 
 # --- subcommands ---------------------------------------------------------
@@ -263,7 +391,27 @@ cmd_probe_bots() {
 }
 
 cmd_wait_review() {
-  fail "$EX_UPSTREAM" "wait-review is not implemented in this revision"
+  REPO=""; PR=""; TIMEOUT=600
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo)    require_repo    "${2:-}"; shift 2 ;;
+      --pr)      require_pr      "${2:-}"; shift 2 ;;
+      --timeout) require_timeout "${2:-}"; shift 2 ;;
+      -h|--help) usage; exit "$EX_OK" ;;
+      *) fail "$EX_INVALID" "unexpected argument '$1'" ;;
+    esac
+  done
+  [ -n "$REPO" ] || fail "$EX_INVALID" "--repo is required"
+  [ -n "$PR" ]   || fail "$EX_INVALID" "--pr is required"
+
+  # Head and since-bound both come from the PR itself: the first wait covers a
+  # pass from PR open, so the bound is the PR's created_at.
+  pr_lookup
+  at=$(poll_for_pass "$PR_HEAD" "$PR_CREATED_AT" "$TIMEOUT")
+  rc=$?
+  [ "$rc" -eq 0 ] || exit "$rc"
+  printf '%s\n' "$at"
+  exit "$EX_OK"
 }
 
 cmd_request_rereview() {

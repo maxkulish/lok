@@ -22,7 +22,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T08:18:08.644Z'
+  updated_at: '2026-09-16T08:48:11.016Z'
 phases:
   discovery:
     status: complete
@@ -148,6 +148,7 @@ phases:
     status: pending
     commits:
       - b0d2a05
+      - 02f1623
   pr:
     status: pending
   complete:
@@ -234,5 +235,12 @@ history:
     details: >-
       ST1 landed: script skeleton with six subcommand parsers + validators, recording fake gh with a flag allowlist, and
       the test runner with bash/zsh call-site status-capture tests. Commit b0d2a05
+  - timestamp: '2026-09-16T08:48:11.016Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST2 landed: watchdog-based per-call gh deadline clamped to the outer budget, gh_api treating an empty body as
+      failure, and probe-bots (this PR's comments + last 10 PRs' reviews, explicit 'none', exit 4 on qodo billing
+      block). 9 tests green. Commit 02f1623
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested
