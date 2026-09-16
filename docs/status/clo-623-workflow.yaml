@@ -9,7 +9,24 @@ task_profile:
   has_data_model: false
   has_external_deps: false
   skip_probe: false
-pending_human_action: null
+pending_human_action:
+  context:
+    ci_run: https://github.com/maxkulish/lok/actions/runs/35094626969
+    gate: pr-review-cycle step 1a / phases/pr.md Step 4.3
+    head_sha: 6243a06538394f8f35adad23802faa354d9cb5e0
+    inline_comments: 0
+    pr_number: 115
+    pr_url: https://github.com/maxkulish/lok/pull/115
+    precedent: clo-632-workflow.yaml workflow_paused -> workflow_resumed
+    probe_bots_rc: 4
+    probe_bots_stdout: qodo-code-review[bot]
+    unresolved_threads: 0
+  message: >-
+    CLO-623 PR #115: qodo-code-review is billing-blocked on PR #115 (workspace out of credits; <!-- qodo:billing-blocked
+    -->), so no bot review will arrive. Approve proceeding without a bot re-review, or restore Qodo credits and re-run
+    the review cycle. Step 3 is clean: 0 inline comments, 0 unresolved threads.
+  since: '2026-09-16T12:20:00.000Z'
+  type: decision
 linear:
   team: Cloud-ai
   project: Lok
@@ -20,9 +37,9 @@ linear:
   priority: Medium
 workflow:
   current_phase: pr
-  status: active
+  status: paused
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T10:44:12.345Z'
+  updated_at: '2026-09-16T12:21:14.610Z'
 phases:
   discovery:
     status: complete
@@ -583,5 +600,56 @@ history:
       Ubuntu leg reports /usr/bin/sh -> dash, jq-1.7 and zsh 5.9, and the suite printed '74 test(s) matched, 0 failed'
       under dash - so the dash leg is now verified in CI as well as locally. The guard printed 'check-inline-gates: 5
       allowlisted line(s) exempted' then 'ok: no unexempted inline gate shapes'.
+  - timestamp: '2026-09-16T12:19:16.546Z'
+    action: negative_proof_captured
+    phase: pr
+    details: >-
+      ST9 negative proof part 2 complete with failing run URLs (docs/lessons/clo-638-msrv-gate-lessons.md L3 requires a
+      run URL, not a local command). Temporary commit b4a68a6 appended an unused assignment
+      (cicd_probe_unused_variable=1) to .pi/scripts/pr-review-cycle.sh. CI run 35086625178 (head b4a68a6) went red:
+      shell gates (ubuntu-latest) job 104762847372 failed at the shellcheck step with 'SC2034 (warning):
+      cicd_probe_unused_variable appears unused'; shell gates (macos-latest) job 104762847369 failed identically; CI
+      Gate job 104764620957 failed at 'Assert every required job succeeded' with build-and-test: success,
+      library-boundary: success, msrv-check: success, shell-gates: failure -> exit 1, confirming CI Gate is red BECAUSE
+      OF shell-gates and not another leg. Reverted in 6243a06; CI run 35094626969 (head 6243a06) is fully green
+      including both shell gates and CI Gate, so both go green again.
+  - timestamp: '2026-09-16T12:19:18.834Z'
+    action: dogfood_probes_run
+    phase: pr
+    details: >-
+      ST10 dogfood run, first live exercise of the rewritten skill from the repo root on this task's own PR #115 (head
+      6243a06): probe-bots --repo maxkulish/lok --pr 115 -> stdout 'qodo-code-review[bot]' with rc 4, reporting
+      'qodo-code-review is billing-blocked on PR #115 (workspace out of credits)' from the PR's own <!--
+      qodo:billing-blocked --> comment; unresolved-threads -> rc 0 with empty stdout (no unresolved threads);
+      new-comments -> rc 0, bound printed to stderr as 2026-09-16T10:37:43Z (the PR created_at, correctly the fallback
+      because the author has not replied yet). This also settles the untested design assumption that agents invoke the
+      script from the repo/worktree root - the relative path resolved and every subcommand reached its gate.
+  - timestamp: '2026-09-16T12:19:39.184Z'
+    action: bot_review_billing_blocked
+    phase: pr
+    details: >-
+      Step 4.3 / skill 1a: probe-bots --repo maxkulish/lok --pr 115 returned rc 4 with stdout 'qodo-code-review[bot]'.
+      The PR's own issue comment (created 2026-09-16T10:37:47Z, by qodo-code-review) contains the <!--
+      qodo:billing-blocked --> marker and reads 'Qodo reviews are paused because your workspace is out of credits.' No
+      bot review is coming and no amount of polling changes that (the PR #100 failure mode cost 20 minutes), so no wait
+      was started. Per the skill's billing-blocked branch the user decides whether to proceed without a bot review;
+      bot_review_wait_completed is deliberately NOT recorded yet. Step 3 already ran on the current head:
+      unresolved-threads rc 0 (empty), new-comments rc 0 (empty, bound 2026-09-16T10:37:43Z = PR created_at fallback),
+      so there are currently zero inline comments and zero unresolved threads to address.
+  - timestamp: '2026-09-16T12:21:14.610Z'
+    action: workflow_paused
+    phase: pr
+    details: >-
+      pr-review-cycle step 1a / phases/pr.md Step 4.3: probe-bots --repo maxkulish/lok --pr 115 exited 4 and printed
+      'qodo-code-review[bot]' - qodo-code-review posted <!-- qodo:billing-blocked --> on PR #115 at 2026-09-16T10:37:47Z
+      ('Qodo reviews are paused because your workspace is out of credits'). No review is coming and polling cannot
+      change that, so no wait was started. The workflow schema permits bot_rereview_head_sha: 'none' ONLY when 'Qodo is
+      billing-blocked AND THE USER APPROVED proceeding'; no approval has been given, so bot_review_wait_completed is
+      deliberately NOT recorded and the phase cannot exit. Paused for user guidance exactly as clo-632 did at the same
+      gate (that task's workflow_paused -> workflow_resumed 'User chose proceed' sequence is the precedent). Step 3 is
+      already clean on head 6243a06: unresolved-threads rc 0 (empty), new-comments rc 0 (empty; bound
+      2026-09-16T10:37:43Z = PR created_at fallback). CI run 35094626969 on 6243a06 is fully green and the PR reports
+      CLEAN/MERGEABLE. Resume with 'proceed' to skip the bot review while Qodo is billing-blocked, or restore Qodo
+      credits and re-run the review cycle.
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested
