@@ -16,6 +16,10 @@ set -u
 
 PROG=pr-review-cycle
 
+# The re-review request command. `/agentic_review` is Qodo's configured trigger;
+# `/review` is the legacy PR-Agent name and is not wired up here.
+REQUEST_REREVIEW_COMMAND='/agentic_review'
+
 # --- exit codes (design: "Public API surface") ---------------------------
 # The published contract the markdown call sites switch on. Rendered through
 # usage() so the table cannot drift from the implementation.
@@ -98,6 +102,33 @@ require_timeout() {
     *) : ;;
   esac
   TIMEOUT=$n
+}
+
+require_since() {
+  # Only the whole-second UTC shape these endpoints actually return is accepted.
+  # Chronological string comparison in jq is valid within that shape, and only
+  # within that shape - and it is the comparison the gate depends on.
+  t=${1:-}
+  printf '%s' "$t" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' \
+    || fail "$EX_INVALID" "invalid --since '$t' (want YYYY-MM-DDTHH:MM:SSZ from the request POST response)"
+  SINCE=$t
+}
+
+require_sha40() {
+  h=${1:-}
+  printf '%s' "$h" | grep -qE '^[0-9a-f]{40}$' \
+    || fail "$EX_INVALID" "invalid --head '$h' (want a 40-hex SHA)"
+  HEAD=$h
+}
+
+require_installed_bots() {
+  # The `${INSTALLED_BOTS+x}` guard, ported. `probe-bots` must have run in the
+  # same shell and its result exported. An unset list is not "no bots": with it
+  # merely unset the qodo grep finds nothing, the else-branch fires, and the run
+  # records a clean status for a re-review that never happened.
+  if [ -z "${INSTALLED_BOTS+x}" ]; then
+    fail "$EX_NEGATIVE" "GATE FAIL: INSTALLED_BOTS is unset - run \`pr-review-cycle.sh probe-bots\` first and export its output"
+  fi
 }
 
 # --- required-field extraction ------------------------------------------
@@ -415,11 +446,75 @@ cmd_wait_review() {
 }
 
 cmd_request_rereview() {
-  fail "$EX_UPSTREAM" "request-rereview is not implemented in this revision"
+  REPO=""; PR=""; HEAD=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo) require_repo   "${2:-}"; shift 2 ;;
+      --pr)   require_pr     "${2:-}"; shift 2 ;;
+      --head) require_sha40  "${2:-}"; shift 2 ;;
+      -h|--help) usage; exit "$EX_OK" ;;
+      *) fail "$EX_INVALID" "unexpected argument '$1'" ;;
+    esac
+  done
+  [ -n "$REPO" ] || fail "$EX_INVALID" "--repo is required"
+  [ -n "$PR" ]   || fail "$EX_INVALID" "--pr is required"
+  require_installed_bots
+
+  # Qodo does not re-review on push (handle_push_trigger is False), so without
+  # an explicit request its findings stay pinned to the pre-fix commit. Skip the
+  # request entirely when there is nothing to ask: posting into a repo with no
+  # Qodo app leaves a stray comment and then fails the gate ten minutes later,
+  # and when Qodo is billing-blocked the request only refreshes the notice.
+  if [ "${QODO_BILLING_BLOCKED:-0}" = "1" ] \
+     || ! printf '%s\n' "$INSTALLED_BOTS" | grep -qi qodo; then
+    printf 'none\n'
+    exit "$EX_OK"
+  fi
+
+  if [ -z "$HEAD" ]; then
+    pr_lookup
+    HEAD=$PR_HEAD
+  fi
+
+  # created_at comes from the POST response, never from local `date`: the poll
+  # compares it against submitted_at/created_at, which come from GitHub's clock,
+  # and a fast local clock would widen the window past a genuine pass.
+  gh_capture "repos/$REPO/issues/$PR/comments" -X POST -f "body=$REQUEST_REREVIEW_COMMAND"
+  jq_field "$GH_BODY" '.created_at'
+  printf '%s\n' "$JQ_VALUE"
+  exit "$EX_OK"
 }
 
 cmd_wait_rereview() {
-  fail "$EX_UPSTREAM" "wait-rereview is not implemented in this revision"
+  REPO=""; PR=""; SINCE=""; HEAD=""; TIMEOUT=600
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo)    require_repo    "${2:-}"; shift 2 ;;
+      --pr)      require_pr      "${2:-}"; shift 2 ;;
+      --since)   require_since   "${2:-}"; shift 2 ;;
+      --head)    require_sha40   "${2:-}"; shift 2 ;;
+      --timeout) require_timeout "${2:-}"; shift 2 ;;
+      -h|--help) usage; exit "$EX_OK" ;;
+      *) fail "$EX_INVALID" "unexpected argument '$1'" ;;
+    esac
+  done
+  [ -n "$REPO" ]  || fail "$EX_INVALID" "--repo is required"
+  [ -n "$PR" ]    || fail "$EX_INVALID" "--pr is required"
+  # A missing bound would let any prior pass on the same head satisfy the poll:
+  # re-running after a failed POST would report re-validation that never
+  # happened. The whole point of this subcommand is the exogenous since-bound.
+  [ -n "$SINCE" ] || fail "$EX_INVALID" "--since is required (the POST response's created_at)"
+
+  if [ -z "$HEAD" ]; then
+    pr_lookup
+    HEAD=$PR_HEAD
+  fi
+
+  at=$(poll_for_pass "$HEAD" "$SINCE" "$TIMEOUT")
+  rc=$?
+  [ "$rc" -eq 0 ] || exit "$rc"
+  printf '%s\n' "$at"
+  exit "$EX_OK"
 }
 
 cmd_new_comments() {

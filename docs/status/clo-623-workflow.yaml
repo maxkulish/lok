@@ -22,7 +22,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T08:48:11.016Z'
+  updated_at: '2026-09-16T09:44:12.945Z'
 phases:
   discovery:
     status: complete
@@ -149,6 +149,7 @@ phases:
     commits:
       - b0d2a05
       - 02f1623
+      - c60c21d
   pr:
     status: pending
   complete:
@@ -242,5 +243,13 @@ history:
       ST2 landed: watchdog-based per-call gh deadline clamped to the outer budget, gh_api treating an empty body as
       failure, and probe-bots (this PR's comments + last 10 PRs' reviews, explicit 'none', exit 4 on qodo billing
       block). 9 tests green. Commit 02f1623
+  - timestamp: '2026-09-16T09:44:12.945Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST3 landed: pr_lookup (validated head.sha + created_at), poll_for_pass (review-object and qodo completion-comment
+      shapes, inclusive >= bound, updated_at deliberately not a gate), wait-review subcommand. 12 new tests. Two
+      watchdog bugs found by the new timing test: inherited TERM trap made the watchdog unkillable, and inherited
+      command-substitution pipe made every call block the full deadline (suite 23m36s -> 3.4s). Commit c60c21d
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested

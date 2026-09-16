@@ -287,6 +287,112 @@ test_wait_review_call_deadline_respects_overall_timeout() {
     || fail_test "the inner deadline outlived the outer timeout (took ${elapsed}s)" || return 1
 }
 
+# --- request-rereview / wait-rereview -------------------------------------
+
+# request-rereview reads the installed-bot list from the environment, exactly as
+# the skill's `INSTALLED_BOTS` does, so the port is a mechanical replacement.
+with_bots() {
+  INSTALLED_BOTS=$1
+  export INSTALLED_BOTS
+}
+
+test_request_rereview_posts_agentic_review_and_returns_post_created_at() {
+  use_fixture request_rereview_ok
+  with_bots qodo-code-review
+  run_script request-rereview --repo maxkulish/lok --pr 71
+  assert_rc 0 || return 1
+  assert_out "2026-09-10T11:00:00Z" || return 1
+  case "$(calls)" in
+    *"-X POST"*) : ;;
+    *) fail_test "no POST was issued: $(calls)" || return 1 ;;
+  esac
+  case "$(calls)" in
+    *"body=/agentic_review"*) : ;;
+    *) fail_test "the request body was not /agentic_review: $(calls)" || return 1 ;;
+  esac
+}
+
+test_request_rereview_fails_closed_when_post_returns_no_created_at() {
+  # Never fall back to local `date`: the poll compares this bound against
+  # GitHub-clock timestamps, and a fast local clock would widen the window past
+  # a genuine pass.
+  use_fixture request_rereview_no_created_at
+  with_bots qodo-code-review
+  run_script request-rereview --repo maxkulish/lok --pr 71
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_request_rereview_requires_installed_bots() {
+  # The ${INSTALLED_BOTS+x} guard, ported: an unset list is not "no bots".
+  use_fixture request_rereview_ok
+  unset INSTALLED_BOTS
+  run_script request-rereview --repo maxkulish/lok --pr 71
+  assert_rc 1 || return 1
+  [ -z "$(calls)" ] || fail_test "the guard must fire before any API call" || return 1
+}
+
+test_request_rereview_prints_none_when_qodo_absent() {
+  use_fixture request_rereview_ok
+  with_bots copilot-pull-request-reviewer
+  run_script request-rereview --repo maxkulish/lok --pr 71
+  assert_rc 0 || return 1
+  assert_out "none" || return 1
+  case "$(calls)" in
+    *"-X POST"*) fail_test "nothing to ask: no POST should be issued" || return 1 ;;
+    *) : ;;
+  esac
+}
+
+test_request_rereview_rejects_malformed_head() {
+  use_fixture request_rereview_ok
+  with_bots qodo-code-review
+  run_script request-rereview --repo maxkulish/lok --pr 71 --head not-a-sha
+  assert_rc 2 || return 1
+}
+
+test_wait_rereview_accepts_pass_exactly_at_post_bound() {
+  use_fixture wait_rereview_boundary
+  run_script wait-rereview --repo maxkulish/lok --pr 71 \
+    --since 2026-09-10T11:00:00Z --timeout 0
+  assert_rc 0 || return 1
+  assert_out "2026-09-10T11:00:00Z" || return 1
+}
+
+test_wait_rereview_fails_closed_when_head_changes_mid_poll() {
+  # The caller captured the pre-push head; the pass landed on the pushed head.
+  # Reporting a pass here would record re-validation on a commit the bot never
+  # saw.
+  use_fixture wait_rereview_head_moved
+  run_script wait-rereview --repo maxkulish/lok --pr 71 \
+    --since 2026-09-10T11:00:00Z --head 1111111111111111111111111111111111111111 --timeout 0
+  assert_rc 1 || return 1
+  assert_out_empty || return 1
+}
+
+test_wait_rereview_requires_since() {
+  # An empty bound would compare every timestamp against "" and pass on any
+  # prior run's review of the same head.
+  use_fixture wait_rereview_timeout
+  run_script wait-rereview --repo maxkulish/lok --pr 71 --timeout 0
+  assert_rc 2 || return 1
+  [ -z "$(calls)" ] || fail_test "a missing bound must fail before any API call" || return 1
+}
+
+test_wait_rereview_rejects_malformed_since() {
+  use_fixture wait_rereview_timeout
+  run_script wait-rereview --repo maxkulish/lok --pr 71 --since 'yesterday' --timeout 0
+  assert_rc 2 || return 1
+}
+
+test_wait_rereview_times_out_closed() {
+  use_fixture wait_rereview_timeout
+  run_script wait-rereview --repo maxkulish/lok --pr 71 \
+    --since 2026-09-10T11:00:00Z --timeout 0
+  assert_rc 1 || return 1
+  assert_out_empty || return 1
+}
+
 # --- the fake gh is itself a guard ---------------------------------------
 
 test_fake_gh_rejects_jq_and_arg_flags() {
