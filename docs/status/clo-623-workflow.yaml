@@ -22,7 +22,7 @@ workflow:
   current_phase: implement
   status: active
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T10:12:37.675Z'
+  updated_at: '2026-09-16T10:15:24.395Z'
 phases:
   discovery:
     status: complete
@@ -156,6 +156,7 @@ phases:
       - e71e8fe
       - 0bad64b
       - 815d933
+      - 554bff2
   pr:
     status: pending
   complete:
@@ -305,5 +306,21 @@ history:
       skip/billing-blocked paths. Acceptance: rg 'wait_for_bot_review|--slurp|--paginate --jq' over both files returns
       no matches. 5 display-only --paginate fetches remain in /pr:review (Step 3, Qodo and Copilot reference sections) -
       not gate logic, to be exempted in the ST9 allowlist. Commit 815d933.
+  - timestamp: '2026-09-16T10:15:24.395Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST9 landed: .github/workflows/ci.yml shell-gates job + .pi/scripts/tests/check-inline-gates.sh +
+      inline-gate-allowlist.txt + 3 guard self-tests (60 tests total, 0 failed). Guard scans the design's ten banned
+      EREs, prints offending lines, exits 1; exemptions are one ERE + rationale per line in the allowlist and the guard
+      reports '5 allowlisted line(s) exempted' rather than passing quietly. Ban list lives in the guard and `--patterns`
+      enumerates it so the self-test replays the real list; each row carries an example line because a pattern's own
+      spelling is not a valid probe. shell-gates: ubuntu-latest + macos-latest, no paths: filter (clo-625-l2),
+      shellcheck over 4 shell files, suite, guard as its own step; wired into ci-gate's needs AND its assertion loop
+      (the loop only checks listed jobs, so needs alone would not fail CI Gate). Local negative proofs done: appended
+      SC2034 -> shellcheck rc=1; appended DEADLINE= to a skill copy -> guard rc=1 naming line 645; shell-gates:failure
+      pair -> assertion loop rc=1. CI half of the negative proof deferred to ST10 (needs a failing run URL; CI does not
+      run this branch until the PR exists, and opening one earlier violates Step 4.6) - recorded in the plan per
+      clo-638-l3. Commit 554bff2.
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested

@@ -119,21 +119,24 @@ test_probe_bots_reports_qodo_from_current_pr_comments() {
   use_fixture probe_bots_qodo_current_pr
   probe_bots
   assert_rc 0 || return 1
-  assert_out "qodo-code-review" || return 1
+  # The API's spelling, `[bot]` suffix included: this is what probe-bots really
+  # prints, and the fixture carries it so the suite catches the `--bots`
+  # comparison regressing back to an exact match.
+  assert_out "qodo-code-review[bot]" || return 1
 }
 
 test_probe_bots_reports_bot_from_prior_pr_reviews() {
   use_fixture probe_bots_qodo_prior_pr
   probe_bots
   assert_rc 0 || return 1
-  assert_out "qodo-code-review" || return 1
+  assert_out "qodo-code-review[bot]" || return 1
 }
 
 test_probe_bots_joins_multiple_logins_with_commas() {
   use_fixture probe_bots_two_bots
   probe_bots
   assert_rc 0 || return 1
-  assert_out "copilot-pull-request-reviewer,qodo-code-review" || return 1
+  assert_out "copilot-pull-request-reviewer[bot],qodo-code-review[bot]" || return 1
 }
 
 test_probe_bots_prints_none_when_no_bot_activity() {
@@ -161,7 +164,7 @@ test_probe_bots_exits_4_when_qodo_billing_blocked() {
   use_fixture probe_bots_billing_blocked
   probe_bots
   assert_rc 4 || return 1
-  assert_out "qodo-code-review" || return 1
+  assert_out "qodo-code-review[bot]" || return 1
 }
 
 test_probe_bots_rejects_missing_pr_before_any_api_call() {
@@ -354,6 +357,42 @@ test_request_rereview_accepts_a_multi_bot_list() {
   assert_out "2026-09-10T11:00:00Z" || return 1
 }
 
+# The round-trip that matters: whatever `probe-bots` prints must be accepted
+# verbatim as `--bots`. It printed `qodo-code-review[bot]` against real PRs on
+# 2026-09-16 while every fixture spelled the login bare, so the two were only
+# ever tested apart - and an exact comparison rejected the joined pair.
+test_request_rereview_accepts_probe_bots_output_verbatim() {
+  use_fixture probe_bots_qodo_current_pr
+  probe_bots
+  assert_rc 0 || return 1
+  assert_out "qodo-code-review[bot]" || return 1
+
+  use_fixture request_rereview_ok
+  run_script request-rereview --repo maxkulish/lok --pr 71 --bots "$OUT"
+  assert_rc 0 || return 1
+  assert_out "2026-09-10T11:00:00Z" || return 1
+  case "$(calls)" in
+    *"body=/agentic_review"*) : ;;
+    *) fail_test "no /agentic_review POST: $(calls)" || return 1 ;;
+  esac
+}
+
+test_request_rereview_accepts_bot_suffix_on_any_entry() {
+  use_fixture request_rereview_ok
+  run_script request-rereview --repo maxkulish/lok --pr 71 \
+    --bots "copilot-pull-request-reviewer[bot],qodo-code-review[bot]"
+  assert_rc 0 || return 1
+}
+
+test_request_rereview_rejects_a_malformed_bot_entry() {
+  # The suffix is normalised, not ignored: a login that is still not a login
+  # after stripping is rejected rather than silently dropped from the list.
+  use_fixture request_rereview_ok
+  run_script request-rereview --repo maxkulish/lok --pr 71 --bots 'qodo code review'
+  assert_rc 2 || return 1
+  [ -z "$(calls)" ] || fail_test "the guard must fire before any API call" || return 1
+}
+
 test_request_rereview_rejects_malformed_head() {
   use_fixture request_rereview_ok
   run_script request-rereview --repo maxkulish/lok --pr 71 \
@@ -428,7 +467,7 @@ test_new_comments_reports_comments_after_the_bound() {
   [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" = "1" ] \
     || fail_test "expected exactly one object: $OUT" || return 1
   case "$OUT" in
-    *'"user":"qodo-code-review"'*) : ;;
+    *'"user":"qodo-code-review[bot]"'*) : ;;
     *) fail_test "body should be flat JSON with a string user: $OUT" || return 1 ;;
   esac
 }
@@ -514,7 +553,7 @@ test_unresolved_threads_reports_unresolved_threads() {
   case "$OUT" in *'"path":"src/main.rs"'*) : ;; *) fail_test "path missing: $OUT" || return 1 ;; esac
   case "$OUT" in *'"is_outdated":false'*) : ;; *) fail_test "is_outdated missing: $OUT" || return 1 ;; esac
   case "$OUT" in
-    *'"latest_author":"qodo-code-review"'*) : ;;
+    *'"latest_author":"qodo-code-review[bot]"'*) : ;;
     *) fail_test "latest_author missing: $OUT" || return 1 ;;
   esac
   case "$OUT" in *'off by one'*) : ;; *) fail_test "body missing: $OUT" || return 1 ;; esac

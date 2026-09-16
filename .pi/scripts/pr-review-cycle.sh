@@ -152,12 +152,21 @@ require_bots() {
   # shell variable: subcommands read no caller state, so the installed-bot
   # verdict has to arrive as an argument. An unset variable could be silently
   # read as "no bots"; an empty or absent argument cannot.
+  # The REST and GraphQL APIs report a GitHub App's login with a `[bot]` suffix
+  # (`qodo-code-review[bot]`), while a user account has none. probe-bots prints
+  # whatever the API returned and that value is passed straight back in here as
+  # `--bots`, so the suffix is stripped once, on the way in. Comparing the raw
+  # value against `qodo-code-review` rejects exactly the input this flag exists
+  # to carry - found by running probe-bots against PR #89 on 2026-09-16, whose
+  # real answer is `qodo-code-review[bot]`, after the whole suite had been green
+  # against fixtures that spelled every login bare.
   b=${1:-}
   [ -n "$b" ] \
     || fail "$EX_INVALID" "invalid --bots '' (want a comma-separated login list or 'none')"
   if [ "$b" != "none" ]; then
-    printf '%s' "$b" | grep -qE '^[A-Za-z0-9-]+(,[A-Za-z0-9-]+)*$' \
+    printf '%s' "$b" | grep -qE '^[A-Za-z0-9-]+(\[bot\])?(,[A-Za-z0-9-]+(\[bot\])?)*$' \
       || fail "$EX_INVALID" "invalid --bots '$b' (want a comma-separated login list or 'none')"
+    b=$(printf '%s' "$b" | sed 's/\[bot\]//g')
   fi
   BOTS=$b
 }

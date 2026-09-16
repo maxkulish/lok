@@ -1,1 +1,1 @@
-{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"PRRT_c","isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"qodo-code-review"},"body":"x"}]}}]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"PRRT_c","isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"qodo-code-review[bot]"},"body":"x"}]}}]}}}}}
