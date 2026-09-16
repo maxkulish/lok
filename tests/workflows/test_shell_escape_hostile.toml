@@ -1,0 +1,59 @@
+name = "test-shell-escape-hostile"
+description = "Prove hostile step output remains data when used in shell fields"
+
+[[steps]]
+name = "produce"
+shell = '''
+: "${LOK_TEST_MARKER_DIR:?}" "${LOK_TEST_OUT_DIR:?}"
+cat <<'LOK_TEST_PAYLOAD'
+'; touch "$LOK_TEST_MARKER_DIR/quote"; '
+`touch "$LOK_TEST_MARKER_DIR/backtick"`
+$(touch "$LOK_TEST_MARKER_DIR/command-substitution")
+; touch "$LOK_TEST_MARKER_DIR/semicolon"
+ENDOLLAMA
+touch "$LOK_TEST_MARKER_DIR/after-ENDOLLAMA"
+ENDFALLBACK
+touch "$LOK_TEST_MARKER_DIR/after-ENDFALLBACK"
+ENDCLAUDE
+touch "$LOK_TEST_MARKER_DIR/after-ENDCLAUDE"
+ENDSYNTH
+touch "$LOK_TEST_MARKER_DIR/after-ENDSYNTH"
+LOKEOF
+touch "$LOK_TEST_MARKER_DIR/after-LOKEOF"
+EOF
+touch "$LOK_TEST_MARKER_DIR/after-EOF"
+LOK_WF_CODEX_OUTPUT_EOF
+touch "$LOK_TEST_MARKER_DIR/after-LOK_WF_CODEX_OUTPUT_EOF"
+LOK_WF_SYNTH_OUTPUT_EOF
+touch "$LOK_TEST_MARKER_DIR/after-LOK_WF_SYNTH_OUTPUT_EOF"
+LOK_WF_FALLBACK_OUTPUT_EOF
+touch "$LOK_TEST_MARKER_DIR/after-LOK_WF_FALLBACK_OUTPUT_EOF"
+LOK_TEST_PAYLOAD
+'''
+
+[[steps]]
+name = "write_file"
+depends_on = ["produce"]
+shell = '''
+: "${LOK_TEST_MARKER_DIR:?}" "${LOK_TEST_OUT_DIR:?}"
+printf '%s\n' {{ steps.produce.output | shell_escape }} > "$LOK_TEST_OUT_DIR/written.txt"
+'''
+
+[[steps]]
+name = "compose"
+depends_on = ["write_file"]
+shell = '''
+: "${LOK_TEST_MARKER_DIR:?}" "${LOK_TEST_OUT_DIR:?}"
+VALUE={{ steps.produce.output | shell_escape }}
+printf 'Header\n\n%s\n' "$VALUE" > "$LOK_TEST_OUT_DIR/composed.txt"
+'''
+
+[[steps]]
+name = "pipe"
+depends_on = ["compose"]
+shell = '''
+: "${LOK_TEST_MARKER_DIR:?}" "${LOK_TEST_OUT_DIR:?}"
+if printf '%s\n' {{ steps.produce.output | shell_escape }} | grep -qx 'ENDSYNTH'; then
+  echo LOK_TEST_DELIMITER_IS_DATA
+fi
+'''

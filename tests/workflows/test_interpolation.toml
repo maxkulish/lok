@@ -7,10 +7,10 @@ shell = "echo 'hello from step1'"
 
 [[steps]]
 name = "step2"
-shell = "echo 'step1 said: {{ steps.step1.output }}'"
+shell = "printf 'step1 said: %s\\n' {{ steps.step1.output | shell_escape }}"
 depends_on = ["step1"]
 
 [[steps]]
 name = "step3"
-shell = "echo 'final: {{ steps.step2.output }}'"
+shell = "printf 'final: %s\\n' {{ steps.step2.output | shell_escape }}"
 depends_on = ["step2"]

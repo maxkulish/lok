@@ -3,15 +3,33 @@
 //! These tests use shell-only workflows to verify engine behavior
 //! without requiring LLM backends.
 
+use std::ffi::OsStr;
+use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 fn run_workflow(workflow_path: &str) -> (bool, String) {
-    let output = Command::new("cargo")
-        .args(["run", "--quiet", "--bin", "lok", "--", "run", workflow_path])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
-        .expect("Failed to execute lok");
+    run_workflow_with_env(Path::new(workflow_path), &[])
+}
 
+fn run_workflow_with_env(workflow_path: &Path, envs: &[(&str, &OsStr)]) -> (bool, String) {
+    let mut command = Command::new("cargo");
+    command
+        .args([
+            "run",
+            "--quiet",
+            "--bin",
+            "lok",
+            "--",
+            "run",
+            workflow_path.to_str().expect("workflow path is UTF-8"),
+        ])
+        .current_dir(env!("CARGO_MANIFEST_DIR"));
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+
+    let output = command.output().expect("Failed to execute lok");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let combined = format!("{}\n{}", stdout, stderr);
@@ -200,6 +218,78 @@ fn test_llm_validate_workflow() {
         "Summary step should run (min_deps_success met): {}",
         output
     );
+}
+
+#[test]
+fn test_shell_escape_positive_control_executes_payload() {
+    let marker_dir = tempfile::tempdir().expect("marker tempdir");
+    let marker = marker_dir.path().join("executed");
+    let payload = format!("$(touch \"{}\")", marker.display());
+    let command = format!("printf '%s\\n' {payload}");
+    let output = Command::new("sh")
+        .args(["-c", &command])
+        .output()
+        .expect("run positive control");
+    assert!(output.status.success());
+    assert!(marker.exists(), "positive control did not execute payload");
+}
+
+#[test]
+fn test_shell_escape_hostile_output_workflow() {
+    let marker_dir = tempfile::tempdir().expect("marker tempdir");
+    let output_dir = tempfile::tempdir().expect("output tempdir");
+    let workflow = Path::new("tests/workflows/test_shell_escape_hostile.toml");
+    let envs = [
+        ("LOK_TEST_MARKER_DIR", marker_dir.path().as_os_str()),
+        ("LOK_TEST_OUT_DIR", output_dir.path().as_os_str()),
+    ];
+
+    let (success, output) = run_workflow_with_env(workflow, &envs);
+    assert!(success, "Hostile workflow failed: {output}");
+    for step in ["write_file", "compose", "pipe"] {
+        assert!(
+            output.contains(&format!("[OK] {step}")),
+            "{step} did not run: {output}"
+        );
+    }
+    assert!(
+        output.contains("LOK_TEST_DELIMITER_IS_DATA"),
+        "delimiter control did not pass: {output}"
+    );
+    assert!(
+        fs::read_dir(marker_dir.path())
+            .expect("read marker directory")
+            .next()
+            .is_none(),
+        "hostile output executed a command"
+    );
+
+    let payload = r#"'; touch "$LOK_TEST_MARKER_DIR/quote"; '
+`touch "$LOK_TEST_MARKER_DIR/backtick"`
+$(touch "$LOK_TEST_MARKER_DIR/command-substitution")
+; touch "$LOK_TEST_MARKER_DIR/semicolon"
+ENDOLLAMA
+touch "$LOK_TEST_MARKER_DIR/after-ENDOLLAMA"
+ENDFALLBACK
+touch "$LOK_TEST_MARKER_DIR/after-ENDFALLBACK"
+ENDCLAUDE
+touch "$LOK_TEST_MARKER_DIR/after-ENDCLAUDE"
+ENDSYNTH
+touch "$LOK_TEST_MARKER_DIR/after-ENDSYNTH"
+LOKEOF
+touch "$LOK_TEST_MARKER_DIR/after-LOKEOF"
+EOF
+touch "$LOK_TEST_MARKER_DIR/after-EOF"
+LOK_WF_CODEX_OUTPUT_EOF
+touch "$LOK_TEST_MARKER_DIR/after-LOK_WF_CODEX_OUTPUT_EOF"
+LOK_WF_SYNTH_OUTPUT_EOF
+touch "$LOK_TEST_MARKER_DIR/after-LOK_WF_SYNTH_OUTPUT_EOF"
+LOK_WF_FALLBACK_OUTPUT_EOF
+touch "$LOK_TEST_MARKER_DIR/after-LOK_WF_FALLBACK_OUTPUT_EOF""#;
+    let written = fs::read_to_string(output_dir.path().join("written.txt")).expect("written file");
+    assert_eq!(written.trim_end_matches('\n'), payload);
+    let composed = fs::read_to_string(output_dir.path().join("composed.txt")).expect("composed file");
+    assert_eq!(composed, format!("Header\n\n{payload}\n"));
 }
 
 #[test]

@@ -13,7 +13,7 @@ name = "ollama_review"
 continue_on_error = true
 depends_on = ["health_check"]
 shell = """
-if echo '{{ steps.health_check.output }}' | grep -q 'ollama=false'; then
+if printf '%s\\n' {{ steps.health_check.output | shell_escape }} | grep -q 'ollama=false'; then
   exit 0
 fi
 OUTPUT="hello"
