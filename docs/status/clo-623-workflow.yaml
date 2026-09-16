@@ -22,7 +22,7 @@ workflow:
   current_phase: complete
   status: complete
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T13:36:06.810Z'
+  updated_at: '2026-09-16T13:44:51.523Z'
 phases:
   discovery:
     status: complete
@@ -310,6 +310,9 @@ phases:
       - >-
         L10 - Gate state must travel as an explicit argument, not an ambient shell variable (appended to
         .pi/lessons/pr-review-failures.md).
+    docs_pr_merge_commit: c1d9d46ff67340ec1b09d03865bb0c4207f544d1
+    docs_pr_number: 119
+    docs_pr_url: https://github.com/maxkulish/lok/pull/119
 history:
   - timestamp: '2026-09-16T07:45:44.278Z'
     action: workflow_started
@@ -757,5 +760,14 @@ history:
       phases.implement.assumption_outcomes, validation_fix_iteration_count 1, and the live-probe PR incident
       (request-rereview rejecting probe-bots' stdout). Not committed to main directly - rides in the post-merge docs PR
       (pi complete.md Step 5).
+  - timestamp: '2026-09-16T13:44:51.523Z'
+    action: docs_pr_merged
+    phase: complete
+    details: >-
+      Docs PR #119 merged (merge commit c1d9d46ff67340ec1b09d03865bb0c4207f544d1). Files:
+      docs/status/clo-623-workflow.yaml (lessons_extracted), .pi/lessons/clo-623-pr-review-cycle-tested-lessons.md (new,
+      L1-L3), .pi/lessons/pr-review-failures.md (appended L10). This is the pi complete.md Step 5 post-merge docs PR;
+      the aggregation/status finalization rode in PR #118 (see finalize_pr_url). Recording it here required a third
+      small docs PR because main is protected and the field can only be written after #119 merged.
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested
