@@ -1,0 +1,355 @@
+task_id: clo-631
+task_type: development
+classification_reason: >-
+  Security remediation spans multiple workflow families, requires a trust-boundary decision for model-authored
+  follow-ups, and needs discovery before design.
+task_profile:
+  has_backend: false
+  has_frontend: false
+  has_data_model: false
+  has_external_deps: false
+  skip_probe: false
+pending_human_action: null
+linear:
+  team: Cloud-ai
+  project: Lok
+  status_at_start: Todo
+  blocks: []
+  blocked_by: []
+  priority: 2
+  branch_suggested: kmamemo/clo-631-escape-or-remove-step-output-interpolated-into-workflow
+  branch_actual: feat/clo-631-shell-escape
+  related_to: []
+  archived_at_start: '2026-09-13T13:13:48.722Z'
+  labels:
+    - HITL
+workflow:
+  current_phase: implement
+  status: active
+  created_at: '2026-09-16T09:01:12.209Z'
+  updated_at: '2026-09-16T10:27:38.786Z'
+phases:
+  discovery:
+    status: complete
+    approved: true
+    problem_framed: true
+    prd_exists: true
+    prd_file: docs/prds/clo-631-shell-escape.md
+    prd_created: true
+    discovery_report: docs/discovery/clo-631.md
+    discovery_debt: []
+    baseline_score: 8
+    approaches_identified: 3
+    approach_chosen: Explicit escaping, structural rewrites, validated JSON follow-ups, and static gate
+  design:
+    status: complete
+    design_doc: docs/designs/clo-631-shell-safe-workflow-interpolation.md
+    draft_ready: true
+    draft_source: claude-designer
+    discovery_context_used: true
+    token_usage:
+      - recorded_at: '2026-09-16T09:20:37.700Z'
+        provider: claude
+        model: claude-opus-5
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-draft-counts-unavailable
+      - recorded_at: '2026-09-16T09:20:48.335Z'
+        provider: codex
+        model: gpt-5.6-sol
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-assumption-refinement-counts-unavailable
+      - recorded_at: '2026-09-16T09:44:22.690Z'
+        provider: ollama
+        model: glm-5.3-flash:cloud
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-direct-counts-unavailable
+      - recorded_at: '2026-09-16T09:44:22.690Z'
+        provider: codex
+        model: current-pi-session
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: design-review-synthesis-counts-unavailable
+    assumptions_surfaced: true
+    assumptions:
+      - text: POSIX sh on CI treats shell_escape output as one literal single-quoted word and provides printf as a builtin.
+        confidence: high
+        verification: Hostile-output integration workflow on macOS and Ubuntu CI.
+      - text: shell_escape requires strings; non-string parsed fields work when the string filter precedes shell_escape.
+        confidence: high
+        verification: MiniJinja 2.19 behavior plus focused render tests.
+      - text: Hyphenated step names require bracket access in MiniJinja templates.
+        confidence: high
+        verification: Scratch run with installed lok and rewritten rework-pr references.
+      - text: printf with an escaped complete argument preserves the dynamic bytes written by the replaced quoted heredocs.
+        confidence: high
+        verification: Runtime file-content comparison and one manual design-review run.
+      - text: Integration tests can use the existing non-optional toml, regex, and tempfile dependencies.
+        confidence: high
+        verification: cargo test --test workflow_shell_policy compilation.
+      - text: The three scan roots are flat and contain no extends declarations requiring inherited-shell resolution.
+        confidence: high
+        verification: Directory and extends grep plus non-empty-root test assertions.
+      - text: jq 1.5 or later is available where operators run the review-pr example.
+        confidence: medium
+        verification: Explicit command probe and CI follow-up tests; missing jq fails before side effects.
+      - text: Operators use no command_wrapper or the documented bare/single-quoted placeholder forms.
+        confidence: medium
+        verification: Current documentation; custom unsafe forms are tracked by CLO-794.
+      - text: No sibling worktree or open PR claims CLO-631.
+        confidence: medium
+        verification: Recheck worktrees, open PRs, and all-branch ticket log before PR creation.
+    review_completed: true
+    review_ollama: docs/reviews/clo-631-review-ollama.md
+    review_synthesis: docs/reviews/clo-631-review-synthesis.md
+    review_verdict: approve_with_changes
+    applied_suggestions:
+      - F1 account for run_shell stdout trimming in hostile-output assertions
+      - F2 skip heredoc bodies during quote-state analysis and test quote-state reset
+      - F3 distinguish 39 unsafe tags from per-tag-rule violation diagnostics
+      - F4 accept whitespace-free and empty-call shell_escape filter syntax
+      - F5 specify inherited PATH and NUL framing for the gh stub
+      - F6 assert jq prerequisite with an actionable test failure
+    flagged_suggestions: []
+    review_skip_reason: >-
+      Used direct read-only Ollama reviewer because .lok/workflows/design-review.toml's output-writing heredocs are an
+      affected CLO-631 injection site.
+    human_review_completed: true
+    plannotator_annotations: 'General feedback: design approved, continue'
+    finalized: true
+  plan:
+    status: complete
+    plan_file: docs/plans/clo-631-shell-safe-workflow-interpolation.md
+    approved: true
+  implement:
+    status: complete
+    commits:
+      - ccf0f540017c172e41e8f41ddf03a872faf778b5
+      - 8c82a44c20d5db7751e149684b87ae2a6a166c2b
+      - 2de0626cc8ed430342c32ba1a52ad954ddb7b5c7
+      - dcfc05e53e47eba2b44aed5e2c022d8acaebe3b7
+      - e8faf07dad1f6057707309fb2800dd784bb1175b
+      - 78478ee7089ad72052baa33a3e87136b5ee56822
+      - 560f236fece9b115f9003120d5d2fc90bed74d97
+      - b03f6de5c8c4662839d45a4e5ffc64fffc37984d
+      - be4bdb5d149ade9afdf0ea2805ccc8c04c5dd8c
+    assumptions_revalidated: true
+    assumption_outcomes:
+      - text: POSIX sh on CI treats shell_escape output as one literal single-quoted word and provides printf as a builtin.
+        outcome: held
+        evidence: tests/integration.rs::test_shell_escape_hostile_output_workflow; cargo test full gate
+      - text: shell_escape requires strings; non-string parsed fields work when the string filter precedes shell_escape.
+        outcome: held
+        evidence: >-
+          examples/workflows/full-heal.toml and pick-and-propose.toml use string before shell_escape; cargo test --test
+          workflow_shell_policy -- checked_in_workflows_escape_in_shell_fields
+      - text: Hyphenated step names require bracket access in MiniJinja templates.
+        outcome: held
+        evidence: examples/workflows/rework-pr.toml uses steps["fetch-pr"] and related bracket references; policy gate passes
+      - text: printf with an escaped complete argument preserves the dynamic bytes written by the replaced quoted heredocs.
+        outcome: held
+        evidence: tests/integration.rs::test_shell_escape_hostile_output_workflow compares written.txt and composed.txt payloads
+      - text: Integration tests can use the existing non-optional toml, regex, and tempfile dependencies.
+        outcome: held
+        evidence: cargo test --test workflow_shell_policy -- unit_ and cargo test --test integration review_pr_followups
+      - text: The three scan roots are flat and contain no extends declarations requiring inherited-shell resolution.
+        outcome: held
+        evidence: tests/workflow_shell_policy.rs::checked_in_workflows_escape_in_shell_fields scans all roots and passes
+      - text: jq 1.5 or later is available where operators run the review-pr example.
+        outcome: held
+        evidence: jq-1.8.2 command probe and tests/integration.rs review_pr_followups tests
+      - text: Operators use no command_wrapper or the documented bare/single-quoted placeholder forms.
+        outcome: untested
+        evidence: >-
+          No command_wrapper execution was needed for this slice; unsafe custom double-quoted forms are tracked by
+          CLO-794
+      - text: No sibling worktree or open PR is working on CLO-631.
+        outcome: held
+        evidence: git worktree list, gh pr list --state open --search CLO-631, and git log --all --grep CLO-631 recheck
+    codex_validated: true
+    codex_verdict: FAIL
+    codex_report: docs/reviews/clo-631-codex-validation.md
+    validation_synthesis_report: docs/reviews/clo-631-validation-synthesis.md
+    validation_synthesis_verdict: PASS_WITH_NOTES
+    validation_fix_iteration_count: 1
+    token_usage:
+      - recorded_at: '2026-09-16T10:27:38.786Z'
+        provider: codex
+        model: gpt-5.6-sol
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-codex
+      - recorded_at: '2026-09-16T10:27:38.786Z'
+        provider: claude
+        model: haiku
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-synthesis
+      - recorded_at: '2026-09-16T10:27:38.786Z'
+        provider: codex
+        model: gpt-5.6-sol
+        prompt_tokens: 0
+        completion_tokens: 0
+        task_label: pre-pr-validation-fix-iteration
+  pr:
+    status: pending
+  complete:
+    status: pending
+history:
+  - timestamp: '2026-09-16T09:01:12.209Z'
+    action: workflow_started
+    phase: init
+    details: Workflow initialized for clo-631 as development
+  - timestamp: '2026-09-16T09:02:41.295Z'
+    action: init_classified
+    phase: init
+    details: >-
+      Classified as development: the security remediation spans multiple workflow families, requires a trust-boundary
+      decision for model-authored follow-ups, and needs discovery before design.
+  - timestamp: '2026-09-16T09:03:03.432Z'
+    action: project_sync_start
+    phase: init
+    details: PROJECT.md, ROADMAP.md, and DEPENDENCIES.md synced for CLO-631 start after WIP (0/3) and blocker checks passed.
+  - timestamp: '2026-09-16T09:03:13.390Z'
+    action: phase_transition
+    phase: init
+    details: Transitioned from init to discovery
+  - timestamp: '2026-09-16T09:05:56.769Z'
+    action: discovery_approved
+    phase: discovery
+    details: >-
+      Approach: explicit shell_escape plus structural shell rewrites, validated JSON follow-up creation, and a
+      TOML-aware regression gate. Baseline 8/10; 3 approaches considered.
+  - timestamp: '2026-09-16T09:06:03.588Z'
+    action: linear_update_blocked
+    phase: discovery
+    details: >-
+      Linear issue is archived (archivedAt 2026-09-13T13:13:48.722Z). The approved MCP subset can read it but cannot
+      unarchive it; state update remained Todo and save_comment returned Could not find referenced Issue. Local workflow
+      continues and Linear sync is pending unarchive.
+  - timestamp: '2026-09-16T09:06:05.633Z'
+    action: phase_transition
+    phase: discovery
+    details: Transitioned from discovery to design
+  - timestamp: '2026-09-16T09:20:37.700Z'
+    action: design_draft_ready
+    phase: design
+    details: >-
+      Draft generated by the design-draft workflow and manually corrected at
+      docs/designs/clo-631-shell-safe-workflow-interpolation.md; 39 output tags in 19 shell fields across 11 files were
+      independently verified.
+  - timestamp: '2026-09-16T09:20:48.335Z'
+    action: design_assumptions_surfaced
+    phase: design
+    details: >-
+      9 assumptions surfaced (high: 6, medium: 3, low: 0). See design doc § Assumptions. CLO-794 tracks the
+      command_wrapper assumption.
+  - timestamp: '2026-09-16T09:44:22.690Z'
+    action: design_review_complete
+    phase: design
+    details: >-
+      Direct Ollama review verdict PASS_WITH_NOTES; 6 additive test-spec findings applied, 0 flagged. Normal
+      design-review workflow was not run because its dynamic heredoc writer is the vulnerability under repair.
+  - timestamp: '2026-09-16T09:45:24.866Z'
+    action: design_human_review_complete
+    phase: design
+    details: 'Plannotator returned one general annotation: "design approved, continue". No edit requested.'
+  - timestamp: '2026-09-16T09:45:28.872Z'
+    action: design_finalized
+    phase: design
+    details: >-
+      Design finalized after direct Ollama review, six applied notes, Plannotator approval, resolved open decisions, and
+      CLO-794 follow-up creation.
+  - timestamp: '2026-09-16T09:45:34.647Z'
+    action: phase_transition
+    phase: design
+    details: Transitioned from design to plan
+  - timestamp: '2026-09-16T09:55:04.541Z'
+    action: plan_created
+    phase: plan
+    details: Plan with 7 ordered sub-tasks at docs/plans/clo-631-shell-safe-workflow-interpolation.md
+  - timestamp: '2026-09-16T09:55:11.003Z'
+    action: plan_approved
+    phase: plan
+    details: >-
+      Plan approved. 7 ordered sub-tasks queued; each names real files and a concrete acceptance command, and the
+      pre-merge gate matches the required fmt, clippy, and test command.
+  - timestamp: '2026-09-16T09:55:14.370Z'
+    action: phase_transition
+    phase: plan
+    details: Transitioned from plan to implement
+  - timestamp: '2026-09-16T09:55:49.571Z'
+    action: lessons_consulted
+    phase: implement
+    details: >-
+      Consulted all 40 matching files across .pi/lessons and docs/lessons. Applied inputs: shell-escape every command
+      component, positive-control plus sealed hostile tests, skipped-step guards, cargo run --bin lok recipes, bin-only
+      test targeting, exact failure-preserving verification commands, and one bounded validation fix iteration.
+  - timestamp: '2026-09-16T09:58:48.842Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST1 landed: TOML-aware shell interpolation policy scanner with quote/heredoc/filter unit coverage. Acceptance
+      cargo test --test workflow_shell_policy -- unit_ passed. Commit ccf0f540017c172e41e8f41ddf03a872faf778b5.
+  - timestamp: '2026-09-16T10:01:02.252Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST2 landed: escaped shell fixtures, hostile payload workflow, environment-aware lok runner, positive-control
+      execution test, and marker/output assertions. Acceptance cargo test --test integration shell_escape passed. Commit
+      8c82a44c20d5db7751e149684b87ae2a6a166c2b.
+  - timestamp: '2026-09-16T10:05:08.305Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST3 landed: .lok review workflows now write dynamic output with printf and shell_escape while preserving
+      optional-step guards. Acceptance cargo test --test workflow_shell_policy --
+      checked_in_workflows_escape_in_shell_fields passed. Commit 2de0626cc8ed430342c32ba1a52ad954ddb7b5c7 also contains
+      the ordered ST4/ST5 workflow rewrites; their dedicated acceptance tests remain to be added.
+  - timestamp: '2026-09-16T10:05:15.237Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST4 landed in the ordered workflow migration commit 2de0626: fix, pick-and-propose, full-heal, and rework-pr use
+      complete escaped words, string filters for numeric fields, and bracket access for hyphenated steps. Acceptance
+      cargo test --test workflow_shell_policy -- checked_in_workflows_escape_in_shell_fields passed.
+  - timestamp: '2026-09-16T10:09:20.065Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST5 landed: review-pr follow-ups now validate JSON and labels before quoted gh calls; integration tests cover
+      valid fenced JSON, empty, invalid, missing, non-string, and malformed documents with a NUL-framed gh stub.
+      Acceptance cargo test --test integration review_pr_followups and policy gate passed. Commit
+      dcfc05e53e47eba2b44aed5e2c022d8acaebe3b7.
+  - timestamp: '2026-09-16T10:10:17.205Z'
+    action: subtask_complete
+    phase: implement
+    details: >-
+      ST6 landed: README and setup guide document complete-word shell_escape placement, printf, string conversion, JSON
+      validation, bracket access, and command-wrapper caveat. Acceptance git diff --check -- README.md
+      docs/guides/lok-setup-guide.md passed. Commit e8faf07dad1f6057707309fb2800dd784bb1175b.
+  - timestamp: '2026-09-16T10:12:21.602Z'
+    action: assumptions_revalidated
+    phase: implement
+    details: >-
+      9 assumptions reviewed. held: 8, violated: 0, untested: 1. POSIX escaping, parsed-value conversion, bracket
+      access, printf replacement, dependency availability, scan-root coverage, jq availability, and ownership all held;
+      custom command_wrapper behavior was not exercised and remains deferred to CLO-794.
+  - timestamp: '2026-09-16T10:12:28.008Z'
+    action: implementation_complete
+    phase: implement
+    details: >-
+      All 7 plan sub-tasks landed across 6 implementation commits plus documentation artifacts. cargo fmt --check, cargo
+      clippy --all-targets -- -D warnings, and cargo test are green; ownership recheck found no sibling claim or open
+      CLO-631 PR. Phase is now validating before the mandatory lok pre-pr-validation gate.
+  - timestamp: '2026-09-16T10:27:38.786Z'
+    action: codex_validation_complete
+    phase: implement
+    details: >-
+      Codex validation produced FAIL with 4 findings; Claude synthesis classified the bounded issues as PASS_WITH_NOTES.
+      One fix iteration applied in b03f6de, full fmt+clippy+test rerun passed, and synthesis re-validation was recorded
+      in be4bdb5. No pivot or user decision required.
+task_title: Escape or remove step output interpolated into workflow shell fields
+task_url: https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields
