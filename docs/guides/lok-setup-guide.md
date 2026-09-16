@@ -277,6 +277,39 @@ lok uses MiniJinja for interpolation. All `{{ }}` expressions in prompts, shell 
 {{ steps.STEP_NAME.field_name }} # Parsed JSON field (requires output_format = "json")
 ```
 
+### Step output in shell fields
+
+A step output rendered into `shell` is data crossing into `sh -c`; it must never
+be treated as command source. End every `steps.*` output expression with
+`| shell_escape` and place the result as a complete shell word or the whole
+value of an assignment. Do not surround the expression with another single or
+double quote, and do not put it in a dynamic heredoc body. Bracket access is
+required for hyphenated step names:
+
+```toml
+# Write data safely; printf adds the output newline.
+shell = "printf '%s\\n' {{ steps[\"review-step\"].output | shell_escape }} > report.md"
+
+# Compose a message from safe arguments.
+shell = "BODY=$(printf 'Header\\n\\n%s\\n' {{ steps.review.output | shell_escape }}); gh issue comment 123 --body \"$BODY\""
+
+# Convert non-string parsed fields before escaping.
+shell = "gh issue view {{ steps.pick.number | string | shell_escape }}"
+```
+
+Prefer `printf '%s\\n'` over `echo`; shell implementations may interpret
+backslashes or an initial `-n`. For model-produced JSON, serialize and escape
+the complete document, validate the complete array or object with `jq` before
+any side effect, then extract fields into quoted CLI arguments. Never ask a
+model to emit shell commands and execute its response.
+
+The static policy test covers the checked-in workflow roots and rejects output
+tags in quotes or dynamic heredocs. The engine cannot safely infer shell quote
+context, so automatic escaping is intentionally not applied to every workflow.
+Use the documented no-wrapper or single-quoted `command_wrapper` forms; an
+outer custom double-quoted wrapper can re-expand command substitutions and is
+tracked separately.
+
 ### Arguments
 
 Positional arguments from the CLI, 1-indexed:
