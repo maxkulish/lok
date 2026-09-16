@@ -26,9 +26,9 @@ linear:
   status: In Review
 workflow:
   current_phase: complete
-  status: active
+  status: complete
   created_at: '2026-09-16T09:01:12.209Z'
-  updated_at: '2026-09-16T12:31:26.722Z'
+  updated_at: '2026-09-16T12:38:13.207Z'
 phases:
   discovery:
     status: complete
@@ -207,13 +207,14 @@ phases:
     pre_merge_refetch_passed: true
     pre_merge_refetch_at: '2026-09-16T12:13:00Z'
   complete:
-    status: in_progress
+    status: complete
     aggregation_files_updated: true
     lessons_learned:
       - L9 - Billing-blocked Qodo is a deterministic exception, not a timeout
     lessons_file: .pi/lessons/pr-review-failures.md
     docs_pr_url: https://github.com/maxkulish/lok/pull/116
     docs_pr_number: 116
+    docs_pr_merge_commit: bee4fa716f9612a86738aaed376ac33c02b8368f
 history:
   - timestamp: '2026-09-16T09:01:12.209Z'
     action: workflow_started
@@ -447,5 +448,19 @@ history:
     action: docs_pr_created
     phase: complete
     details: 'Docs finalization PR #116 opened: https://github.com/maxkulish/lok/pull/116'
+  - timestamp: '2026-09-16T12:38:09.226Z'
+    action: docs_pr_merged
+    phase: complete
+    details: >-
+      Docs finalization PR #116 merged. Files: docs/PROJECT.md, docs/ROADMAP.md, docs/DEPENDENCIES.md,
+      docs/status/clo-631-workflow.yaml, .pi/lessons/pr-review-failures.md. Merge commit
+      bee4fa716f9612a86738aaed376ac33c02b8368f.
+  - timestamp: '2026-09-16T12:38:13.207Z'
+    action: workflow_complete
+    phase: complete
+    details: >-
+      Task CLO-631 fully completed. PR #114 merged as 6b67e9fd4fc8a0eddf5c0b3be23d9b5c63093c27; docs finalization PR
+      #116 merged as bee4fa716f9612a86738aaed376ac33c02b8368f. Linear moved to Done; comment sync was unavailable for
+      the archived issue.
 task_title: Escape or remove step output interpolated into workflow shell fields
 task_url: https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields
