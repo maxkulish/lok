@@ -339,51 +339,27 @@ fn read_gh_invocations(log: &Path) -> Vec<Vec<String>> {
 
 #[cfg(unix)]
 fn review_pr_followups_workflow(dir: &Path) -> PathBuf {
+    let production = fs::read_to_string("examples/workflows/review-pr.toml")
+        .expect("read production review-pr workflow");
+    let document: toml::Value = production
+        .parse()
+        .expect("parse production review-pr workflow");
+    let shell = document
+        .get("steps")
+        .and_then(toml::Value::as_array)
+        .and_then(|steps| {
+            steps.iter().find(|step| {
+                step.get("name").and_then(toml::Value::as_str) == Some("create_followups")
+            })
+        })
+        .and_then(|step| step.get("shell"))
+        .and_then(toml::Value::as_str)
+        .expect("production create_followups shell");
     let path = dir.join("review-pr-followups.toml");
-    fs::write(
-        &path,
-        r#"name = "review-pr-followups"
-
-[[steps]]
-name = "synthesize"
-shell = '''
-cat "$LOK_TEST_SYNTHESIS_FILE"
-'''
-
-[[steps]]
-name = "create_followups"
-depends_on = ["synthesize"]
-shell = '''
-command -v jq >/dev/null 2>&1 || { echo "create_followups: jq is required" >&2; exit 1; }
-FOLLOWUPS={{ steps.synthesize.followups | json_encode | shell_escape }}
-if ! printf '%s' "$FOLLOWUPS" | jq -e '
-  type == "array"
-  and all(.[];
-    type == "object"
-    and (.title | type) == "string"
-    and (.body | type) == "string"
-    and (.label == "bug" or .label == "enhancement"))
-' >/dev/null; then
-  echo "create_followups: follow-up validation failed; no issues created" >&2
-  exit 1
-fi
-COUNT=$(printf '%s' "$FOLLOWUPS" | jq 'length')
-if [ "$COUNT" -eq 0 ]; then
-  echo "No follow-up issues needed"
-  exit 0
-fi
-i=0
-while [ "$i" -lt "$COUNT" ]; do
-  TITLE=$(printf '%s' "$FOLLOWUPS" | jq -r --argjson i "$i" '.[$i].title')
-  BODY=$(printf '%s' "$FOLLOWUPS" | jq -r --argjson i "$i" '.[$i].body')
-  LABEL=$(printf '%s' "$FOLLOWUPS" | jq -r --argjson i "$i" '.[$i].label')
-  gh issue create --title "$TITLE" --body "$BODY" --label "$LABEL" || exit 1
-  i=$((i + 1))
-done
-'''
-"#,
-    )
-    .expect("write follow-up workflow");
+    let fixture = format!(
+        "name = \"review-pr-followups\"\n\n[[steps]]\nname = \"synthesize\"\nshell = '''\ncat \"$LOK_TEST_SYNTHESIS_FILE\"\n'''\n\n[[steps]]\nname = \"create_followups\"\ndepends_on = [\"synthesize\"]\nshell = '''{shell}\n'''\n"
+    );
+    fs::write(&path, fixture).expect("write follow-up workflow");
     path
 }
 
