@@ -1,6 +1,6 @@
 # Roadmap - Lok
 
-**Last Updated**: 2026-09-15 (Phase 14 marks CLO-624 Canceled, as it has been in Linear since 2026-09-13. CLO-632 done, Phase 15 at 2 of 5. Earlier the same day CLO-660 closed Phase 13 at 3 of 4 with CLO-610 canceled)
+**Last Updated**: 2026-09-16 (Phase 17 added. CLO-655, CLO-656 and CLO-788 closed on 2026-09-14 and 2026-09-15 without ever being recorded in a phase, so no phase view showed them; Phase 13 prose now names CLO-654, canceled as superseded by CLO-660. On 2026-09-15 Phase 14 marked CLO-624 Canceled, as it has been in Linear since 2026-09-13, and CLO-632 put Phase 15 at 2 of 5. Phase 10's summary row read 15 of 15 against a table of 16 Done tasks and now reads 16 of 16. Earlier the same day CLO-660 closed Phase 13 at 3 of 4 with CLO-610 canceled)
 
 ## Summary
 
@@ -15,13 +15,14 @@
 | Phase 7: MiniJinja Templates | 2 | 2 | Complete |
 | Phase 8: Apply-and-Verify Pipeline | 3 | 3 | Complete |
 | Phase 9: Configurable Role Routing | 1 | 1 | Complete |
-| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 15 | 15 | Complete |
+| Phase 10: Predictable CLI Execution (Phase 2 PRD v5) | 16 | 16 | Complete |
 | Phase 11: Health Checks | 1 | 1 | Complete |
 | Phase 12: Library Extraction & CI | 6 | 6 | Complete |
 | Phase 13: Release Readiness | 4 | 3 | Complete |
 | Phase 14: Orchestration Tooling Hardening | 9 | 1 | In progress |
 | Phase 15: Security Scan Remediation | 5 | 2 | In Progress |
 | Phase 16: Task-Pipeline Cleanup | 2 | 0 | Not started |
+| Phase 17: Workflow Engine & Review Gate Repairs | 3 | 3 | Complete |
 
 ## Phase 11: Health Checks
 
@@ -52,7 +53,7 @@ Two bounds replaced the constraint it removed, both documented in `src/lib.rs` w
 
 ## Phase 13: Release Readiness
 
-What still stands between the code as it is now and a release someone outside this machine can trust. This project has never published to crates.io and cannot publish `lokomotiv`, because upstream `ducks` owns that name (see "crates.io publishing" in `docs/DEPENDENCIES.md`). Of the four tasks, CLO-638 protects what already reaches people: anyone building from source through a git dependency or `cargo install --git`. CLO-609's crate metadata starts to matter at the first crates.io publish under a name this project controls, since metadata freezes per published version. CLO-610, attestations for the GitHub release archives that `release.yml` publishes, was canceled on 2026-09-13 because those archives are used only on the maintainer's machine; its cancellation note ties reopening to the first library publish. CLO-660 corrected the planning and consumer docs that assumed this project publishes `lokomotiv`.
+What still stands between the code as it is now and a release someone outside this machine can trust. This project has never published to crates.io and cannot publish `lokomotiv`, because upstream `ducks` owns that name (see "crates.io publishing" in `docs/DEPENDENCIES.md`). Of the four tasks, CLO-638 protects what already reaches people: anyone building from source through a git dependency or `cargo install --git`. CLO-609's crate metadata starts to matter at the first crates.io publish under a name this project controls, since metadata freezes per published version. CLO-610, attestations for the GitHub release archives that `release.yml` publishes, was canceled on 2026-09-13 because those archives are used only on the maintainer's machine; its cancellation note ties reopening to the first library publish. CLO-660 corrected the planning and consumer docs that assumed this project publishes `lokomotiv`. CLO-654 raised the same wrong premise against the workspace-split decision record and was canceled on 2026-09-13 as superseded by CLO-660, so it gets no row here, following how Phase 12 records CLO-590.
 
 | Task | Title | Status | Dependencies |
 |------|-------|--------|--------------|
@@ -105,6 +106,18 @@ Two latent defects in `src/tasks/`, both surfaced while CLO-633 was investigated
 |------|-------|--------|--------------|
 | [CLO-639](https://linear.app/cloud-ai/issue/CLO-639) | commit_file returns an empty string as a successful SHA when git rev-parse HEAD fails | Not started | - |
 | [CLO-640](https://linear.app/cloud-ai/issue/CLO-640) | Deduplicate FILE_REF_RE and extract_file_references across tasks/context.rs and tasks/fix.rs | Not started | - |
+
+## Phase 17: Workflow Engine & Review Gate Repairs
+
+Three defects that stopped the design-review pipeline producing a review at all, found on 2026-09-14 by running it rather than reading it. They sit apart from Phase 14 because the root cause differs: Phase 14 is untested shell in markdown commands, while these are the Rust template layer (CLO-655, CLO-656) and the workflow TOML gates that read its output (CLO-788). All three are closed.
+
+| Task | Title | Status | Dependencies |
+|------|-------|--------|--------------|
+| [CLO-655](https://linear.app/cloud-ai/issue/CLO-655) | Shell `${#VAR}` in a workflow step body is parsed as an unterminated Jinja comment, killing the design-review pipeline before any reviewer runs | Done | - |
+| [CLO-656](https://linear.app/cloud-ai/issue/CLO-656) | Every workflow template failure is reported as `UnknownVariable` naming the first `{{ }}` in the template | Done | - |
+| [CLO-788](https://linear.app/cloud-ai/issue/CLO-788) | Review gate repairs: design-review fallback timeout, error-as-review filter, spec-review synthesis guard | Done | - |
+
+CLO-655 and CLO-656 landed together in PR #101, bundled rather than sequenced; a parallel session's PR #100 for CLO-656 was closed as superseded. CLO-788 followed on 2026-09-15 as the cleanup behind CLO-655's two unverified live gates: the 2m fallback timeout that hid them, and the blank and `REVIEW_FAILED` checks that saved a failed step's `Error:` text as a review. A fourth repair of the same shape landed untracked on 2026-09-15 (PR #113), applying CLO-788's success check to spec-review's own fallback. It carries no issue id, so `docs/PROJECT.md` is the only place it is recorded.
 
 ## Phase 2: Validation Pipeline
 
