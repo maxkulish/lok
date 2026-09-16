@@ -9,24 +9,7 @@ task_profile:
   has_data_model: false
   has_external_deps: false
   skip_probe: false
-pending_human_action:
-  context:
-    ci_run: https://github.com/maxkulish/lok/actions/runs/35094626969
-    gate: pr-review-cycle step 1a / phases/pr.md Step 4.3
-    head_sha: 6243a06538394f8f35adad23802faa354d9cb5e0
-    inline_comments: 0
-    pr_number: 115
-    pr_url: https://github.com/maxkulish/lok/pull/115
-    precedent: clo-632-workflow.yaml workflow_paused -> workflow_resumed
-    probe_bots_rc: 4
-    probe_bots_stdout: qodo-code-review[bot]
-    unresolved_threads: 0
-  message: >-
-    CLO-623 PR #115: qodo-code-review is billing-blocked on PR #115 (workspace out of credits; <!-- qodo:billing-blocked
-    -->), so no bot review will arrive. Approve proceeding without a bot re-review, or restore Qodo credits and re-run
-    the review cycle. Step 3 is clean: 0 inline comments, 0 unresolved threads.
-  since: '2026-09-16T12:20:00.000Z'
-  type: decision
+pending_human_action: null
 linear:
   team: Cloud-ai
   project: Lok
@@ -37,9 +20,9 @@ linear:
   priority: Medium
 workflow:
   current_phase: pr
-  status: paused
+  status: active
   created_at: '2026-09-16T07:45:44.278Z'
-  updated_at: '2026-09-16T12:21:14.610Z'
+  updated_at: '2026-09-16T13:16:36.923Z'
 phases:
   discovery:
     status: complete
@@ -293,10 +276,18 @@ phases:
         completion_tokens: 0
         task_label: validation-fix-iteration-1-applied-inline
   pr:
-    status: in_progress
+    status: complete
     pr_number: 115
     pr_url: https://github.com/maxkulish/lok/pull/115
     ci_passed: true
+    bot_review_wait_completed: true
+    bot_review_wait_completed_at: '2026-09-16T13:16:17Z'
+    qodo_billing_blocked: true
+    reviews_addressed: true
+    bot_rereview_at: '2026-09-16T13:16:17Z'
+    bot_rereview_head_sha: none
+    pre_merge_refetch_at: '2026-09-16T13:16:17Z'
+    pre_merge_refetch_passed: true
   complete:
     status: pending
 history:
@@ -651,5 +642,47 @@ history:
       2026-09-16T10:37:43Z = PR created_at fallback). CI run 35094626969 on 6243a06 is fully green and the PR reports
       CLEAN/MERGEABLE. Resume with 'proceed' to skip the bot review while Qodo is billing-blocked, or restore Qodo
       credits and re-run the review cycle.
+  - timestamp: '2026-09-16T13:16:20.193Z'
+    action: workflow_resumed
+    phase: pr
+    details: >-
+      Resumed from the billing-blocked pause. The paused checkpoint was answered with option 1 (proceed): the resume
+      turn explicitly directed 'Choose option 1 - proceed' and specified that the resume refresh the billing probe and
+      bind the decision to the current head. No reviewer-bot pass can occur while Qodo is billing-blocked (probe-bots rc
+      4 re-confirmed on head eca6cae after the pause), so the workflow proceeds without a bot review per the documented
+      precedent (clo-632). pending_human_action cleared.
+  - timestamp: '2026-09-16T13:16:22.817Z'
+    action: bot_review_wait_completed
+    phase: pr
+    details: >-
+      qodo-code-review is billing-blocked on PR #115 (<!-- qodo:billing-blocked --> at 2026-09-16T10:37:47Z, 'workspace
+      is out of credits'); the option-1 decision to proceed without a bot review was taken at the paused checkpoint and
+      re-confirmed against the current head eca6cae (probe-bots rc 4, stdout 'qodo-code-review[bot]'). No wait was
+      started: polling cannot change a billing block, which is the PR #100 failure mode that cost 20 minutes.
+      INSTALLED_BOTS for any later step is 'qodo-code-review[bot]'.
+  - timestamp: '2026-09-16T13:16:24.552Z'
+    action: review_addressed
+    phase: pr
+    details: >-
+      Nothing to address. Step 3 re-run on head eca6cae: unresolved-threads rc 0 with empty stdout (0 unresolved
+      threads), new-comments rc 0 with empty stdout (0 inline comments; bound 2026-09-16T10:37:43Z = PR created_at, the
+      documented fallback because the author has not replied). The PR carries exactly one issue comment, Qodo's
+      billing-blocked notice, which is not an inline review comment. 0 review objects. Replies posted 0/0; declines 0.
+  - timestamp: '2026-09-16T13:16:27.304Z'
+    action: bot_rereview_verified
+    phase: pr
+    details: >-
+      bot_rereview_head_sha recorded as 'none': Qodo is billing-blocked and the option-1 decision approved proceeding,
+      so no /agentic_review was posted (the request would only refresh the billing notice; request-rereview also refuses
+      --bots without qodo-code-review). No re-review pass exists to bind to a head, and the pre-merge gate's
+      head-equality branch is therefore satisfied by the documented 'none' value rather than by a pass that never ran.
+  - timestamp: '2026-09-16T13:16:36.923Z'
+    action: pre_merge_refetch_passed
+    phase: pr
+    details: >-
+      Pre-merge re-fetch passed on head eca6caed5ac83dc5c1ef6a02407918074e4f5d36. bot_rereview_head_sha is 'none' (Qodo
+      billing-blocked, option-1 approved), so the head-equality branch is satisfied by the documented value. Inline
+      comments since the review_addressed event at 2026-09-16T13:16:24.552Z: 0. Unresolved GraphQL reviewThreads: 0
+      (reviewThreads read, not just the comment list). PR is MERGEABLE/CLEAN with CI run 35095363230 green on this head.
 task_title: Make pr-review-cycle shell snippets executable and tested
 task_url: https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested
