@@ -14,15 +14,15 @@ hermetic fake-`gh` test harness proves every gate fails closed, a `shellcheck` C
 job enforces it, and a self-tested guard keeps the inline shapes from coming back.
 
 The test runner is invoked as `sh .pi/scripts/tests/pr-review-cycle.test.sh [pattern]`,
-where `pattern` is an optional `grep -E` filter over test-function names. Every
-sub-task's acceptance command uses that filter, so each sub-task is independently
-verifiable without running the whole suite.
+where `pattern` is an optional `grep -E` filter over test-function names (ERE, so
+alternation is `a|b`). Every sub-task's acceptance command uses that filter, so
+each sub-task is independently verifiable without running the whole suite.
 
 ## Sub-tasks
 
 ### ST1 Test harness, fake `gh`, and script skeleton
 **Files:** `.pi/scripts/tests/pr-review-cycle.test.sh`, `.pi/scripts/tests/fake-gh/gh`, `.pi/scripts/tests/fixtures/pr-review-cycle/`, `.pi/scripts/pr-review-cycle.sh`
-**Acceptance:** `sh .pi/scripts/tests/pr-review-cycle.test.sh 'test_unknown_subcommand\|test_fake_gh\|test_call_site'` exits 0
+**Acceptance:** `sh .pi/scripts/tests/pr-review-cycle.test.sh 'test_unknown_subcommand|test_fake_gh|test_call_site'` exits 0
 **Estimate:** M
 
 - **Script skeleton:** `#!/bin/sh`, no `set -e`, no `pipefail`, `set -u` with `:-` defaults. `main` dispatches on `$1`; unknown subcommand exits 2. The five validators (`require_repo`, `require_pr`, `require_sha40`, `require_iso8601z`, `require_bots`) run before any API call; `require_iso8601z` accepts only `YYYY-MM-DDTHH:MM:SSZ`. Optional-argument parsing with the `--timeout`/`--since`/`--head`/`--bots` shapes from the design's Public API surface.
@@ -32,7 +32,7 @@ verifiable without running the whole suite.
 
 ### ST2 Per-call deadline and `probe-bots`
 **Files:** `.pi/scripts/pr-review-cycle.sh`, `.pi/scripts/tests/fixtures/pr-review-cycle/`, `.pi/scripts/tests/pr-review-cycle.test.sh`
-**Acceptance:** `sh .pi/scripts/tests/pr-review-cycle.test.sh 'test_probe_bots\|test_gh_call_hung'` exits 0
+**Acceptance:** `sh .pi/scripts/tests/pr-review-cycle.test.sh 'test_probe_bots|test_gh_call_hung'` exits 0
 **Estimate:** M
 
 - `gh_capture <var> <gh api args...>`: run `gh api`, store stdout in the named variable, exit 3 when `gh` exits non-zero, returns an empty body, or exceeds the deadline. Never pipe `gh` into `jq`.
@@ -53,7 +53,7 @@ verifiable without running the whole suite.
 
 ### ST4 `request-rereview` and `wait-rereview`
 **Files:** `.pi/scripts/pr-review-cycle.sh`, `.pi/scripts/tests/fixtures/pr-review-cycle/`, `.pi/scripts/tests/pr-review-cycle.test.sh`
-**Acceptance:** `sh .pi/scripts/tests/pr-review-cycle.test.sh 'test_request_rereview\|test_wait_rereview'` exits 0
+**Acceptance:** `sh .pi/scripts/tests/pr-review-cycle.test.sh 'test_request_rereview|test_wait_rereview'` exits 0
 **Estimate:** M
 
 - `request-rereview`: POST `/agentic_review` with `-f body=`, print the `created_at` GitHub assigns. `--bots` that is empty or lacks `qodo-code-review` exits 2 and posts nothing (the ported `${INSTALLED_BOTS+x}` guard). A response without `created_at` exits 3 with **no** fallback to local `date`.

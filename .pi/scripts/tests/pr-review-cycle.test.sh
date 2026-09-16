@@ -106,6 +106,85 @@ test_missing_repo_rejected_without_calling_gh() {
   [ -z "$(calls)" ] || fail_test "a validation failure must not reach gh: $(calls)" || return 1
 }
 
+# --- probe-bots -----------------------------------------------------------
+
+probe_bots() {
+  run_script probe-bots --repo maxkulish/lok --pr 71
+}
+
+test_probe_bots_reports_qodo_from_current_pr_comments() {
+  # A newly installed bot has no history on earlier PRs; this PR's own comments
+  # are the earliest observable proof of installation
+  # (.pi/lessons/pr-review-failures.md L1).
+  use_fixture probe_bots_qodo_current_pr
+  probe_bots
+  assert_rc 0 || return 1
+  assert_out "qodo-code-review" || return 1
+}
+
+test_probe_bots_reports_bot_from_prior_pr_reviews() {
+  use_fixture probe_bots_qodo_prior_pr
+  probe_bots
+  assert_rc 0 || return 1
+  assert_out "qodo-code-review" || return 1
+}
+
+test_probe_bots_joins_multiple_logins_with_commas() {
+  use_fixture probe_bots_two_bots
+  probe_bots
+  assert_rc 0 || return 1
+  assert_out "copilot-pull-request-reviewer,qodo-code-review" || return 1
+}
+
+test_probe_bots_prints_none_when_no_bot_activity() {
+  use_fixture probe_bots_none
+  probe_bots
+  assert_rc 0 || return 1
+  assert_out "none" || return 1
+}
+
+test_probe_bots_fails_closed_when_comments_lookup_errors() {
+  use_fixture probe_bots_comments_error
+  probe_bots
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_probe_bots_fails_closed_when_prior_pr_review_lookup_errors() {
+  use_fixture probe_bots_prior_error
+  probe_bots
+  assert_rc 3 || return 1
+  assert_out_empty || return 1
+}
+
+test_probe_bots_exits_4_when_qodo_billing_blocked() {
+  use_fixture probe_bots_billing_blocked
+  probe_bots
+  assert_rc 4 || return 1
+  assert_out "qodo-code-review" || return 1
+}
+
+test_probe_bots_rejects_missing_pr_before_any_api_call() {
+  use_fixture probe_bots_missing_pr
+  run_script probe-bots --repo maxkulish/lok
+  assert_rc 2 || return 1
+  [ -z "$(calls)" ] || fail_test "a validation failure must not reach gh: $(calls)" || return 1
+}
+
+# --- the per-call deadline ------------------------------------------------
+
+test_gh_call_hung_request_fails_closed_after_deadline() {
+  use_fixture probe_bots_hang
+  PR_REVIEW_CYCLE_CALL_DEADLINE=1
+  export PR_REVIEW_CYCLE_CALL_DEADLINE
+  start=$(date -u +%s)
+  probe_bots
+  elapsed=$(( $(date -u +%s) - start ))
+  assert_rc 3 || return 1
+  [ "$elapsed" -lt 20 ] \
+    || fail_test "the per-call deadline did not fire (took ${elapsed}s)" || return 1
+}
+
 # --- the fake gh is itself a guard ---------------------------------------
 
 test_fake_gh_rejects_jq_and_arg_flags() {
