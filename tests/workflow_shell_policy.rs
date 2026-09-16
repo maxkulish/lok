@@ -141,11 +141,11 @@ fn heredoc_bodies(template: &str) -> Vec<(RangeInclusive<usize>, String)> {
                 .to_owned();
             let strip_tabs = lines[line].contains("<<-");
             let mut close = None;
-            for candidate in line + 1..lines.len() {
+            for (candidate, candidate_line) in lines.iter().enumerate().skip(line + 1) {
                 let closing = if strip_tabs {
-                    lines[candidate].trim_start_matches('\t')
+                    candidate_line.trim_start_matches('\t')
                 } else {
-                    lines[candidate]
+                    candidate_line
                 };
                 if closing == delimiter {
                     close = Some(candidate);
