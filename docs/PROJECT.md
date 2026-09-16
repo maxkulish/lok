@@ -1,12 +1,12 @@
 # Project Dashboard - Lok
 
-**Last Updated**: 2026-09-16 (Triaged CLO-782: CLO-795 filed for its lok engine defects, fixed stderr paths added, `--dir` row linked. Synced from Linear: CLO-623 moved to Active Work as In Review with PR #115, CLO-794 added to Up Next. Earlier: CLO-631 completed and moved to Recently Completed. Earlier: spec-review fallback success check and CLO-660's doc drift fixed; CLO-632 and CLO-660 completed and moved to Recently Completed)
+**Last Updated**: 2026-09-16 (CLO-623 completed via PR #115, squashed as `b1872b4`, and moved from Active Work to Recently Completed; its only dependent, CLO-650, is now unblocked. Earlier: triaged CLO-782 — CLO-795 filed for its lok engine defects, fixed stderr paths added, `--dir` row linked; synced from Linear, CLO-623 moved to Active Work as In Review with PR #115 and CLO-794 added to Up Next. Earlier: CLO-631 completed and moved to Recently Completed. Earlier: spec-review fallback success check and CLO-660's doc drift fixed; CLO-632 and CLO-660 completed and moved to Recently Completed)
 
 ## Active Work (WIP Limit: 3)
 
 | Task | Title | Status | Phase | Blocked By |
 |------|-------|--------|-------|------------|
-| [CLO-623](https://linear.app/cloud-ai/issue/CLO-623/make-pr-review-cycle-shell-snippets-executable-and-tested) | Make pr-review-cycle shell snippets executable and tested | In Review (PR #115) | Phase 14 | - |
+| - | - | - | - | - |
 
 ## Up Next (Prioritized Backlog)
 
@@ -40,6 +40,7 @@
 
 | Task | Title | Completed | Summary |
 |------|-------|-----------|---------|
+| [CLO-623](https://linear.app/cloud-ai/issue/CLO-623) | Make pr-review-cycle shell snippets executable and tested | 2026-09-16 | The PR-review gates moved out of two markdown files into `.pi/scripts/pr-review-cycle.sh` (POSIX sh; six subcommands — `probe-bots`, `wait-review`, `request-rereview`, `wait-rereview`, `new-comments`, `unresolved-threads` — with documented exit codes 0/1/2/3/4), covered by a fake-`gh` harness with 50+ fixtures and 74 tests that assert each gate fails closed on missing, empty, malformed or stale input. A new `shell-gates` CI job (Ubuntu + macOS) lints with shellcheck, runs the suite, and ends with `check-inline-gates.sh`, which rejects a gate shape reappearing in the markdown; the job is wired into both `CI Gate`'s `needs` and its assertion loop. A deliberately failing run (35086625178) proved both the job and `CI Gate` go red, and the revert run (35094626969) proved they go green again. Repairs the PR #71 fail-open chain: an unset `INSTALLED_BOTS` read as "no bots", `jq max` over an empty array produced the string `null` and hid every comment, and a failed `gh` call in the step 1a probe exited 0. Qodo was billing-blocked; merged without a bot review after an explicit checkpoint decision. PR #115, squashed as `b1872b4`. |
 | [CLO-631](https://linear.app/cloud-ai/issue/CLO-631/escape-or-remove-step-output-interpolated-into-workflow-shell-fields) | Escape or remove step output interpolated into workflow shell fields | 2026-09-16 | Escaped all step output interpolated into shell fields, added static policy and hostile-output tests, hardened follow-up issue creation, and documented the safe authoring contract. PR #114, merged as `6b67e9f`. |
 | - | spec-review saved a failed Claude fallback as a review; docs drift left by CLO-660 | 2026-09-15 | Untracked, no CLO task. spec-review's `write_reviews` now requires `steps.claude_fallback.success` before writing the fallback file, the check CLO-788 added to design-review: a failed step keeps its `Error: <message>` text as output. Verified against installed v20260915.0.0 with fake `claude` and `ollama` binaries: on the old file a failing fallback wrote `Error: execution failed: Claude CLI failed: ...` as the review; on the new file it writes no fallback file and the synthesis reads `NO_REVIEWS_AVAILABLE`, and a succeeding fallback still writes its review and synthesis. Three doc corrections CLO-660 reported: ROADMAP Phase 14 marks CLO-624 Canceled, `docs/DEPENDENCIES.md` no longer says nobody can push to `main` (ruleset 20153405 has carried only `deletion` and `non_fast_forward` since 2026-08-07), and `.pi/agents/ops-reviewer.md` checks `cargo install --locked --git` instead of `cargo install lokomotiv`, which installs the upstream binary. |
 | [CLO-632](https://linear.app/cloud-ai/issue/CLO-632) | Gate project-layer `lok.toml` execution keys behind a trust boundary | 2026-09-15 | A cloned repo's `./lok.toml` could replace a backend executable, and the next `lok ask` ran it during warmup. The project layer may now only restate `backends.*.command`, `backends.*.args`, `backends.*.api_key_env` and `defaults.command_wrapper` with the built-in default or the user-resolved value; restated values are stripped before the merge so the user config decides, and any other value fails to load naming the file and keys (backend names escaped with `escape_debug`). Ticket option 1 as written would have broken every `lok init` file, and letting a restated default take effect would have let a repo reset a pinned binary or drop hardening args (spec review N2). End-to-end test runs `lok ask` against a hostile project file in a sealed env with a `--config` positive control. Behaviour change: this repo's `lok.toml` no longer sets the codex reasoning-effort arg; set it in `~/.config/lok/lok.toml`. Qodo billing-blocked, merged without a bot review by Max's decision. PR #109. |
@@ -102,4 +103,6 @@
 
 | Task | Title | Blocked By | Notes |
 |------|-------|------------|-------|
-| [CLO-650](https://linear.app/cloud-ai/issue/CLO-650) | Verify reviewer-bot identity exactly in the PR gates instead of substring matching | CLO-623 | Belongs in the script CLO-623 extracts, not in duplicated markdown |
+| - | - | - | - |
+
+No task is currently blocked. CLO-650 was the only row here; it waited on CLO-623 and became ready when CLO-623 merged on 2026-09-16 (see `docs/DEPENDENCIES.md` under Unblocked & Ready).
