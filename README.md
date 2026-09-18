@@ -20,6 +20,26 @@ multiple backends, get synthesized results.
 - **Not a wrapper for one LLM**: If you only use Claude, you don't need lok. The
   value is in multi-backend orchestration and consensus.
 
+## Installation
+
+Both methods install the `lok` and `lokomotiv` binaries.
+
+**Homebrew** (macOS and Linux, prebuilt binaries):
+
+```bash
+brew install maxkulish/tap/lok
+```
+
+**From source** with Cargo:
+
+```bash
+cargo install --locked --git https://github.com/maxkulish/lok --tag v20260915.0.0 lokomotiv
+```
+
+`--locked` builds with the repository's `Cargo.lock`. Do not run
+`cargo install lokomotiv` without `--git`: that installs the unrelated upstream
+crate from crates.io.
+
 ## Using lokomotiv as a library
 
 The `lokomotiv` library is not on crates.io. The crate of that name on
@@ -33,12 +53,12 @@ because it uses `#[tokio::main]`:
 
 ```toml
 [dependencies]
-lokomotiv = { git = "https://github.com/maxkulish/lok", tag = "v20260914.0.0", default-features = false }
+lokomotiv = { git = "https://github.com/maxkulish/lok", tag = "v20260915.0.0", default-features = false }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
 The `tag` selects the source revision to build. Each release is tagged `v` plus
-the crate version (`vYYYYMMDD.N.P`, for example `v20260914.0.0`).
+the crate version (`vYYYYMMDD.N.P`, for example `v20260915.0.0`).
 
 A crate that depends on `lokomotiv` through git cannot itself be published to
 crates.io: crates.io needs a registry version for every dependency, and no
@@ -93,14 +113,7 @@ configuration options, build it from a checkout of this repository with
 
 ## Quick Start
 
-`--locked` builds with the repository's `Cargo.lock`, which `cargo install`
-otherwise ignores. Running `cargo install lokomotiv` without `--git` installs
-the upstream crate from crates.io instead of this repository.
-
 ```bash
-cargo install --locked --git https://github.com/maxkulish/lok --tag v20260914.0.0 lokomotiv
-                             # Package "lokomotiv"; installs the "lok" and "lokomotiv" binaries
-
 lok doctor                   # Check what backends are available
 lok ask "Explain this code"  # Query all available backends
 lok hunt .                   # Find bugs in current directory
