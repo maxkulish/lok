@@ -1,4 +1,4 @@
-.PHONY: help build test check clippy fmt clean sync feature release install pi-init
+.PHONY: help build test check clippy fmt clean sync feature release formula-bump install pi-init
 
 # Auto-generate version from today's date with auto-incrementing patch
 # Format: YYYYMMDD.0.X where X increments if releasing multiple times per day
@@ -41,6 +41,7 @@ help:
 	@echo "Release:"
 	@echo "  make release                       - Auto-version release ($(VERSION))"
 	@echo "  make release VERSION=20260329.0.0  - Release with specific version"
+	@echo "  make formula-bump TAG=v20260329.0.0 - Open Homebrew tap bump PR for a published release"
 	@echo ""
 	@echo "Current branch: $(BRANCH)"
 	@echo "Next version:   $(VERSION)"
@@ -134,3 +135,7 @@ release:
 	@echo "  - Pushed to origin"
 	@echo "  - Installed to /usr/local/bin/lok"
 	@lok --version
+
+formula-bump:
+	@test -n "$(TAG)" || { echo "Usage: make formula-bump TAG=vX.Y.Z"; exit 1; }
+	@./scripts/bump-homebrew-formula.sh $(TAG)

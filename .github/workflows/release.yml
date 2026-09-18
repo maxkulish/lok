@@ -199,3 +199,33 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           overwrite_files: true
+
+  # Opens a bump PR on maxkulish/homebrew-tap; merging it stays manual. The
+  # default GITHUB_TOKEN cannot push to another repository, so this needs the
+  # HOMEBREW_TAP_TOKEN secret (a token with contents + pull-requests write on
+  # the tap). Without it the job warns and passes, and the bump is run locally
+  # with `make formula-bump TAG=vX.Y.Z`.
+  homebrew:
+    name: bump homebrew formula
+    needs: release
+    if: github.event_name == 'push' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Open tap bump PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN is not set; run 'make formula-bump TAG=$TAG' locally"
+            exit 0
+          fi
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          scripts/bump-homebrew-formula.sh "$TAG"

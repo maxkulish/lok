@@ -144,6 +144,7 @@ jobs:
             .pi/scripts/tests/pr-review-cycle.test.sh \
             .pi/scripts/tests/check-inline-gates.sh \
             .pi/scripts/tests/fake-gh/gh
+          shellcheck scripts/bump-homebrew-formula.sh
 
       - name: pr-review-cycle test suite
         run: sh .pi/scripts/tests/pr-review-cycle.test.sh
