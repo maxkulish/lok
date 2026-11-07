@@ -245,7 +245,7 @@ mod tests {
         let mut steps = HashMap::new();
         steps.insert("s".to_string(), make_step("s", "ok", true));
         let ctx = TemplateContext::new(&steps, &[], &[]);
-        assert_eq!(render_template("{{ steps.s.success }}", &ctx), "true");
+        assert_eq!(render_template("{{ steps.s.success }}", &ctx), "True");
     }
 
     #[test]
@@ -253,7 +253,7 @@ mod tests {
         let mut steps = HashMap::new();
         steps.insert("s".to_string(), make_step("s", "fail", false));
         let ctx = TemplateContext::new(&steps, &[], &[]);
-        assert_eq!(render_template("{{ steps.s.success }}", &ctx), "false");
+        assert_eq!(render_template("{{ steps.s.success }}", &ctx), "False");
     }
 
     #[test]
