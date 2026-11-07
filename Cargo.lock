@@ -1631,7 +1631,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "lokomotiv"
-version = "20261107.0.1"
+version = "20261107.0.2"
 dependencies = [
  "anyhow",
  "async-trait",
