@@ -126,7 +126,7 @@ release:
 	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
 	@git branch -d release/v$(VERSION)
 	@cargo build --release
-	@cp target/release/lok /usr/local/bin/lok
+	@cp target/release/lok /usr/local/bin/lok.new && mv -f /usr/local/bin/lok.new /usr/local/bin/lok
 	@git push origin main
 	@git push origin v$(VERSION)
 	@echo ""
