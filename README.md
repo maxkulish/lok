@@ -33,7 +33,7 @@ brew install maxkulish/tap/lok
 **From source** with Cargo:
 
 ```bash
-cargo install --locked --git https://github.com/maxkulish/lok --tag v20260915.0.0 lokomotiv
+cargo install --locked --git https://github.com/maxkulish/lok --tag v20261107.0.0 lokomotiv
 ```
 
 `--locked` builds with the repository's `Cargo.lock`. Do not run
@@ -53,7 +53,7 @@ because it uses `#[tokio::main]`:
 
 ```toml
 [dependencies]
-lokomotiv = { git = "https://github.com/maxkulish/lok", tag = "v20260915.0.0", default-features = false }
+lokomotiv = { git = "https://github.com/maxkulish/lok", tag = "v20261107.0.0", default-features = false }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
