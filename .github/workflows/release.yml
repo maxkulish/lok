@@ -228,4 +228,8 @@ jobs:
           fi
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `gh repo clone` authenticates from GH_TOKEN on its own; the plain
+          # `git push` in the script does not, and fails with "could not read
+          # Username" unless git uses gh as its credential helper.
+          gh auth setup-git
           scripts/bump-homebrew-formula.sh "$TAG"
