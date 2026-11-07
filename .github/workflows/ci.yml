@@ -63,7 +63,7 @@ jobs:
   # source-code change that requires a newer toolchain is caught in CI
   # before it reaches a consumer on an older Rust.
   #
-  # The optional `bedrock` feature has its own MSRV (1.88) via AWS SDK
+  # The optional `bedrock` feature has its own MSRV (1.91.1) via AWS SDK
   # dependencies and is checked separately below.
   msrv-check:
     name: MSRV check (1.83)
@@ -87,9 +87,9 @@ jobs:
         run: cargo check --locked --all-targets
 
       - name: Install bedrock MSRV toolchain
-        uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b
+        uses: dtolnay/rust-toolchain@8632757d5a758c452f724e9d837848c694a7bb48
 
-      - name: Check against bedrock MSRV (1.88)
+      - name: Check against bedrock MSRV (1.91.1)
         run: cargo check --locked --all-targets --features bedrock
 
   # CLO-623. The pr-review-cycle gates were ported out of two markdown files
