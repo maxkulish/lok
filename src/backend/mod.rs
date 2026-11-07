@@ -798,7 +798,7 @@ pub fn write_exec_script(body: &[u8]) -> tempfile::TempPath {
     let status = writer.wait().expect("temp script writer exits");
     assert!(status.success(), "temp script writer failed: {status:?}");
 
-    tempfile::TempPath::from_path(path)
+    tempfile::TempPath::try_from_path(path).expect("temp script path")
 }
 
 /// Non-unix fallback. `ETXTBSY` is a unix rule, so the straightforward
